@@ -32,21 +32,19 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if cx.in_asm() {
         return Rc::clone(n);
     }
+    if let Data::Unary { op, prefix: true, .. } = &n.data {
+        if matches!(op.as_str(), "!" | "typeof" | "void" | "delete" | "+" | "-" | "~") {
+            // terser `lib/compress/index.js` `def_optimize(AST_UnaryPrefix)`.
+            return crate::unary::optimize(n, cx);
+        }
+    }
     if let Some(rewritten) = rewrite_global(n, cx) {
         return rewritten;
-    }
-    if cx.in_bool {
-        if let Some(rewritten) = fold_bool_unary(n) {
-            return rewritten;
-        }
     }
     if let Some(rewritten) = fold_bool(n, cx) {
         return rewritten;
     }
     if cx.opts.evaluate {
-        if let Some(rewritten) = fold_delete(n, cx) {
-            return rewritten;
-        }
         if let Some(rewritten) = fold_value(n, cx) {
             return rewritten;
         }
@@ -148,7 +146,9 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
             return Some(Rc::clone(value));
         }
     }
-    if cx.shadowed(name) || cx.opts.ie8 {
+    // terser `index.js` `def_optimize(AST_Undefined)` / `AST_Infinity` / `AST_NaN`:
+    // the direct lhs of `delete`, an update, or an assignment keeps the identifier.
+    if cx.shadowed(name) || cx.opts.ie8 || cx.in_lhs || identifier_lhs(cx) {
         return None;
     }
     match name.as_str() {
@@ -159,21 +159,19 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     }
 }
 
-fn fold_bool_unary(n: &N) -> Option<N> {
-    let Data::Unary { op, expr, prefix: true } = &n.data else {
-        return None;
-    };
-    if op == "!" {
-        if let Data::Unary { op: inner, expr: value, prefix: true } = &expr.data {
-            if inner == "!" {
-                return Some(Rc::clone(value));
-            }
-        }
+/// Direct child of `delete` / `++` / `--`. Nested operands (a sequence element,
+/// a conditional branch) are not an lhs, so `undefined` there still becomes `void 0`.
+fn identifier_lhs(cx: &Cx) -> bool {
+    let len = cx.parents.len();
+    if len < 2 {
+        return false;
     }
-    if op == "typeof" && is_pure(expr) {
-        return Some(atom(n, Data::True));
+    let self_n = &cx.parents[len - 1];
+    let parent = &cx.parents[len - 2];
+    match &parent.data {
+        Data::Unary { op, expr, .. } if matches!(op.as_str(), "delete" | "++" | "--") && Rc::ptr_eq(expr, self_n) => true,
+        _ => false,
     }
-    None
 }
 
 fn fold_bool(n: &N, cx: &Cx) -> Option<N> {
@@ -189,38 +187,6 @@ fn fold_bool(n: &N, cx: &Cx) -> Option<N> {
         Some(num(n, value))
     } else {
         Some(unary(n, "!", num(n, 1.0 - value)))
-    }
-}
-
-fn fold_delete(n: &N, cx: &Cx) -> Option<N> {
-    let Data::Unary { op, expr, prefix: true } = &n.data else {
-        return None;
-    };
-    if op != "delete" || is_reference(expr) {
-        return None;
-    }
-    if !is_pure(expr) {
-        return None;
-    }
-    Some(truth(n, cx))
-}
-
-fn is_reference(n: &N) -> bool {
-    match &n.data {
-        Data::Symbol { kind: ast::SymKind::Ref, .. } | Data::Dot { .. } | Data::Sub { .. } => true,
-        Data::Seq { exprs } => exprs.last().is_some_and(is_reference),
-        Data::Cond { cons, alt, .. } => is_reference(cons) || is_reference(alt),
-        _ => false,
-    }
-}
-
-fn truth(n: &N, cx: &Cx) -> N {
-    if cx.opts.booleans && (cx.in_bool || cx.eq_cmp) {
-        num(n, 1.0)
-    } else if cx.opts.booleans {
-        unary(n, "!", num(n, 0.0))
-    } else {
-        atom(n, Data::True)
     }
 }
 
@@ -539,11 +505,11 @@ fn same_node(a: &N, b: &N) -> bool {
     }
 }
 
-fn simple(span: &N, body: N) -> N {
+pub(crate) fn simple(span: &N, body: N) -> N {
     atom(span, Data::Simple { body })
 }
 
-fn binary(span: &N, op: &str, left: N, right: N) -> N {
+pub(crate) fn binary(span: &N, op: &str, left: N, right: N) -> N {
     atom(
         span,
         Data::Binary { op: op.into(), left, right },
@@ -791,7 +757,7 @@ fn is_boolean(n: &N) -> bool {
     }
 }
 
-fn is_number(n: &N) -> bool {
+pub(crate) fn is_number(n: &N) -> bool {
     match &n.data {
         Data::Number { .. } => true,
         Data::Unary { op, expr, prefix: true } => {
@@ -1138,7 +1104,7 @@ fn negate_iife(n: &N) -> Option<N> {
     Some(simple(n, unary(n, "!", Rc::clone(body))))
 }
 
-fn is_iife_call(n: &N) -> bool {
+pub(crate) fn is_iife_call(n: &N) -> bool {
     let Data::Call { expr, is_new: false, .. } = &n.data else {
         return false;
     };
@@ -1446,7 +1412,7 @@ fn prefer(orig: &N, folded: N) -> N {
     }
 }
 
-fn print_len(n: &N) -> usize {
+pub(crate) fn print_len(n: &N) -> usize {
     codegen::print(n).len()
 }
 
@@ -1471,7 +1437,7 @@ fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
     }
 }
 
-fn atom(orig: &N, data: Data) -> N {
+pub(crate) fn atom(orig: &N, data: Data) -> N {
     Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
 }
 
@@ -1486,19 +1452,19 @@ fn nan_node(orig: &N, cx: &Cx) -> N {
     }
 }
 
-fn num(orig: &N, value: f64) -> N {
+pub(crate) fn num(orig: &N, value: f64) -> N {
     atom(orig, Data::Number { value, raw: String::new() })
 }
 
-fn unary(orig: &N, op: &str, expr: N) -> N {
+pub(crate) fn unary(orig: &N, op: &str, expr: N) -> N {
     atom(orig, Data::Unary { op: op.into(), expr, prefix: true })
 }
 
-fn void0(orig: &N) -> N {
+pub(crate) fn void0(orig: &N) -> N {
     unary(orig, "void", num(orig, 0.0))
 }
 
-fn infinity(orig: &N, neg: bool) -> N {
+pub(crate) fn infinity(orig: &N, neg: bool) -> N {
     let one = if neg { unary(orig, "-", num(orig, 1.0)) } else { num(orig, 1.0) };
     atom(
         orig,
@@ -1515,7 +1481,7 @@ fn empty(orig: &N) -> N {
     atom(orig, Data::Empty)
 }
 
-fn to_int32(n: f64) -> i32 {
+pub(crate) fn to_int32(n: f64) -> i32 {
     to_uint32(n) as i32
 }
 
@@ -1530,4 +1496,107 @@ fn to_uint32(n: f64) -> u32 {
         m += div;
     }
     m as u32
+}
+
+/// terser `evaluate.js` `AST_Node.evaluate` + `def_eval(AST_UnaryPrefix)`,
+/// then `make_node_from_constant(...).optimize()` and `best_of`.
+pub(crate) fn prefix_constant(n: &N, skip_expr: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.evaluate {
+        return None;
+    }
+    let Data::Unary { op, expr, prefix: true } = &n.data else {
+        return None;
+    };
+    // `-(number|Infinity|bigint)` is left alone so numeral printing cannot recurse.
+    if op == "-" && matches!(skip_expr.data, Data::Number { .. } | Data::Infinity | Data::BigInt { .. }) {
+        return None;
+    }
+    let lit = if op == "typeof" { eval_typeof(expr, cx)? } else { apply_unary(op, eval(expr)?)? };
+    finish_constant(n, lit, cx)
+}
+
+/// Constant-fold a replacement the way `evaluate` + `best_of` does.
+pub(crate) fn best_constant(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.evaluate {
+        return None;
+    }
+    finish_constant(n, eval(n)?, cx)
+}
+
+fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
+    if let Lit::Str(s) = &lit {
+        if s.len() + 2 > print_len(orig) {
+            return None;
+        }
+    }
+    let folded = lit_node(orig, lit, cx);
+    let folded = match &folded.data {
+        Data::True => crate::unary::optimize_bool(true, &folded, cx),
+        Data::False => crate::unary::optimize_bool(false, &folded, cx),
+        _ => folded,
+    };
+    if print_len(&folded) > print_len(orig) { None } else { Some(folded) }
+}
+
+fn apply_unary(op: &str, inner: Lit) -> Option<Lit> {
+    Some(match op {
+        "!" => Lit::Bool(!inner.truthy()),
+        "void" => Lit::Undef,
+        "~" => Lit::Num((!to_int32(inner.num()?)) as f64),
+        "-" => neg(inner.num()?),
+        "+" => Lit::Num(inner.num()?),
+        _ => return None,
+    })
+}
+
+fn eval_typeof(expr: &N, cx: &Cx) -> Option<Lit> {
+    if let Some(kind) = typeof_ast(expr, cx) {
+        return Some(Lit::Str(kind));
+    }
+    // `typeof 1n` does not need the `typeofs` option.
+    if matches!(expr.data, Data::BigInt { .. }) {
+        return Some(Lit::Str("bigint".into()));
+    }
+    if matches!(expr.data, Data::RegExp { .. }) {
+        return None;
+    }
+    let lit = eval(expr)?;
+    Some(Lit::Str(match &lit {
+        Lit::Num(_) => "number",
+        Lit::Str(_) => "string",
+        Lit::Bool(_) => "boolean",
+        Lit::Null => "object",
+        Lit::Undef => "undefined",
+    }.into()))
+}
+
+fn typeof_ast(expr: &N, cx: &Cx) -> Option<String> {
+    if !cx.opts.typeofs {
+        return None;
+    }
+    if is_lambda(expr) || fixed_of(expr, cx).is_some_and(is_lambda) {
+        return Some("function".into());
+    }
+    let objectish = is_object_or_array(expr) || fixed_of(expr, cx).is_some_and(is_object_or_array);
+    if objectish && !crate::unary::may_side_effect(expr, cx) {
+        return Some("object".into());
+    }
+    None
+}
+
+fn is_lambda(n: &N) -> bool {
+    matches!(n.data, Data::Func { .. })
+}
+
+fn is_object_or_array(n: &N) -> bool {
+    matches!(n.data, Data::Object { .. } | Data::Array { .. })
+}
+
+fn fixed_of<'a>(expr: &'a N, cx: &'a Cx) -> Option<&'a N> {
+    let Data::Symbol { kind: ast::SymKind::Ref, .. } = &expr.data else {
+        return None;
+    };
+    let table = cx.syms.as_ref()?;
+    let id = *table.node_def.get(&crate::syms::ptr(expr))?;
+    table.defs.get(id)?.fixed.as_ref()
 }

@@ -15,8 +15,9 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `drop-unused.js` `tt` | `drop_unused.rs` `rewrite_expr` | drop unread decls; write-only `=` becomes the rhs. `fixed_ids` recorded, not yet applied to in-use names |
 | `index.js` `hoist_properties` / `hoist_declarations` | `hoist.rs` `hoist` | runs at the start of `before`. `hoist_props` on by default. `hoist_vars` / `hoist_funs` off unless set. `top_retain` is a plain name only |
 | `index.js` `def_optimize` / `OPT` | `lib.rs` `after_descend` + `eval.rs` `fold` | scope/block joining runs once after both descends. Per-type bodies are still the `fold` chain, not split into `def_optimize(AST_*)` |
+| `index.js` `def_optimize(AST_UnaryPrefix)` | `unary.rs` `optimize` | `!` `typeof` `void` `delete` `+` `-` `~`. Also `AST_Unary.lift_sequences`, `negate`, `bitwise_negate`, and the `drop_side_effect_free` that `void` calls. `++`/`--` are not this pass |
 
-Scores: default 1630/3013, fixture 1192/2671, lwc default 134/339. Compare vs `5c54583`: default 8 newly passing, fixture 3 newly passing, 0 newly failing. Roundtrip 3013/3013, mangle 3013/3013.
+Scores: default 1643/3013, fixture 1192/2671, lwc default 134/339. `AST_UnaryPrefix` vs `760da48`: default 13 newly passing, 0 newly failing. Earlier vs `5c54583`: default 8 newly passing, fixture 3 newly passing, 0 newly failing. Roundtrip 3013/3013, mangle 3013/3013.
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
