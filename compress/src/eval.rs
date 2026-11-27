@@ -2660,28 +2660,6 @@ fn list_overhead(len: usize) -> usize {
     len.saturating_sub(1)
 }
 
-fn number_size(value: f64) -> usize {
-    if value.is_nan() {
-        return 3;
-    }
-    if value == 0.0 {
-        return 1;
-    }
-    if value > 0.0 && value.is_finite() && value.fract() == 0.0 {
-        if value < 1e16 {
-            let mut x = value;
-            let mut d = 0usize;
-            while x >= 1.0 {
-                x /= 10.0;
-                d += 1;
-            }
-            return d.max(1);
-        }
-        return (value.log10() + 1e-9).floor() as usize + 1;
-    }
-    js_num_tostring(value).len()
-}
-
 /// terser `lib/compress/inference.js` `has_side_effects` for receivers and array elements.
 fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
     match &n.data {
@@ -3484,11 +3462,3 @@ fn is_object_or_array(n: &N) -> bool {
     matches!(n.data, Data::Object { .. } | Data::Array { .. })
 }
 
-fn fixed_of<'a>(expr: &'a N, cx: &'a Cx) -> Option<&'a N> {
-    let Data::Symbol { kind: ast::SymKind::Ref, .. } = &expr.data else {
-        return None;
-    };
-    let table = cx.syms.as_ref()?;
-    let id = *table.node_def.get(&crate::syms::ptr(expr))?;
-    table.defs.get(id)?.fixed.as_ref()
-}
