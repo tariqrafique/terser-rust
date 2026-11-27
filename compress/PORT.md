@@ -96,6 +96,7 @@ Full board after the string-join commit: compress default 2305/2671, fixture 184
 Known gaps worth the next pass:
 - `collapse` is name based; blocks only collapse their own `let` / `const`.
 - lwc-rollup bundles: remaining differences in the LWC engine code shift the mangler's character frequencies, so many bundles differ only in names.
+- A `var` injected by `flatten_fn` is not in the `reduce_vars` table, so `collapse` uses current counts for it where terser has the parameter's references (`inline/issue_308`).
 - `arrow/issue_2136_2` (rest parameter in an IIFE), `drop_console`, `unsafe_Function`.
 
 Optimize-once board: `tighten_body` (`after_descend`) is skipped for a node that is already `OPTIMIZED`, as terser's `def_optimize` is. A node terser `.optimize()`s where it is made (an inlined lambda not yet optimized, a switch-built block, a falsy-loop block) is in `Cx.pre_tighten`: its `tighten_body` runs once on the children as they are, before they are descended. Default 2610/3013 → 2615/3013, fixture unchanged.

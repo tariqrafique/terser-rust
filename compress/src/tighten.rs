@@ -226,8 +226,35 @@ pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, lo
 
 thread_local! {
     static PHANTOM: std::cell::RefCell<HashMap<String, usize>> = Default::default();
+    /// Names visible here whose only declaration is a `function` statement.
+    static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+}
+
+pub(crate) fn set_defuns(set: HashSet<String>) {
+    DEFUNS.with(|d| *d.borrow_mut() = set);
+}
+
+/// `function` statement names in a body that nothing else declares there.
+pub(crate) fn defun_names(params: &[N], body: &[N]) -> (HashSet<String>, HashSet<String>) {
+    let mut defuns = HashSet::new();
+    for s in body {
+        if let Data::Func { kind: ast::FuncKind::Decl, name: Some(nm), .. } = &s.data {
+            if let Some(n) = sym_name(nm) {
+                defuns.insert(n.to_string());
+            }
+        }
+    }
+    let mut others = HashSet::new();
+    let without: Vec<N> = body.iter().filter(|s| !matches!(s.data, Data::Func { kind: ast::FuncKind::Decl, .. })).cloned().collect();
+    let bound = scope_bindings(params, &without);
+    for n in &defuns {
+        if bound.contains(n) {
+            others.insert(n.clone());
+        }
+    }
+    (defuns, others)
 }
 
 pub(crate) fn set_referenced(map: HashMap<usize, usize>) {
@@ -1056,6 +1083,10 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
 }
 
 fn may_modify(name: &str, st: &Scan<'_>) -> bool {
+    // terser: a name whose one declaration is a `function` statement is not modified.
+    if DEFUNS.with(|d| d.borrow().contains(name)) {
+        return false;
+    }
     !st.locals.contains(name) || st.escaped.contains(name)
 }
 

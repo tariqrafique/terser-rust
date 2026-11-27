@@ -41,6 +41,31 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         if cx.opts.collapse_vars {
             if let Some(scope) = collapse_scope(&stmts, cx) {
                 let before = stmts.clone();
+                // Function-statement names visible here, innermost declaration wins.
+                {
+                    let mut defuns: std::collections::HashSet<String> = Default::default();
+                    let len = cx.parents.len();
+                    let mut scopes: Vec<(Vec<N>, Vec<N>)> = Vec::new();
+                    for p in &cx.parents[..len.saturating_sub(1)] {
+                        match &p.data {
+                            Data::Func { args, body, .. } => scopes.push((args.clone(), body.clone())),
+                            Data::Toplevel { body } => scopes.push((Vec::new(), body.clone())),
+                            _ => {}
+                        }
+                    }
+                    let own_args = match &self_node(cx).map(|n| n.data.clone()) {
+                        Some(Data::Func { args, .. }) => args.clone(),
+                        _ => Vec::new(),
+                    };
+                    scopes.push((own_args, stmts.clone()));
+                    for (args, body) in &scopes {
+                        let (d, shadow) = crate::tighten::defun_names(args, body);
+                        let bound = crate::tighten::scope_bindings(args, body);
+                        defuns.retain(|n| !bound.contains(n));
+                        defuns.extend(d.into_iter().filter(|n| !shadow.contains(n)));
+                    }
+                    crate::tighten::set_defuns(defuns);
+                }
                 if let Some(table) = cx.syms.as_ref() {
                     let mut map = std::collections::HashMap::new();
                     for st in &stmts {
