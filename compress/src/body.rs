@@ -1004,7 +1004,7 @@ fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::coll
     match &n.data {
         Data::Func { .. } | Data::Class { .. } => {}
         Data::VarDef { name, .. } => {
-            if let Some(&id) = table.node_def.get(&crate::syms::ptr(name)) {
+            if let Some(id) = table.lookup(&crate::syms::ptr(name)) {
                 let d = &table.defs[id];
                 out.insert(crate::syms::ptr(name), d.references.len().saturating_sub(d.replaced.get() as usize));
             }

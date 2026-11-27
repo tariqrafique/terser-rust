@@ -630,7 +630,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     }
     let out = transform(root, &mut cx);
     let out = if let Some(table) = &cx.syms {
-        syms::drop_replaced(&out, table, unused)
+        syms::drop_replaced_toplevel(&out, table, unused, toplevel_vars)
     } else {
         out
     };
@@ -1030,6 +1030,15 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let hoisted;
     let n = if was_scope(&n.data) && !cx.in_asm() {
         hoisted = hoist::hoist(n, cx.opts.hoist_props, cx.opts.hoist_funs, cx.opts.hoist_vars, cx.opts.toplevel_vars, cx.opts.top_retain.as_deref(), cx.syms.as_ref());
+        // The rebuilt scope node is the same scope.
+        if !Rc::ptr_eq(&hoisted, n) {
+            if let Some(table) = cx.syms.as_mut() {
+                if let Some(&sc) = table.node_scope.get(&ptr) {
+                    table.node_scope.insert(Rc::as_ptr(&hoisted) as usize, sc);
+                    cx.flag_keep.push(Rc::clone(&hoisted));
+                }
+            }
+        }
         &hoisted
     } else {
         n

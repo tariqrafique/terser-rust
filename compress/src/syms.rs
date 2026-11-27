@@ -57,6 +57,11 @@ pub struct SymbolDef {
 pub struct SymTable {
     pub defs: Vec<SymbolDef>,
     pub node_def: HashMap<usize, usize>,
+    /// Symbols of a `clone(true)` copy made during compress: new pointer → def.
+    /// The nodes are kept so their addresses stay unique.
+    pub alias: RefCell<HashMap<usize, (usize, N)>>,
+    /// Scope nodes of such a copy: new pointer → scope id.
+    pub alias_scope: RefCell<HashMap<usize, (usize, N)>>,
     pub node_scope: HashMap<usize, usize>,
     pub scope_defs: HashMap<usize, Vec<usize>>,
     /// Parent scope id for each scope, indexed by scope id.
@@ -99,6 +104,8 @@ pub fn bind(root: &N) -> SymTable {
         fn_of: Vec::new(),
         scope_pinned: Vec::new(),
         fixed_of_node: HashMap::new(),
+        alias: RefCell::new(HashMap::new()),
+        alias_scope: RefCell::new(HashMap::new()),
         inlined_scopes: RefCell::new(HashSet::new()),
     };
     table.node_scope.insert(ptr(root), 0);
@@ -628,6 +635,52 @@ pub fn ptr(n: &N) -> usize {
 
 /// Index function and class `fixed` values so `retarget_fixed` can follow a compressed node.
 /// terser mutates those nodes in place; `fixed()` then sees the optimized tree.
+impl SymTable {
+    /// The definition a symbol node refers to, through copies.
+    pub fn lookup(&self, p: &usize) -> Option<usize> {
+        if let Some(id) = self.node_def.get(p) {
+            return Some(*id);
+        }
+        self.alias.borrow().get(p).map(|(id, _)| *id)
+    }
+
+    /// terser `clone(true)` keeps `thedef`: point the copy's symbols at the
+    /// original definitions.
+    /// The scope id of a scope node, through copies.
+    pub fn scope_lookup(&self, p: &usize) -> Option<usize> {
+        if let Some(s) = self.node_scope.get(p) {
+            return Some(*s);
+        }
+        self.alias_scope.borrow().get(p).map(|(s, _)| *s)
+    }
+
+    pub fn alias_copy(&self, orig: &N, copy: &N) {
+        if let Some(sc) = self.scope_lookup(&ptr(orig)) {
+            if !Rc::ptr_eq(orig, copy) {
+                self.alias_scope.borrow_mut().insert(ptr(copy), (sc, Rc::clone(copy)));
+            }
+        }
+        if let Some(id) = self.lookup(&ptr(orig)) {
+            if !Rc::ptr_eq(orig, copy) {
+                self.alias.borrow_mut().insert(ptr(copy), (id, Rc::clone(copy)));
+            }
+        }
+        let mut a = Vec::new();
+        let _ = ast::map_children(orig, &mut |c| {
+            a.push(Rc::clone(c));
+            Rc::clone(c)
+        });
+        let mut b = Vec::new();
+        let _ = ast::map_children(copy, &mut |c| {
+            b.push(Rc::clone(c));
+            Rc::clone(c)
+        });
+        for (x, y) in a.iter().zip(b.iter()) {
+            self.alias_copy(x, y);
+        }
+    }
+}
+
 pub fn index_func_fixed(table: &mut SymTable) {
     table.fixed_of_node.clear();
     for (id, def) in table.defs.iter().enumerate() {
@@ -658,6 +711,18 @@ pub fn retarget_fixed(table: &mut SymTable, old_ptr: usize, new_node: &N) {
 /// Drop declarations whose references were all replaced.
 /// terser `lib/compress/drop-unused.js` drops a def when `unused` is on and
 /// every reference was eliminated. This is the single-use constant case.
+thread_local! {
+    /// `toplevel.vars`: a global whose reads were all inlined can go.
+    static DROP_GLOBALS: Cell<bool> = const { Cell::new(false) };
+}
+
+pub fn drop_replaced_toplevel(root: &N, table: &SymTable, unused: bool, toplevel_vars: bool) -> N {
+    DROP_GLOBALS.with(|g| g.set(toplevel_vars));
+    let out = drop_replaced(root, table, unused);
+    DROP_GLOBALS.with(|g| g.set(false));
+    out
+}
+
 pub fn drop_replaced(root: &N, table: &SymTable, unused: bool) -> N {
     if !unused {
         return Rc::clone(root);
@@ -707,7 +772,7 @@ fn replaced_decl(def: &N, table: &SymTable) -> bool {
     if d.references.is_empty() || d.replaced.get() < d.references.len() as u32 {
         return false;
     }
-    if d.assignments > 0 || d.undeclared || d.global {
+    if d.assignments > 0 || d.undeclared || d.exported || (d.global && !DROP_GLOBALS.with(|g| g.get())) {
         return false;
     }
     value.as_ref().map(|v| !side_effect(v)).unwrap_or(true)

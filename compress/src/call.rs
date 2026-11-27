@@ -117,7 +117,7 @@ fn fixed_lambda(expr: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     let table = cx.syms.as_ref()?;
-    let id = *table.node_def.get(&crate::syms::ptr(expr))?;
+    let id = table.lookup(&crate::syms::ptr(expr))?;
     let fixed = table.defs[id].fixed.clone()?;
     matches!(fixed.data, Data::Func { .. }).then_some(fixed)
 }
@@ -126,7 +126,7 @@ fn def_flag(expr: &N, cx: &Cx, f: impl FnOnce(&crate::syms::SymbolDef) -> bool) 
     let Some(table) = cx.syms.as_ref() else {
         return false;
     };
-    let Some(&id) = table.node_def.get(&crate::syms::ptr(expr)) else {
+    let Some(id) = table.lookup(&crate::syms::ptr(expr)) else {
         return false;
     };
     f(&table.defs[id])
@@ -146,7 +146,7 @@ fn note_replaced(expr: &N, cx: &Cx) {
     let Some(table) = cx.syms.as_ref() else {
         return;
     };
-    let Some(&id) = table.node_def.get(&crate::syms::ptr(expr)) else {
+    let Some(id) = table.lookup(&crate::syms::ptr(expr)) else {
         return;
     };
     let def = &table.defs[id];
@@ -282,6 +282,10 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     if ann.pure || ann.noinline || contains_this(func) || cx.in_default_assign() {
         return None;
     }
+    // terser `scope_encloses_variables_in_this_scope(nearest_scope, fn)`.
+    if free_ref_shadowed(func, cx) {
+        return None;
+    }
     let inj = can_inject_symbols(func, params, body, cx)?;
     // `flatten_args`
     let mut decls: Vec<N> = Vec::new();
@@ -349,7 +353,7 @@ fn inside_own_lambda(expr: &N, func: &N, cx: &Cx) -> bool {
 /// reads from outside must resolve to the same binding at the call site.
 fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     let Some(table) = cx.syms.as_ref() else { return false };
-    let site = cx.parents.iter().rev().find_map(|p| table.node_scope.get(&crate::syms::ptr(p)).copied());
+    let site = cx.parents.iter().rev().find_map(|p| table.scope_lookup(&crate::syms::ptr(p)));
     let Some(site) = site else { return false };
     let mut free: Vec<N> = Vec::new();
     fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut Vec<N>) {
@@ -385,7 +389,7 @@ fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     rec(func, &mut Vec::new(), &mut free);
     for r in free {
         let Data::Symbol { name, .. } = &r.data else { continue };
-        let target = table.node_def.get(&crate::syms::ptr(&r)).map(|id| table.defs[*id].scope);
+        let target = table.lookup(&crate::syms::ptr(&r)).map(|id| table.defs[id].scope);
         let mut cur = Some(site);
         while let Some(sc) = cur {
             if Some(sc) == target {
@@ -790,7 +794,7 @@ fn undeclared(expr: &N, cx: &Cx, names: &[&str]) -> bool {
     if !names.contains(&name.as_str()) || cx.shadowed(name) {
         return false;
     }
-    match cx.syms.as_ref().and_then(|t| t.node_def.get(&crate::syms::ptr(expr)).copied()) {
+    match cx.syms.as_ref().and_then(|t| t.lookup(&crate::syms::ptr(expr))) {
         Some(id) => cx.syms.as_ref().is_some_and(|t| t.defs[id].undeclared),
         None => true,
     }

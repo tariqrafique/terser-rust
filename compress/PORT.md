@@ -100,3 +100,5 @@ Known gaps worth the next pass:
 - `arrow/issue_2136_2` (rest parameter in an IIFE), `drop_console`, `unsafe_Function`.
 
 Optimize-once board: `tighten_body` (`after_descend`) is skipped for a node that is already `OPTIMIZED`, as terser's `def_optimize` is. A node terser `.optimize()`s where it is made (an inlined lambda not yet optimized, a switch-built block, a falsy-loop block) is in `Cx.pre_tighten`: its `tighten_body` runs once on the children as they are, before they are descended. Default 2610/3013 → 2615/3013, fixture unchanged.
+
+Copy board: an inlined lambda copy (terser `clone(true)`, made for a declaration or a cross-scope lambda) keeps its definitions through `SymTable.alias` / `alias_scope`, so references inside it still inline and scope checks see the right scope. `scope_encloses_variables_in_this_scope` guards every flatten. A `hoist`-rebuilt scope keeps its scope id. `drop_replaced` drops a global with `toplevel`. Default 2309/2671 compress (`block-scope/issue_334` now differs: a parameter read inside the copy is inlined where terser keeps it), fixture 1849.

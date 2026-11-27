@@ -213,7 +213,7 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
     if let Data::Defs { kind: DefKind::Var | DefKind::Let | DefKind::Const, defs, .. } = &n.data {
         for def in defs {
             let Data::VarDef { name, value: Some(value) } = &def.data else { continue };
-            let Some(&id) = table.node_def.get(&syms::ptr(name)) else { continue };
+            let Some(id) = table.lookup(&syms::ptr(name)) else { continue };
             let d = &table.defs[id];
             let exposed = d.exported || (d.global && if d.is_defun { false } else { !toplevel_vars });
             if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain == Some(d.name.as_str()) {
@@ -296,7 +296,7 @@ fn prop_of(table: &SymTable, n: &N, id: usize) -> bool {
 }
 
 fn is_ref_of(table: &SymTable, n: &N, id: usize) -> bool {
-    table.node_def.get(&syms::ptr(n)).copied() == Some(id)
+    table.lookup(&syms::ptr(n)) == Some(id)
 }
 
 fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, String>>) -> N {
@@ -305,7 +305,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             let mut out = Vec::new();
             for def in defs {
                 if let Data::VarDef { name, value: Some(value) } = &def.data {
-                    if let Some(&id) = table.node_def.get(&syms::ptr(name)) {
+                    if let Some(id) = table.lookup(&syms::ptr(name)) {
                         if let Some(keys) = plan.get(&id) {
                             if let Data::Object { props } = &value.data {
                                 for prop in props {
@@ -341,7 +341,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
 }
 
 fn expr_plan<'a>(table: &SymTable, expr: &N, plan: &'a HashMap<usize, HashMap<String, String>>) -> Option<&'a HashMap<String, String>> {
-    let id = table.node_def.get(&syms::ptr(expr)).copied()?;
+    let id = table.lookup(&syms::ptr(expr))?;
     plan.get(&id)
 }
 

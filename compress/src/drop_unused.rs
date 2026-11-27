@@ -194,7 +194,7 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
             }
         }
         Data::Symbol { kind: SymKind::Ref, .. } => {
-            if let Some(&id) = table.node_def.get(&ptr(n)) {
+            if let Some(id) = table.lookup(&ptr(n)) {
                 u.in_use.insert(id);
             }
         }
@@ -690,7 +690,7 @@ fn has_side_effects(n: &N) -> bool {
 }
 
 fn def_id(table: &SymTable, n: &N) -> Option<usize> {
-    table.node_def.get(&ptr(n)).copied()
+    table.lookup(&ptr(n))
 }
 
 fn is_ref(n: &N) -> bool {

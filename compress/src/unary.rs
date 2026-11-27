@@ -535,8 +535,8 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
         return true;
     }
     if let Some(table) = &cx.syms {
-        if let Some(id) = table.node_def.get(&crate::syms::ptr(n)) {
-            return table.defs.get(*id).is_some_and(|d| !d.undeclared);
+        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
+            return table.defs.get(id).is_some_and(|d| !d.undeclared);
         }
     }
     false
@@ -716,7 +716,7 @@ fn func_expr_unreferenced(expr: &N, cx: &Cx) -> bool {
     let Some(table) = &cx.syms else {
         return false;
     };
-    let Some(&id) = table.node_def.get(&crate::syms::ptr(name)) else {
+    let Some(id) = table.lookup(&crate::syms::ptr(name)) else {
         return false;
     };
     table.defs.get(id).is_some_and(|d| d.references.is_empty())

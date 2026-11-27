@@ -67,7 +67,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return None;
     }
     let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
-    let id = *table.node_def.get(&syms::ptr(n))?;
+    let id = table.lookup(&syms::ptr(n))?;
     let (scope, mut single, assignments, references, name_len, exposed_now) = {
         let def = &table.defs[id];
         if def.suppress_fixed.get() || def.fixed.is_none() {
@@ -116,6 +116,19 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     if single {
         let def = &table.defs[id];
         def.replaced.set(def.replaced.get().saturating_add(1));
+        // terser `fixed.clone(true)` when the lambda moves to another scope:
+        // fresh nodes (no optimizer flags) that keep their definitions.
+        if (is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope))
+            || matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. })
+        {
+            let copy = ast::deep_clone(&fixed);
+            table.alias_copy(&fixed, &copy);
+            let out = expr_value(&copy);
+            if let Some(sc) = table.scope_lookup(&syms::ptr(&fixed)) {
+                table.alias_scope.borrow_mut().insert(syms::ptr(&out), (sc, Rc::clone(&out)));
+            }
+            return Some(out);
+        }
         return Some(expr_value(&fixed));
     }
     // Multiple reads: terser `fixed.evaluate` and `make_node_from_constant`,
@@ -1281,7 +1294,7 @@ fn contains_break(n: &N) -> bool {
 }
 
 fn def_of(tw: &Tw, n: &N) -> Option<usize> {
-    tw.table.node_def.get(&syms::ptr(n)).copied()
+    tw.table.lookup(&syms::ptr(n))
 }
 
 fn sym_ref(n: &N) -> Option<()> {
@@ -1404,7 +1417,7 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     if sym_str(named).as_deref() != Some(name) {
         return false;
     }
-    if table.node_def.get(&syms::ptr(named)).copied() == Some(id) {
+    if table.lookup(&syms::ptr(named)) == Some(id) {
         return true;
     }
     match table.node_scope.get(&syms::ptr(node)).copied() {
@@ -1418,7 +1431,7 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
 fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
     // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
     // pointer is not in `node_scope`.
-    parents.iter().rev().skip(1).find_map(|n| table.node_scope.get(&syms::ptr(n)).copied()).or(Some(0))
+    parents.iter().rev().skip(1).find_map(|n| table.scope_lookup(&syms::ptr(n))).or(Some(0))
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref` lambda and class checks.
@@ -1542,7 +1555,7 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
         Data::Func { name: Some(n), .. } | Data::Class { name: Some(n), .. } => n,
         _ => return false,
     };
-    if let Some(id) = table.node_def.get(&syms::ptr(name_node)).copied() {
+    if let Some(id) = table.lookup(&syms::ptr(name_node)) {
         if table.defs[id].recursive_refs > 0 {
             return true;
         }
@@ -1562,7 +1575,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
             return;
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
-        let Some(id) = table.node_def.get(&syms::ptr(node)).copied() else { return };
+        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
         if defined_inside(table, id, func_scope) {
             return;
         }
@@ -1671,7 +1684,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
             return;
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
-        let Some(id) = table.node_def.get(&syms::ptr(node)).copied() else { return };
+        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
         // Locals and names defined in a nested function are not free references.
         if defined_inside(table, id, func_scope) {
             return;
@@ -1733,8 +1746,11 @@ fn expr_value(n: &N) -> N {
                 }),
                 // A fresh copy, so the original declaration and the inlined
                 // expression do not share symbol nodes (terser `clone(true)`).
-                args: args.iter().map(ast::deep_clone).collect(),
-                body: body.iter().map(ast::deep_clone).collect(),
+                // Only a self-recursive function needs separate nodes: its
+                // inner references move to the lambda name. Otherwise the
+                // copy shares nodes, so they keep their definitions.
+                args: args.clone(),
+                body: body.clone(),
                 async_: *async_,
                 generator: *generator,
             },
@@ -1745,6 +1761,22 @@ fn expr_value(n: &N) -> N {
         ),
         _ => Rc::clone(n),
     }
+}
+
+fn self_recursive(name: &Option<N>, body: &[N]) -> bool {
+    let Some(nm) = name.as_ref().and_then(|n| sym_str(n)) else { return false };
+    fn rec(n: &N, nm: &str) -> bool {
+        if matches!(&n.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == nm) {
+            return true;
+        }
+        let mut hit = false;
+        let _ = ast::map_children(n, &mut |c| {
+            hit = hit || rec(c, nm);
+            Rc::clone(c)
+        });
+        hit
+    }
+    body.iter().any(|s| rec(s, &nm))
 }
 
 fn chase_fixed(tw: &Tw, n: &N) -> N {

@@ -420,7 +420,7 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
 /// terser `inference.js` `is_undeclared_ref`.
 fn is_undeclared_ref(n: &N, name: &str, cx: &Cx) -> bool {
     if let Some(table) = &cx.syms {
-        if let Some(&id) = table.node_def.get(&crate::syms::ptr(n)) {
+        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
             return table.defs[id].undeclared;
         }
     }
@@ -1763,10 +1763,10 @@ fn same_object_ref(left: &N, right: &N, cx: &Cx) -> bool {
     let Some(table) = &cx.syms else {
         return false;
     };
-    let Some(&idl) = table.node_def.get(&crate::syms::ptr(left)) else {
+    let Some(idl) = table.lookup(&crate::syms::ptr(left)) else {
         return false;
     };
-    let Some(&idr) = table.node_def.get(&crate::syms::ptr(right)) else {
+    let Some(idr) = table.lookup(&crate::syms::ptr(right)) else {
         return false;
     };
     if idl != idr {
@@ -2354,7 +2354,7 @@ fn safe_to_flatten(value: &N, cx: &Cx) -> bool {
 
 fn fixed_of<'a>(n: &N, cx: &'a Cx) -> Option<&'a N> {
     let table = cx.syms.as_ref()?;
-    let id = *table.node_def.get(&crate::syms::ptr(n))?;
+    let id = table.lookup(&crate::syms::ptr(n))?;
     table.defs.get(id)?.fixed.as_ref()
 }
 

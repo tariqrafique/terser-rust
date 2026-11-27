@@ -66,7 +66,7 @@ fn self_assign(left: &N, right: &N, cx: &Cx) -> bool {
 
 fn is_declared(n: &N, name: &str, cx: &Cx) -> bool {
     if let Some(table) = &cx.syms {
-        if let Some(&id) = table.node_def.get(&syms::ptr(n)) {
+        if let Some(id) = table.lookup(&syms::ptr(n)) {
             let def = &table.defs[id];
             if !def.undeclared {
                 return true;
@@ -90,7 +90,7 @@ fn drop_exit(n: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     let table = cx.syms.as_ref()?;
-    let id = *table.node_def.get(&syms::ptr(left))?;
+    let id = table.lookup(&syms::ptr(left))?;
     let def = &table.defs[id];
     if def.undeclared {
         return None;
@@ -280,7 +280,7 @@ fn decl_here(n: &N, id: usize, table: &syms::SymTable, depth: u32) -> bool {
                 let Data::VarDef { name, .. } = &def.data else {
                     return false;
                 };
-                table.node_def.get(&syms::ptr(name)) == Some(&id)
+                table.lookup(&syms::ptr(name)) == Some(id)
             })
         }
         Data::Block { body } | Data::StaticBlock { body } => body.iter().any(|s| decl_here(s, id, table, depth + 1)),
@@ -337,7 +337,7 @@ fn is_nested_scope(n: &N) -> bool {
 
 fn contains_ref(n: &N, id: usize, table: &syms::SymTable) -> bool {
     if let Data::Symbol { kind: SymKind::Ref, .. } = &n.data {
-        if table.node_def.get(&syms::ptr(n)) == Some(&id) {
+        if table.lookup(&syms::ptr(n)) == Some(id) {
             return true;
         }
     }

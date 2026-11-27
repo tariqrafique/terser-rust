@@ -402,7 +402,7 @@ fn is_nullish_value(n: &N, cx: &Cx) -> bool {
     }
     if let Data::Symbol { kind: SymKind::Ref, .. } = &n.data {
         if let Some(table) = &cx.syms {
-            if let Some(&id) = table.node_def.get(&crate::syms::ptr(n)) {
+            if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
                 if let Some(fixed) = &table.defs[id].fixed {
                     return matches!(fixed.data, Data::Null) || is_undefined(fixed, cx);
                 }
@@ -528,8 +528,8 @@ fn same_def(a: &N, b: &N, cx: &Cx) -> bool {
         return false;
     };
     match (
-        table.node_def.get(&crate::syms::ptr(a)),
-        table.node_def.get(&crate::syms::ptr(b)),
+        table.lookup(&crate::syms::ptr(a)),
+        table.lookup(&crate::syms::ptr(b)),
     ) {
         (Some(x), Some(y)) => x == y,
         _ => false,
@@ -609,7 +609,7 @@ fn key_side(key: &Key, cx: &Cx) -> bool {
 
 fn symbol_side(n: &N, name: &str, cx: &Cx) -> bool {
     if let Some(table) = &cx.syms {
-        if let Some(&id) = table.node_def.get(&crate::syms::ptr(n)) {
+        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
             if !table.defs[id].undeclared {
                 return false;
             }
