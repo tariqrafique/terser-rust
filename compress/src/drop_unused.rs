@@ -281,7 +281,7 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: Rc::clone(left), right: go(right, false), logical: *logical },
         Data::Seq { exprs } => {
             let last = exprs.len().saturating_sub(1);
-            let exprs: Vec<N> = exprs.iter().enumerate().filter_map(|(i, e)| rewrite_expr(e, table, u, scope_id, drop_vars, i != last)).collect();
+            let exprs: Vec<N> = exprs.iter().enumerate().filter_map(|(i, e)| rewrite_expr(e, table, u, scope_id, drop_vars, i != last || discarded)).collect();
             if exprs.len() == 1 {
                 return Some(exprs.into_iter().next().unwrap());
             }
@@ -442,10 +442,10 @@ fn contains_with(stmts: &[N]) -> bool {
 
 fn has_side_effects(n: &N) -> bool {
     match &n.data {
-        Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null | Data::This => false,
+        Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::RegExp { .. } | Data::True | Data::False | Data::Null | Data::This | Data::Infinity => false,
         Data::Symbol { kind: SymKind::Ref, .. } => false,
         Data::Unary { op, expr, .. } if matches!(op.as_str(), "!" | "~" | "+" | "-" | "void" | "typeof") => has_side_effects(expr),
-        Data::Binary { left, right, op } if !op.ends_with('=') => has_side_effects(left) || has_side_effects(right),
+        Data::Binary { left, right, .. } => has_side_effects(left) || has_side_effects(right),
         Data::Func { .. } | Data::Array { .. } | Data::Object { .. } => false,
         _ => true,
     }

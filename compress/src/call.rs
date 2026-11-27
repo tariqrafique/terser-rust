@@ -234,35 +234,466 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
             }
         }
     }
-    if !direct && !ann.inline_ {
+    flatten_call(n, func, args, cx, ann, direct)
+}
+
+/// terser `inline.js` `inline_into_call`, the `flatten_fn` branch: arguments
+/// and the body's `var`s become assignments to `var`s injected into the
+/// enclosing scope after the statement that holds the call.
+thread_local! {
+    static FLATTENING: Cell<bool> = const { Cell::new(false) };
+}
+
+fn flatten_call(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: bool) -> Option<N> {
+    // terser's `make_sequence(...).optimize` does not descend, so a flatten
+    // never runs inside another one.
+    if FLATTENING.with(|f| f.get()) {
         return None;
     }
-    if ann.pure || ann.noinline || cx.parent_is_class() || cx.nearest_scope_is_class() || cx.in_default_assign() {
+    FLATTENING.with(|f| f.set(true));
+    let out = flatten_call_inner(n, func, args, cx, ann, direct);
+    FLATTENING.with(|f| f.set(false));
+    out
+}
+
+fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: bool) -> Option<N> {
+    let Data::Func { kind, name, args: params, body, .. } = &func.data else {
+        return None;
+    };
+    if args.iter().any(|a| matches!(a.data, Data::Spread { .. })) || uses_arguments(func) || cx.parent_is_class() {
         return None;
     }
-    if name.is_some() && matches!(kind, FuncKind::Expr | FuncKind::Decl) {
+    if name.is_some() && matches!(kind, FuncKind::Expr) {
         return None;
     }
-    if !matches!(kind, FuncKind::Expr | FuncKind::Arrow) {
+    if !matches!(kind, FuncKind::Expr | FuncKind::Arrow | FuncKind::Decl) {
         return None;
     }
-    if params.iter().any(|p| !is_simple_funarg(p))
-        || args.iter().any(|a| matches!(a.data, Data::Spread { .. }))
-        || uses_arguments(func)
-        || contains_this(func)
-    {
+    let returned = can_flatten_body(body, cx.opts.inline)?;
+    // `exp === fn`, an `@__INLINE__` call, or a single-use fixed lambda.
+    let single_ref = !direct
+        && cx.opts.unused
+        && def_flag(_expr_of(n), cx, |d| d.references.len() == 1 && d.recursive_refs == 0)
+        && !inside_own_lambda(_expr_of(n), func, cx)
+        && !free_ref_shadowed(func, cx);
+    if !direct && !ann.inline_ && !single_ref {
         return None;
     }
-    let returned = single_result(body)?;
-    if blocked(&returned) {
+    if ann.pure || ann.noinline || contains_this(func) || cx.in_default_assign() {
         return None;
     }
-    if params.iter().any(|p| sym_str(p).is_some_and(|name| refs_name(body, name))) {
-        return None;
+    let inj = can_inject_symbols(func, params, body, cx)?;
+    // `flatten_args`
+    let mut decls: Vec<N> = Vec::new();
+    let mut exprs: Vec<N> = Vec::new();
+    let mut declared: HashSet<String> = HashSet::new();
+    for i in (params.len()..args.len()).rev() {
+        exprs.push(Rc::clone(&args[i]));
     }
-    let mut exprs: Vec<N> = args.to_vec();
+    for i in (0..params.len()).rev() {
+        let p = &params[i];
+        let value = args.get(i).cloned();
+        let pname = match &p.data {
+            Data::Symbol { name, .. } if !param_unused(p, body) => Some(name.clone()),
+            _ => None,
+        };
+        match pname {
+            Some(pn) if !inj.conflicts(&pn) => {
+                let value = value.or_else(|| inj.in_loop.then(|| void0(n)));
+                append_var(&mut decls, &mut exprs, &mut declared, &inj, p, &pn, value, n);
+            }
+            _ => {
+                if let Some(v) = value {
+                    exprs.push(v);
+                }
+            }
+        }
+    }
+    decls.reverse();
+    exprs.reverse();
+    // `flatten_vars`
+    let mut pos = exprs.len();
+    for stat in body {
+        let Data::Defs { kind: ast::DefKind::Var, defs, .. } = &stat.data else { continue };
+        for d in defs {
+            let Data::VarDef { name: vn, value } = &d.data else { continue };
+            let Some(vname) = sym_str(vn).map(str::to_string) else { continue };
+            append_var(&mut decls, &mut exprs, &mut declared, &inj, vn, &vname, value.clone(), n);
+            if inj.in_loop && params.iter().all(|a| sym_str(a) != Some(vname.as_str())) {
+                let sym = ref_sym(vn, &vname);
+                exprs.insert(pos, atom(d, Data::Assign { op: "=".into(), left: sym, right: void0(vn), logical: false }));
+                pos += 1;
+            }
+        }
+    }
     exprs.push(returned);
+    if !decls.is_empty() {
+        let var = atom(func, Data::Defs { kind: ast::DefKind::Var, defs: decls, await_: false });
+        cx.pending_vars.borrow_mut().push((inj.stmt, var));
+    }
     Some(finish_seq(n, exprs, cx))
+}
+
+/// terser `inline.js` `is_recursive_ref`: the reference sits inside the
+/// lambda it names.
+fn inside_own_lambda(expr: &N, func: &N, cx: &Cx) -> bool {
+    let name = sym_str(expr);
+    cx.parents.iter().any(|p| {
+        Rc::ptr_eq(p, func)
+            || matches!(&p.data, Data::Func { name: Some(fname), .. } if sym_str(fname) == name)
+            || matches!(&p.data, Data::VarDef { name: vn, value: Some(v) } if sym_str(vn) == name && matches!(v.data, Data::Func { .. }))
+    })
+}
+
+/// terser `inference.js` `all_refs_local` with a scope: every name `func`
+/// reads from outside must resolve to the same binding at the call site.
+fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
+    let Some(table) = cx.syms.as_ref() else { return false };
+    let site = cx.parents.iter().rev().find_map(|p| table.node_scope.get(&crate::syms::ptr(p)).copied());
+    let Some(site) = site else { return false };
+    let mut free: Vec<N> = Vec::new();
+    fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut Vec<N>) {
+        match &n.data {
+            Data::Symbol { name, kind: SymKind::Ref, .. } => {
+                if !bound.iter().any(|b| b.contains(name)) {
+                    out.push(Rc::clone(n));
+                }
+            }
+            Data::Func { name, args, body, .. } => {
+                let mut own = HashSet::new();
+                if let Some(nm) = name {
+                    binding_names(nm, &mut own);
+                }
+                for a in args {
+                    binding_names(a, &mut own);
+                }
+                hoisted_names(body, &mut own);
+                bound.push(own);
+                for a in args {
+                    rec(a, bound, out);
+                }
+                for st in body {
+                    rec(st, bound, out);
+                }
+                bound.pop();
+            }
+            other => {
+                kids_any(other, |c| { rec(c, bound, out); false }, true);
+            }
+        }
+    }
+    rec(func, &mut Vec::new(), &mut free);
+    for r in free {
+        let Data::Symbol { name, .. } = &r.data else { continue };
+        let target = table.node_def.get(&crate::syms::ptr(&r)).map(|id| table.defs[*id].scope);
+        let mut cur = Some(site);
+        while let Some(sc) = cur {
+            if Some(sc) == target {
+                break;
+            }
+            if let Some(ids) = table.scope_defs.get(&sc) {
+                if ids.iter().any(|id| table.defs[*id].name == *name && !table.defs[*id].undeclared) {
+                    return true;
+                }
+            }
+            cur = table.scope_parent.get(sc).copied().flatten();
+        }
+    }
+    false
+}
+
+fn _expr_of(n: &N) -> &N {
+    match &n.data {
+        Data::Call { expr, .. } => expr,
+        _ => n,
+    }
+}
+
+fn ref_sym(span: &N, name: &str) -> N {
+    atom(span, Data::Symbol { name: name.to_string(), kind: SymKind::Ref, quote: None })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_var(decls: &mut Vec<N>, exprs: &mut Vec<N>, declared: &mut HashSet<String>, inj: &Inject, span: &N, name: &str, value: Option<N>, call: &N) {
+    // terser `already_appended`: the scope already has the name (a parameter
+    // and a `var` with the same name).
+    if !declared.contains(name) && !inj.scope_vars.contains(name) {
+        declared.insert(name.to_string());
+        let sym = atom(span, Data::Symbol { name: name.to_string(), kind: SymKind::Var, quote: None });
+        decls.push(atom(span, Data::VarDef { name: sym, value: None }));
+    }
+    if let Some(v) = value {
+        exprs.push(atom(call, Data::Assign { op: "=".into(), left: ref_sym(span, name), right: v, logical: false }));
+    }
+}
+
+/// A parameter terser's `drop_unused` would flag `UNUSED`: never read in the body.
+fn param_unused(p: &N, body: &[N]) -> bool {
+    match &p.data {
+        Data::Symbol { name, .. } => !refs_name(body, name),
+        _ => true,
+    }
+}
+
+/// terser `can_flatten_body` and `return_value`.
+fn can_flatten_body(body: &[N], inline: i32) -> Option<N> {
+    let ret = |stat: Option<&N>, span: &N| -> Option<N> {
+        match stat {
+            None => Some(void0(span)),
+            Some(s) => match &s.data {
+                Data::Return { value: Some(v) } => Some(Rc::clone(v)),
+                Data::Return { value: None } => Some(void0(s)),
+                Data::Simple { body } => Some(unary(s, "void", Rc::clone(body))),
+                _ => None,
+            },
+        }
+    };
+    let span = body.first()?;
+    if inline < 3 {
+        return if body.len() == 1 { ret(body.first(), span) } else { None };
+    }
+    let mut stat: Option<&N> = None;
+    for line in body {
+        match &line.data {
+            Data::Defs { kind: ast::DefKind::Var, defs, .. } => {
+                if stat.is_some() && !defs.iter().all(|d| matches!(d.data, Data::VarDef { value: None, .. })) {
+                    return None;
+                }
+            }
+            _ if stat.is_some() => return None,
+            Data::Empty => {}
+            _ => stat = Some(line),
+        }
+    }
+    ret(stat, span)
+}
+
+struct Inject {
+    /// Pointer of the statement in the scope body that holds the call.
+    stmt: usize,
+    in_loop: bool,
+    /// Names bound or referenced in the target scope and its parents
+    /// (terser `conflicting_def`).
+    taken: HashSet<String>,
+    /// Names the target scope already declares (`scope.variables`).
+    scope_vars: HashSet<String>,
+}
+
+impl Inject {
+    fn conflicts(&self, name: &str) -> bool {
+        self.taken.contains(name)
+    }
+}
+
+/// terser `can_inject_symbols`.
+fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inject> {
+    let mut block_scoped: HashSet<String> = HashSet::new();
+    let mut in_loop = false;
+    let stack = &cx.parents;
+    if stack.len() < 2 {
+        return None;
+    }
+    let mut i = stack.len() - 1;
+    let scope_idx = loop {
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+        let node = &stack[i];
+        match &node.data {
+            Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. } => break i,
+            Data::Class { .. } => return None,
+            Data::Block { body } | Data::Default { body } | Data::Case { body, .. } => lexical_names(body, &mut block_scoped),
+            Data::Catch { arg, .. } => {
+                if let Some(a) = arg {
+                    binding_names(a, &mut block_scoped);
+                }
+            }
+            Data::For { init, .. } => {
+                in_loop = true;
+                if let Some(init) = init {
+                    lexical_names(std::slice::from_ref(init), &mut block_scoped);
+                }
+            }
+            Data::ForIn { init, .. } | Data::ForOf { init, .. } => {
+                in_loop = true;
+                lexical_names(std::slice::from_ref(init), &mut block_scoped);
+            }
+            Data::While { .. } | Data::Do { .. } => in_loop = true,
+            _ => {}
+        }
+    };
+    let scope = &stack[scope_idx];
+    let stmt = Rc::as_ptr(stack.get(scope_idx + 1)?) as usize;
+    let is_top = matches!(scope.data, Data::Toplevel { .. });
+    let safe_to_inject = !is_top || cx.opts.toplevel_vars;
+    let inline = cx.opts.inline;
+    // `conflicting_def`: names declared in this scope or any parent, and names
+    // this scope's code reads from outside it.
+    let mut taken: HashSet<String> = HashSet::new();
+    for frame in &cx.locals {
+        taken.extend(frame.iter().cloned());
+    }
+    free_refs(scope, &mut taken);
+    let mut scope_vars: HashSet<String> = HashSet::new();
+    match &scope.data {
+        Data::Func { args, body, .. } => {
+            for a in args {
+                binding_names(a, &mut scope_vars);
+            }
+            hoisted_names(body, &mut scope_vars);
+        }
+        Data::Toplevel { body } | Data::StaticBlock { body } => hoisted_names(body, &mut scope_vars),
+        _ => {}
+    }
+    taken.extend(scope_vars.iter().cloned());
+    let atom_name = |n: &str| matches!(n, "Infinity" | "NaN" | "undefined");
+    let mut injected: Vec<String> = Vec::new();
+    // `can_inject_vars`
+    for stat in body {
+        let Data::Defs { kind: ast::DefKind::Var, defs, .. } = &stat.data else { continue };
+        if !(inline >= 3 && safe_to_inject) {
+            return None;
+        }
+        for d in defs.iter().rev() {
+            let Data::VarDef { name, .. } = &d.data else { return None };
+            let Some(vn) = sym_str(name) else { return None };
+            if block_scoped.contains(vn) || atom_name(vn) || taken.contains(vn) {
+                return None;
+            }
+            injected.push(vn.to_string());
+        }
+    }
+    // `can_inject_args`
+    for p in params {
+        match &p.data {
+            Data::DefaultAssign { left, .. } => {
+                if param_unused(left, body) {
+                    continue;
+                }
+                return None;
+            }
+            Data::Destructuring { .. } => return None,
+            Data::Spread { expr } => {
+                if param_unused(expr, body) {
+                    continue;
+                }
+                return None;
+            }
+            _ => {}
+        }
+        if param_unused(p, body) {
+            continue;
+        }
+        let Some(pn) = sym_str(p) else { return None };
+        if !(inline >= 2 && safe_to_inject) || block_scoped.contains(pn) || atom_name(pn) || taken.contains(pn) {
+            return None;
+        }
+        injected.push(pn.to_string());
+    }
+    // `is_reachable(fn, in_loop)`: a closure inside `fn` that captures an
+    // injected name would share it across iterations.
+    if in_loop && !injected.is_empty() {
+        let captured = body.iter().any(|s| closure_reads(s, &injected));
+        if captured {
+            return None;
+        }
+    }
+    let _ = func;
+    Some(Inject { stmt, in_loop, taken, scope_vars })
+}
+
+fn closure_reads(n: &N, names: &[String]) -> bool {
+    match &n.data {
+        Data::Func { body, args, .. } => names.iter().any(|nm| refs_name(body, nm) || args.iter().any(|a| node_refs(a, nm))),
+        Data::Class { .. } => names.iter().any(|nm| node_refs(n, nm)),
+        other => kids_any(other, |c| closure_reads(c, names), true),
+    }
+}
+
+fn binding_names(n: &N, out: &mut HashSet<String>) {
+    match &n.data {
+        Data::Symbol { name, .. } => {
+            out.insert(name.clone());
+        }
+        Data::Destructuring { names, .. } => names.iter().for_each(|x| binding_names(x, out)),
+        Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => binding_names(left, out),
+        Data::Prop { value, .. } => binding_names(value, out),
+        Data::VarDef { name, .. } => binding_names(name, out),
+        _ => {}
+    }
+}
+
+fn lexical_names(body: &[N], out: &mut HashSet<String>) {
+    for s in body {
+        match &s.data {
+            Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, defs, .. } => {
+                defs.iter().for_each(|d| binding_names(d, out));
+            }
+            Data::Class { stmt: true, name: Some(nm), .. } => binding_names(nm, out),
+            Data::Func { kind: FuncKind::Decl, name: Some(nm), .. } => binding_names(nm, out),
+            _ => {}
+        }
+    }
+}
+
+fn hoisted_names(body: &[N], out: &mut HashSet<String>) {
+    fn rec(n: &N, out: &mut HashSet<String>) {
+        match &n.data {
+            Data::Defs { kind: ast::DefKind::Var, defs, .. } => defs.iter().for_each(|d| binding_names(d, out)),
+            Data::Func { kind: FuncKind::Decl, name: Some(nm), .. } => binding_names(nm, out),
+            Data::Func { .. } | Data::Class { .. } => {}
+            other => kids_any(other, |c| { rec(c, out); false }, true).then_some(()).unwrap_or(()),
+        }
+    }
+    for s in body {
+        rec(s, out);
+    }
+    lexical_names(body, out);
+}
+
+/// Names read in `scope` that are not bound by a function nested in it
+/// (terser `enclosed`).
+fn free_refs(scope: &N, out: &mut HashSet<String>) {
+    fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut HashSet<String>) {
+        match &n.data {
+            Data::Symbol { name, kind: SymKind::Ref, .. } => {
+                if !bound.iter().any(|b| b.contains(name)) {
+                    out.insert(name.clone());
+                }
+            }
+            Data::Func { name, args, body, .. } => {
+                let mut own = HashSet::new();
+                if let Some(nm) = name {
+                    binding_names(nm, &mut own);
+                }
+                for a in args {
+                    binding_names(a, &mut own);
+                }
+                hoisted_names(body, &mut own);
+                bound.push(own);
+                for a in args {
+                    rec(a, bound, out);
+                }
+                for s in body {
+                    rec(s, bound, out);
+                }
+                bound.pop();
+            }
+            other => {
+                kids_any(other, |c| { rec(c, bound, out); false }, true);
+            }
+        }
+    }
+    let mut bound = Vec::new();
+    match &scope.data {
+        Data::Func { body, .. } | Data::Toplevel { body } | Data::StaticBlock { body } => {
+            for s in body {
+                rec(s, &mut bound, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn drop_empty_call(n: &N, func: &N, args: &[N], cx: &Cx) -> Option<N> {

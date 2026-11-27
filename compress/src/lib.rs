@@ -580,6 +580,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         flag_keep: Vec::new(),
         stack: Vec::new(),
         parents: Vec::new(),
+        pending_vars: RefCell::new(Vec::new()),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -642,6 +643,9 @@ struct Cx {
     stack: Vec<N>,
     /// terser `TreeWalker.stack`. Last node is `self()`, the one before it is `parent()`.
     parents: Vec<N>,
+    /// terser `flatten_fn` splices `var` declarations into the scope body after
+    /// the statement holding the inlined call. Keyed by that statement's pointer.
+    pending_vars: RefCell<Vec<(usize, N)>>,
 }
 
 impl Cx {
@@ -1100,8 +1104,24 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         mark_optimized(cx, new);
     }
     let (left, right) = (child_refs(&old.data), child_refs(&new.data));
-    for (a, b) in left.iter().zip(right.iter()) {
-        transfer_flags(a, b, cx);
+    if left.len() == right.len() {
+        for (a, b) in left.iter().zip(right.iter()) {
+            transfer_flags(a, b, cx);
+        }
+        return;
+    }
+    // `drop_unused` removed or split statements. Pair each new child with the
+    // next old child of the same type, as terser keeps those objects.
+    let mut j = 0;
+    for b in &right {
+        let mut k = j;
+        while k < left.len() && std::mem::discriminant(&left[k].data) != std::mem::discriminant(&b.data) {
+            k += 1;
+        }
+        if k < left.len() {
+            transfer_flags(left[k], b, cx);
+            j = k + 1;
+        }
     }
 }
 
@@ -1263,6 +1283,24 @@ fn map_list(list: &[N], cx: &mut Cx) -> (Vec<N>, bool) {
             changed = true;
         }
         out.push(m);
+        let key = Rc::as_ptr(n) as usize;
+        let injected: Vec<N> = {
+            let mut pending = cx.pending_vars.borrow_mut();
+            let mut taken = Vec::new();
+            pending.retain(|(k, v)| {
+                if *k == key {
+                    taken.push(Rc::clone(v));
+                    false
+                } else {
+                    true
+                }
+            });
+            taken
+        };
+        for var in injected {
+            changed = true;
+            out.push(var);
+        }
     }
     (out, changed)
 }

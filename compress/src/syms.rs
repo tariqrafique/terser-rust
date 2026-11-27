@@ -456,11 +456,18 @@ fn define(
     table.scope_defs.entry(scope).or_default().push(id);
 }
 
+/// terser `scope.js`: `with` sets `uses_with` and a direct `eval` sets
+/// `uses_eval` on every enclosing scope, so all of them are `pinned()`.
 fn pin_fn(table: &mut SymTable, scopes: &mut [Scope], scope: usize) {
-    let fn_scope = scopes[scope].fn_scope;
-    scopes[fn_scope].pinned = true;
+    let mut chain = Vec::new();
+    let mut cur = Some(scopes[scope].fn_scope);
+    while let Some(s) = cur {
+        chain.push(s);
+        scopes[s].pinned = true;
+        cur = scopes[s].parent.map(|p| scopes[p].fn_scope);
+    }
     for def in &mut table.defs {
-        if def.fn_scope == fn_scope {
+        if chain.contains(&def.fn_scope) {
             def.pinned = true;
         }
     }
