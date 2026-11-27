@@ -1,0 +1,9 @@
+{
+  "name": "terser-rust-oracle",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pinned terser 5.51.4. Node is used only to produce expected minify output.",
+  "dependencies": {
+    "terser": "5.51.4"
+  }
+}
