@@ -1,6 +1,7 @@
-# These inputs make terser 5.51.4's default parser allocate until the oracle
-# worker is killed (SIGABRT). experimental_typescript is off for roundtrip,
-# mangle, and default. They are not scored. Pending Tariq's approval.
+# Approved skips. Reason: TypeScript-syntax input is out of scope (the
+# minifier targets JS, including LWC compiler output). terser 5.51.4's
+# default parser aborts on these inputs. experimental_typescript is not
+# part of the port. Not scored.
 compress/typescript/type_aliases
 compress/typescript/type_body_separators
 compress/typescript/type_interface
