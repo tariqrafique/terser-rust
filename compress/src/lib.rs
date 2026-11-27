@@ -1151,14 +1151,25 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         mark_optimized(cx, new);
     }
     let (left, right) = (child_refs(&old.data), child_refs(&new.data));
-    if left.len() == right.len() {
+    let same_shape = left.len() == right.len()
+        && left.iter().zip(right.iter()).all(|(a, b)| std::mem::discriminant(&a.data) == std::mem::discriminant(&b.data));
+    if same_shape {
         for (a, b) in left.iter().zip(right.iter()) {
             transfer_flags(a, b, cx);
         }
         return;
     }
-    // `drop_unused` removed or split statements. Pair each new child with the
-    // next old child of the same type, as terser keeps those objects.
+    // `drop_unused` removed, split, or spliced statements. Pair each new child
+    // with the next old child of the same type, as terser keeps those objects.
+    // A spliced block's statements are candidates too.
+    let mut left_flat: Vec<&N> = Vec::new();
+    for a in &left {
+        left_flat.push(a);
+        if let Data::Block { body } = &a.data {
+            left_flat.extend(body.iter());
+        }
+    }
+    let left = left_flat;
     let mut j = 0;
     for b in &right {
         let mut k = j;

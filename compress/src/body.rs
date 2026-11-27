@@ -40,6 +40,14 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         }
         if cx.opts.collapse_vars {
             if let Some(scope) = collapse_scope(&stmts, cx) {
+                let before = stmts.clone();
+                if let Some(table) = cx.syms.as_ref() {
+                    let mut map = std::collections::HashMap::new();
+                    for st in &stmts {
+                        collect_vardef_refs(st, table, &mut map);
+                    }
+                    crate::tighten::set_referenced(map);
+                }
                 let (next, changed) = crate::tighten::collapse_step(
                     stmts,
                     cx.opts.unused,
@@ -48,11 +56,17 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     &scope.1,
                     scope.2,
                     &st.phantom,
+                    scope.3,
                 );
                 stmts = next;
                 if changed {
                     st.changed = true;
                     collapsed = true;
+                    // terser's collapse edits nodes in place, so their
+                    // `SQUEEZED` / `OPTIMIZED` flags stay.
+                    let block_old = ast::Node::new(Data::Block { body: before });
+                    let block_new = ast::Node::new(Data::Block { body: stmts.clone() });
+                    crate::transfer_flags(&block_old, &block_new, cx);
                 }
             }
         }
@@ -71,12 +85,36 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
 /// Locals of this body, every enclosing scope's bindings, and whether it is a
 /// function. `None` for a block: `collapse` here is name based and a block's
 /// `var` belongs to the function, so blocks are not collapsed on their own.
-fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<String>, std::collections::HashSet<String>, bool)> {
+#[allow(clippy::type_complexity)]
+fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<String>, std::collections::HashSet<String>, bool, Option<(bool, bool)>)> {
     let me = self_node(cx)?;
-    let (locals, in_fn) = match &me.data {
-        Data::Func { args, .. } => (crate::tighten::scope_bindings(args, stmts), true),
-        Data::Toplevel { .. } => (crate::tighten::scope_bindings(&[], stmts), false),
-        Data::StaticBlock { .. } => (crate::tighten::scope_bindings(&[], stmts), true),
+    let (locals, in_fn, block) = match &me.data {
+        Data::Func { args, .. } => (crate::tighten::scope_bindings(args, stmts), true, None),
+        Data::Toplevel { .. } => (crate::tighten::scope_bindings(&[], stmts), false, None),
+        Data::StaticBlock { .. } => (crate::tighten::scope_bindings(&[], stmts), true, None),
+        // A nested block: only its own `let` / `const` (they cannot be read
+        // outside it). terser `find_loop_scope_try` gives the loop and try state.
+        Data::Block { .. } => {
+            let names = crate::tighten::block_lexicals(stmts);
+            if names.is_empty() {
+                return None;
+            }
+            let (mut in_loop, mut in_try) = (false, false);
+            let len = cx.parents.len();
+            for (i, p) in cx.parents[..len.saturating_sub(1)].iter().enumerate().rev() {
+                match &p.data {
+                    Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } | Data::Class { .. } => break,
+                    Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } => in_loop = true,
+                    Data::Try { body, .. } => {
+                        if cx.parents.get(i + 1).is_some_and(|c| Rc::ptr_eq(c, body)) {
+                            in_try = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            (names, true, Some((in_loop, in_try)))
+        }
         _ => return None,
     };
     let mut declared = locals.clone();
@@ -92,7 +130,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         };
         declared.extend(names.iter().cloned());
     }
-    Some((locals, declared, in_fn))
+    Some((locals, declared, in_fn, block))
 }
 
 fn self_node(cx: &Cx) -> Option<N> {
@@ -935,4 +973,22 @@ fn append_defs(n: &N, more: &[N]) -> N {
     let mut defs = defs.clone();
     defs.extend(more.iter().cloned());
     eval::atom(n, Data::Defs { kind: *kind, defs, await_: *await_ })
+}
+
+fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {
+    match &n.data {
+        Data::Func { .. } | Data::Class { .. } => {}
+        Data::VarDef { name, .. } => {
+            if let Some(&id) = table.node_def.get(&crate::syms::ptr(name)) {
+                let d = &table.defs[id];
+                out.insert(crate::syms::ptr(name), d.references.len().saturating_sub(d.replaced.get() as usize));
+            }
+        }
+        _ => {
+            let _ = ast::map_children(n, &mut |c| {
+                collect_vardef_refs(c, table, out);
+                Rc::clone(c)
+            });
+        }
+    }
 }

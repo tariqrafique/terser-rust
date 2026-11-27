@@ -355,8 +355,28 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         }
     }
     if let Some(stmt) = rewrite_expr(n, table, u, scope_id, drop_vars, true) {
+        // drop-unused.js `tt` `AST_BlockStatement`: in a list, a block whose
+        // statements can all leave it is spliced.
+        if let Data::Block { body } = &stmt.data {
+            if body.iter().all(evictable) {
+                out.extend(body.iter().cloned());
+                return;
+            }
+        }
         out.push(stmt);
     }
+}
+
+/// terser `common.js` `can_be_evicted_from_block`.
+fn evictable(n: &N) -> bool {
+    !matches!(
+        n.data,
+        Data::Class { stmt: true, .. }
+            | Data::Func { kind: ast::FuncKind::Decl, .. }
+            | Data::Defs { kind: DefKind::Let | DefKind::Const | DefKind::Using, .. }
+            | Data::Import { .. }
+            | Data::Export { .. }
+    )
 }
 
 /// Pass 3 `tt` for `assign_as_unused`. `discarded` is `!is_used_in_expression`.
@@ -487,6 +507,10 @@ fn name_read(body: &[N], args: &[N], table: &SymTable, id: usize) -> bool {
 
 /// A statement slot: several results become a block, none an empty statement.
 fn one(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: bool) -> N {
+    // Not a list: a block stays a block (`in_list` is false in terser).
+    if matches!(n.data, Data::Block { .. }) {
+        return rewrite_expr(n, table, u, scope_id, drop_vars, true).unwrap_or_else(|| node(n, Data::Empty));
+    }
     let mut out = Vec::new();
     rewrite_stmt(n, table, u, scope_id, drop_vars, false, &mut out);
     match out.len() {
@@ -719,7 +743,18 @@ fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: 
             value: go(value),
             static_: *static_, private: *private, generator: *generator, async_: *async_,
         },
-        _ => return Rc::clone(n),
+        // Every other node: descend so nested scopes and blocks are reached.
+        _ => {
+            let mut changed = false;
+            let out = ast::map_children(n, &mut |c| {
+                let m = go(c);
+                if !Rc::ptr_eq(&m, c) {
+                    changed = true;
+                }
+                m
+            });
+            return if changed { out } else { Rc::clone(n) };
+        }
     };
     node(n, rebuilt)
 }

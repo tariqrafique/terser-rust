@@ -21,6 +21,7 @@ pub fn collapse(root: &N, unused: bool, toplevel_vars: bool) -> N {
         in_loop: false,
         in_try: false,
         in_fn: false,
+        block_only: false,
     };
     walk(root, &env)
 }
@@ -35,6 +36,8 @@ struct Env<'a> {
     in_loop: bool,
     in_try: bool,
     in_fn: bool,
+    /// A nested block: only its own `let` / `const` are candidates.
+    block_only: bool,
 }
 
 fn child_env<'a>(env: &Env<'a>, in_loop: bool, in_try: bool) -> Env<'a> {
@@ -46,6 +49,7 @@ fn child_env<'a>(env: &Env<'a>, in_loop: bool, in_try: bool) -> Env<'a> {
         in_loop,
         in_try,
         in_fn: env.in_fn,
+        block_only: env.block_only,
     }
 }
 
@@ -193,6 +197,7 @@ fn tighten_scope(stmts: &[N], env: &Env<'_>, params: &[N], in_fn: bool) -> Vec<N
         in_loop: false,
         in_try: false,
         in_fn,
+        block_only: false,
     };
     let stmts: Vec<N> = stmts.iter().map(|s| walk(s, &child)).collect();
     let stmts = collapse_list(stmts, &child);
@@ -207,8 +212,12 @@ fn tighten_scope(stmts: &[N], env: &Env<'_>, params: &[N], in_fn: bool) -> Vec<N
 /// toplevel, or static block. `scopes` is the bindings of each enclosing scope,
 /// outermost first; the last is this body's own (params included).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, locals: &HashSet<String>, declared: &HashSet<String>, in_fn: bool, phantom: &HashMap<String, usize>) -> (Vec<N>, bool) {
-    let env = Env { unused, toplevel_vars, locals, declared, in_loop: false, in_try: false, in_fn };
+pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, locals: &HashSet<String>, declared: &HashSet<String>, in_fn: bool, phantom: &HashMap<String, usize>, block: Option<(bool, bool)>) -> (Vec<N>, bool) {
+    let (in_loop, in_try, block_only) = match block {
+        Some((l, t)) => (l, t, true),
+        None => (false, false, false),
+    };
+    let env = Env { unused, toplevel_vars, locals, declared, in_loop, in_try, in_fn, block_only };
     PHANTOM.with(|p| *p.borrow_mut() = phantom.clone());
     let out = collapse_statements(stmts, &env);
     PHANTOM.with(|p| p.borrow_mut().clear());
@@ -217,6 +226,12 @@ pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, lo
 
 thread_local! {
     static PHANTOM: std::cell::RefCell<HashMap<String, usize>> = Default::default();
+    /// terser `def.references.length - def.replaced` by declaration name node.
+    static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+}
+
+pub(crate) fn set_referenced(map: HashMap<usize, usize>) {
+    REFERENCED.with(|r| *r.borrow_mut() = map);
 }
 
 /// Bindings of a function (params and hoisted names) or a toplevel body.
@@ -238,6 +253,23 @@ pub(crate) fn scope_bindings(params: &[N], body: &[N]) -> HashSet<String> {
     }
     collect_locals(body, &mut locals);
     locals
+}
+
+/// `let` / `const` / class names declared directly in a block.
+pub(crate) fn block_lexicals(stmts: &[N]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for s in stmts {
+        if let Data::Defs { kind: DefKind::Let | DefKind::Const, defs, .. } = &s.data {
+            for d in defs {
+                if let Data::VarDef { name, .. } = &d.data {
+                    if let Some(nm) = sym_name(name) {
+                        out.insert(nm.to_string());
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 pub(crate) fn drop_unmentioned_in(stmts: &[N]) -> Vec<N> {
@@ -674,6 +706,9 @@ fn apply_candidate(
     escaped: &HashSet<String>,
     counts: &Counts,
 ) -> Option<Vec<N>> {
+    if env.block_only && !(cand.kind == Kind::Var && env.locals.contains(&cand.name)) {
+        return None;
+    }
     // terser `get_lhs`: no references, nothing to fold.
     let (reads, writes, hidden) = counts.refs.get(&cand.name).copied().unwrap_or((0, 0, 0));
     let total = reads + writes + hidden;
@@ -681,6 +716,19 @@ fn apply_candidate(
         return None;
     }
     let declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
+    // terser `get_lhs` reads `referenced` from `reduce_vars`, which still
+    // counts references later merged away (an `if` / `else` folded into one
+    // assignment).
+    if cand.kind == Kind::Var {
+        if let Data::VarDef { name, .. } = &cand.node.data {
+            let stale = REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied());
+            if let Some(referenced) = stale {
+                if referenced > total && referenced > 1 && !(declared <= 1 && is_mangleable(&cand.value, &cand.name, env)) {
+                    return None;
+                }
+            }
+        }
+    }
     let exposed = cand.kind == Kind::Var && !env.in_fn && !env.toplevel_vars;
     // terser `mangleable_var` — only when `referenced > 1` and this is the single declaration.
     let mangleable = cand.kind == Kind::Var
