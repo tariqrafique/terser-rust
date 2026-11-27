@@ -21,6 +21,9 @@ struct Slot {
     ready: bool,
     read_before: bool,
     assign_discardable: bool,
+    decl_list: u32,
+    decl_at: u32,
+    direct: bool,
 }
 
 fn rebuild(n: &N, subs: &HashMap<String, N>, drop_decls: &HashSet<String>, drop_assigns: &HashSet<String>, unused: bool) -> N {
@@ -217,6 +220,9 @@ fn collect_decls(stmts: &[N], slots: &mut HashMap<String, Slot>) {
                             ready: false,
                             read_before: false,
                             assign_discardable: false,
+                            decl_list: 0,
+                            decl_at: 0,
+                            direct: false,
                         },
                     );
                 }
@@ -232,13 +238,42 @@ struct Count<'a> {
     params: &'a HashSet<String>,
     written_params: &'a mut HashSet<String>,
     stack: &'a mut Vec<HashSet<String>>,
+    conditional: bool,
+    list: u32,
+    index: u32,
+    mark_decl: bool,
+    next_list: u32,
 }
 
 fn count(stmts: &[N], slots: &mut HashMap<String, Slot>, params: &HashSet<String>, written: &mut HashSet<String>, stack: &mut Vec<HashSet<String>>) {
-    let mut ctx = Count { slots, params, written_params: written, stack };
-    for stmt in stmts {
-        walk(stmt, false, &mut ctx);
+    let mut ctx = Count {
+        slots,
+        params,
+        written_params: written,
+        stack,
+        conditional: false,
+        list: 1,
+        index: 0,
+        mark_decl: false,
+        next_list: 1,
+    };
+    walk_list(stmts, false, &mut ctx);
+}
+
+fn walk_list(stmts: &[N], conditional: bool, ctx: &mut Count) {
+    ctx.next_list += 1;
+    let list = ctx.next_list;
+    let saved = (ctx.list, ctx.conditional);
+    ctx.list = list;
+    for (i, stmt) in stmts.iter().enumerate() {
+        ctx.index = i as u32;
+        ctx.conditional = conditional;
+        ctx.mark_decl = true;
+        walk(stmt, false, ctx);
+        ctx.mark_decl = false;
     }
+    ctx.list = saved.0;
+    ctx.conditional = saved.1;
 }
 
 fn walk(n: &N, discarded: bool, ctx: &mut Count) {
@@ -246,9 +281,7 @@ fn walk(n: &N, discarded: bool, ctx: &mut Count) {
         Data::Func { args, body, .. } => {
             let frame = local_names(args, body);
             ctx.stack.push(frame);
-            for stmt in body {
-                walk(stmt, false, ctx);
-            }
+            walk_list(body, true, ctx);
             ctx.stack.pop();
         }
         Data::Block { body } | Data::StaticBlock { body } => {
@@ -260,6 +293,8 @@ fn walk(n: &N, discarded: bool, ctx: &mut Count) {
             ctx.stack.pop();
         }
         Data::Defs { defs, .. } => {
+            let mark = ctx.mark_decl;
+            ctx.mark_decl = false;
             for def in defs {
                 if let Data::VarDef { name, value } = &def.data {
                     if let Some(value) = value {
@@ -269,6 +304,10 @@ fn walk(n: &N, discarded: bool, ctx: &mut Count) {
                         if let Some(slot) = ctx.slots.get_mut(&sym) {
                             if !hidden(ctx.stack, &sym) && value.is_some() {
                                 slot.ready = true;
+                                if mark {
+                                    slot.decl_list = ctx.list;
+                                    slot.decl_at = ctx.index;
+                                }
                             }
                         }
                     }
@@ -307,6 +346,7 @@ fn walk(n: &N, discarded: bool, ctx: &mut Count) {
                 if !slot.ready {
                     slot.read_before = true;
                 }
+                slot.direct = !ctx.conditional && slot.decl_list == ctx.list && slot.decl_at + 1 == ctx.index;
             }
         }
         Data::Seq { exprs } => {
@@ -334,6 +374,22 @@ fn walk(n: &N, discarded: bool, ctx: &mut Count) {
             }
         }
         other => walk_data(other, ctx),
+    }
+}
+
+fn mark_loop_lvalue(n: &N, ctx: &mut Count) {
+    match &n.data {
+        Data::Symbol { name, .. } => note_write(name, None, false, ctx),
+        Data::Defs { defs, .. } => {
+            for def in defs {
+                if let Data::VarDef { name, .. } = &def.data {
+                    if let Some(sym) = sym_name(name) {
+                        note_write(&sym, None, false, ctx);
+                    }
+                }
+            }
+        }
+        _ => walk(n, false, ctx),
     }
 }
 
@@ -457,7 +513,16 @@ fn walk_data(data: &Data, ctx: &mut Count) {
             walk(body, false, ctx);
         }
         Data::Return { value: None } | Data::Empty | Data::Debugger | Data::This | Data::Super | Data::NewTarget | Data::Null | Data::True | Data::False | Data::Infinity | Data::Number { .. } | Data::BigInt { .. } | Data::String { .. } | Data::RegExp { .. } | Data::Hole | Data::Directive { .. } | Data::Symbol { .. } | Data::ImportMeta => {}
-        Data::Binary { left, right, .. } | Data::DefaultAssign { left, right } | Data::PrivateIn { key: left, value: right } => {
+        Data::Binary { op, left, right } => {
+            walk(left, false, ctx);
+            let saved = ctx.conditional;
+            if matches!(op.as_str(), "&&" | "||" | "??") {
+                ctx.conditional = true;
+            }
+            walk(right, false, ctx);
+            ctx.conditional = saved;
+        }
+        Data::DefaultAssign { left, right } | Data::PrivateIn { key: left, value: right } => {
             walk(left, false, ctx);
             walk(right, false, ctx);
         }
@@ -467,8 +532,11 @@ fn walk_data(data: &Data, ctx: &mut Count) {
         }
         Data::Cond { cond, cons, alt } => {
             walk(cond, false, ctx);
+            let saved = ctx.conditional;
+            ctx.conditional = true;
             walk(cons, false, ctx);
             walk(alt, false, ctx);
+            ctx.conditional = saved;
         }
         Data::Array { elements } => {
             for el in elements {
@@ -507,10 +575,13 @@ fn walk_data(data: &Data, ctx: &mut Count) {
         }
         Data::If { cond, body, alt } => {
             walk(cond, false, ctx);
+            let saved = ctx.conditional;
+            ctx.conditional = true;
             walk(body, false, ctx);
             if let Some(alt) = alt {
                 walk(alt, false, ctx);
             }
+            ctx.conditional = saved;
         }
         Data::For { init, cond, step, body } => {
             if let Some(init) = init {
@@ -525,8 +596,9 @@ fn walk_data(data: &Data, ctx: &mut Count) {
             walk(body, false, ctx);
         }
         Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
-            walk(init, false, ctx);
+            // The right-hand side is read before the loop variable is written.
             walk(object, false, ctx);
+            mark_loop_lvalue(init, ctx);
             walk(body, false, ctx);
         }
         Data::While { cond, body } | Data::Do { body, cond } => {
