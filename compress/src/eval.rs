@@ -138,9 +138,14 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
             return Some(Rc::clone(value));
         }
     }
-    // terser `index.js` `def_optimize(AST_Undefined)` / `AST_Infinity` / `AST_NaN`:
-    // the direct lhs of `delete`, an update, or an assignment keeps the identifier.
-    if cx.shadowed(name) || cx.opts.ie8 || cx.in_lhs || identifier_lhs(cx) {
+    // terser `index.js` `def_optimize(AST_SymbolRef)` turns an undeclared
+    // `undefined` / `NaN` / `Infinity` into the constant before `is_lhs`.
+    // `AST_Undefined.optimize` then keeps the identifier only when `is_lhs`
+    // (`inference.js`) is this symbol: the direct child of `delete` / `++` /
+    // `--`, the assign target, or a for-in/of init. `o[undefined] = 1` is not
+    // that, so the index becomes `void 0`. The broad `in_lhs` flag covers the
+    // whole left tree and must not block the index.
+    if cx.shadowed(name) || cx.opts.ie8 || direct_write_target(cx) {
         return None;
     }
     match name.as_str() {
@@ -151,9 +156,10 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     }
 }
 
-/// Direct child of `delete` / `++` / `--`. Nested operands (a sequence element,
-/// a conditional branch) are not an lhs, so `undefined` there still becomes `void 0`.
-fn identifier_lhs(cx: &Cx) -> bool {
+/// terser `inference.js` `is_lhs` for the symbol being optimized.
+/// Nested operands (an index, a sequence element, a conditional branch) are
+/// not the write target, so `undefined` there still becomes `void 0`.
+fn direct_write_target(cx: &Cx) -> bool {
     let len = cx.parents.len();
     if len < 2 {
         return false;
@@ -161,7 +167,13 @@ fn identifier_lhs(cx: &Cx) -> bool {
     let self_n = &cx.parents[len - 1];
     let parent = &cx.parents[len - 2];
     match &parent.data {
-        Data::Unary { op, expr, .. } if matches!(op.as_str(), "delete" | "++" | "--") && Rc::ptr_eq(expr, self_n) => true,
+        Data::Unary { op, expr, .. }
+            if matches!(op.as_str(), "delete" | "++" | "--") && Rc::ptr_eq(expr, self_n) =>
+        {
+            true
+        }
+        Data::Assign { left, .. } if Rc::ptr_eq(left, self_n) => true,
+        Data::ForIn { init, .. } | Data::ForOf { init, .. } if Rc::ptr_eq(init, self_n) => true,
         _ => false,
     }
 }
@@ -455,7 +467,14 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
             return Some(simple_opt(n, Rc::clone(&cond), cx));
         }
         (StmtClass::Expr(cons), StmtClass::Expr(alt_expr)) => {
-            let expr = factor_conditional(n, Rc::clone(&cond), cons, alt_expr, cx);
+            // terser `def_optimize(AST_If)` builds the conditional and runs
+            // `AST_Conditional.optimize`. Call factoring is that optimizer's,
+            // and it keeps a condition with side effects and a spread argument.
+            let made = atom(
+                n,
+                Data::Cond { cond: Rc::clone(&cond), cons, alt: alt_expr },
+            );
+            let expr = crate::conditional::optimize(&made, cx).unwrap_or(made);
             return Some(simple_opt(n, expr, cx));
         }
         (StmtClass::Expr(expr), StmtClass::Empty) => {
@@ -521,67 +540,6 @@ fn stmt_kind(n: &N) -> StmtClass {
         Data::Block { body } if body.len() == 1 => stmt_kind(&body[0]),
         Data::Simple { body } => StmtClass::Expr(Rc::clone(body)),
         _ => StmtClass::Other,
-    }
-}
-
-fn factor_conditional(span: &N, cond: N, cons: N, alt: N, cx: &Cx) -> N {
-    if let (Data::Call { expr: left, args: left_args, optional, is_new }, Data::Call { expr: right, args: right_args, .. }) =
-        (&cons.data, &alt.data)
-    {
-        if !*is_new
-            && left_args.len() == right_args.len()
-            && !left_args.is_empty()
-            && callee_ok(left, cx)
-            && same_node(left, right)
-        {
-            let mut diff = None;
-            let mut mismatches = 0;
-            for (i, (a, b)) in left_args.iter().zip(right_args.iter()).enumerate() {
-                if !same_node(a, b) {
-                    mismatches += 1;
-                    diff = Some(i);
-                }
-            }
-            if mismatches == 1 {
-                let i = diff.unwrap();
-                let mut args = left_args.clone();
-                args[i] = atom(
-                    span,
-                    Data::Cond {
-                        cond,
-                        cons: Rc::clone(&left_args[i]),
-                        alt: Rc::clone(&right_args[i]),
-                    },
-                );
-                return atom(
-                    span,
-                    Data::Call {
-                        expr: Rc::clone(left),
-                        args,
-                        optional: *optional,
-                        is_new: *is_new,
-                    },
-                );
-            }
-        }
-    }
-    atom(span, Data::Cond { cond, cons, alt })
-}
-
-fn callee_ok(expr: &N, cx: &Cx) -> bool {
-    match &expr.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
-        _ => false,
-    }
-}
-
-fn same_node(a: &N, b: &N) -> bool {
-    match (&a.data, &b.data) {
-        (Data::Symbol { name: x, .. }, Data::Symbol { name: y, .. }) => x == y,
-        (Data::Number { value: x, .. }, Data::Number { value: y, .. }) => x == y,
-        (Data::String { value: x, .. }, Data::String { value: y, .. }) => x == y,
-        (Data::True, Data::True) | (Data::False, Data::False) | (Data::Null, Data::Null) => true,
-        _ => Rc::ptr_eq(a, b),
     }
 }
 
@@ -2776,8 +2734,13 @@ fn pure_decl(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Empty => true,
         Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const, defs, .. } => defs.iter().all(|d| match &d.data {
-            Data::VarDef { value: None, .. } => true,
-            Data::VarDef { value: Some(v), .. } => statement_pure(v, cx),
+            // A destructuring pattern throws when the value is not iterable
+            // or not an object, so the declaration is not pure even when the
+            // initializer's read is.
+            Data::VarDef { name, value: None } => matches!(name.data, Data::Symbol { .. }),
+            Data::VarDef { name, value: Some(v) } => {
+                matches!(name.data, Data::Symbol { .. }) && statement_pure(v, cx)
+            }
             _ => false,
         }),
         Data::Class { extends: None, props, .. } => props.iter().all(|p| match &p.data {

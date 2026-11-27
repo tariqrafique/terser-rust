@@ -343,6 +343,10 @@ fn unsafe_call(n: &N, expr: &N, args: &[N], cx: &Cx) -> Option<N> {
     }
 }
 
+/// terser `inference.js` `is_undeclared_ref`: `definition().undeclared`.
+/// A `var String` at toplevel is a binding even when `reduce_vars` is off and
+/// there is no symbol table. `shadowed` sees that binding, including names
+/// hoisted onto the root locals frame.
 fn undeclared(expr: &N, cx: &Cx, names: &[&str]) -> bool {
     let Data::Symbol { name, kind: SymKind::Ref, .. } = &expr.data else {
         return false;

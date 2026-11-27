@@ -71,6 +71,9 @@ struct Opts {
     unsafe_comps: bool,
     /// terser `ecma`. `5` unless set. Values from 6 through 2014 become `year + 2009`.
     ecma: i32,
+    /// terser `expression`. Off unless set. Wraps the completion value in `return`
+    /// for the duration of the compress passes (`process_expression`).
+    expression: bool,
 }
 
 /// terser `lib/compress/index.js` `pure_getters`.
@@ -121,6 +124,7 @@ impl Opts {
             passes: 1,
             unsafe_comps: false,
             ecma: 5,
+            expression: false,
         }
     }
 
@@ -161,6 +165,7 @@ impl Opts {
             passes: 1,
             unsafe_comps: false,
             ecma: 5,
+            expression: false,
         }
     }
 
@@ -290,6 +295,9 @@ impl Opts {
             let n = v as i32;
             opts.ecma = if n > 5 && n < 2015 { n + 2009 } else { n };
         }
+        if let Some(v) = bool_key(obj, "expression") {
+            opts.expression = v;
+        }
         opts
     }
 
@@ -319,6 +327,7 @@ impl Opts {
             || self.unused
             || self.unsafe_opt
             || self.unsafe_math
+            || self.expression
     }
 }
 
@@ -410,12 +419,83 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         return Rc::clone(root);
     }
     // terser `lib/compress/index.js` `Compressor.compress`: repeat `passes` times.
+    // `expression` wraps the completion value in `return` before the passes and
+    // unwraps after, so `first_in_statement` is false while a conditional is optimized.
     let passes = opts.passes.max(1);
+    let expression = opts.expression;
     let mut tree = Rc::clone(root);
+    if expression {
+        tree = process_expression(&tree, true);
+    }
     for _ in 0..passes {
         tree = compress_pass(&tree, opts.clone());
     }
+    if expression {
+        tree = process_expression(&tree, false);
+    }
     tree
+}
+
+/// terser `index.js` `AST_Scope.process_expression`.
+///
+/// The transformer returns every node, so it does not descend on its own.
+/// Only the completion position is rewritten: the last statement of a block,
+/// both branches of `if`, and the body of `with`. Functions and classes stay
+/// closed. `insert` turns that statement into `return`; the unwrap turns
+/// `return` back into a statement (`void 0` when the return has no value).
+fn process_expression(n: &N, insert: bool) -> N {
+    match &n.data {
+        Data::Func { .. } | Data::Class { .. } => Rc::clone(n),
+        Data::Simple { body } if insert => eval::atom(n, Data::Return { value: Some(Rc::clone(body)) }),
+        Data::Return { value } if !insert => {
+            let body = match value {
+                Some(v) => Rc::clone(v),
+                None => eval::void0(n),
+            };
+            eval::simple(n, body)
+        }
+        Data::Toplevel { body } => rewrite_completion(n, body, insert, |body| Data::Toplevel { body }),
+        Data::Block { body } => rewrite_completion(n, body, insert, |body| Data::Block { body }),
+        Data::If { cond, body, alt } => {
+            let body_m = process_expression(body, insert);
+            let alt_m = alt.as_ref().map(|a| process_expression(a, insert));
+            let same_alt = match (alt, &alt_m) {
+                (None, None) => true,
+                (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+                _ => false,
+            };
+            if Rc::ptr_eq(&body_m, body) && same_alt {
+                Rc::clone(n)
+            } else {
+                eval::atom(
+                    n,
+                    Data::If { cond: Rc::clone(cond), body: body_m, alt: alt_m },
+                )
+            }
+        }
+        Data::With { expr, body } => {
+            let body_m = process_expression(body, insert);
+            if Rc::ptr_eq(&body_m, body) {
+                Rc::clone(n)
+            } else {
+                eval::atom(n, Data::With { expr: Rc::clone(expr), body: body_m })
+            }
+        }
+        _ => Rc::clone(n),
+    }
+}
+
+fn rewrite_completion(n: &N, body: &[N], insert: bool, wrap: impl Fn(Vec<N>) -> Data) -> N {
+    let Some(last) = body.last() else {
+        return Rc::clone(n);
+    };
+    let last_m = process_expression(last, insert);
+    if Rc::ptr_eq(&last_m, last) {
+        return Rc::clone(n);
+    }
+    let mut next = body.to_vec();
+    *next.last_mut().unwrap() = last_m;
+    eval::atom(n, wrap(next))
 }
 
 fn compress_pass(root: &N, opts: Opts) -> N {
@@ -564,6 +644,16 @@ impl Cx {
             Data::Directive { value, .. } => {
                 if self.lookup(value).is_none() {
                     self.frames.last_mut().unwrap().insert(value.clone(), ptr);
+                }
+                Enter::None
+            }
+            // Toplevel `var` / function decls are bindings for the whole program.
+            // The root locals frame starts empty; without this scan, `shadowed`
+            // misses `var String` when `reduce_vars` is off and `is_undeclared_ref`
+            // would treat `String(x)` as the global constructor.
+            Data::Toplevel { body } => {
+                if let Some(names) = self.locals.last_mut() {
+                    scan_hoisted(body, names);
                 }
                 Enter::None
             }
