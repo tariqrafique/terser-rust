@@ -402,3 +402,110 @@ pub fn is_basic_identifier(name: &str) -> bool {
 
 /// Marks the crate as linked into the minify pipeline.
 pub fn touch() {}
+
+/// Rebuild `n` with every child replaced by `f(child)`. Scalar fields are
+/// copied. The result is a new node even when no child changed.
+pub fn map_children(n: &N, f: &mut dyn FnMut(&N) -> N) -> N {
+    let mut o = |x: &Option<N>, f: &mut dyn FnMut(&N) -> N| x.as_ref().map(|v| f(v));
+    let mut l = |xs: &[N], f: &mut dyn FnMut(&N) -> N| xs.iter().map(|v| f(v)).collect::<Vec<N>>();
+    let key = |k: &Key, f: &mut dyn FnMut(&N) -> N| match k {
+        Key::Computed(e) => Key::Computed(f(e)),
+        other => other.clone(),
+    };
+    let data = match &n.data {
+        Data::Toplevel { body } => Data::Toplevel { body: l(body, f) },
+        Data::Simple { body } => Data::Simple { body: f(body) },
+        Data::Block { body } => Data::Block { body: l(body, f) },
+        Data::Labeled { label, body } => Data::Labeled { label: f(label), body: f(body) },
+        Data::Do { body, cond } => Data::Do { body: f(body), cond: f(cond) },
+        Data::While { cond, body } => Data::While { cond: f(cond), body: f(body) },
+        Data::For { init, cond, step, body } => Data::For { init: o(init, f), cond: o(cond, f), step: o(step, f), body: f(body) },
+        Data::ForIn { init, object, body } => Data::ForIn { init: f(init), object: f(object), body: f(body) },
+        Data::ForOf { init, object, body, await_ } => Data::ForOf { init: f(init), object: f(object), body: f(body), await_: *await_ },
+        Data::With { expr, body } => Data::With { expr: f(expr), body: f(body) },
+        Data::If { cond, body, alt } => Data::If { cond: f(cond), body: f(body), alt: o(alt, f) },
+        Data::Switch { expr, body } => Data::Switch { expr: f(expr), body: l(body, f) },
+        Data::Case { expr, body } => Data::Case { expr: f(expr), body: l(body, f) },
+        Data::Default { body } => Data::Default { body: l(body, f) },
+        Data::Try { body, catch, finally } => Data::Try { body: f(body), catch: o(catch, f), finally: o(finally, f) },
+        Data::Catch { arg, body } => Data::Catch { arg: o(arg, f), body: f(body) },
+        Data::Finally { body } => Data::Finally { body: f(body) },
+        Data::Defs { kind, defs, await_ } => Data::Defs { kind: *kind, defs: l(defs, f), await_: *await_ },
+        Data::VarDef { name, value } => Data::VarDef { name: f(name), value: o(value, f) },
+        Data::Func { kind, name, args, body, async_, generator } => Data::Func {
+            kind: *kind,
+            name: o(name, f),
+            args: l(args, f),
+            body: l(body, f),
+            async_: *async_,
+            generator: *generator,
+        },
+        Data::Class { stmt, name, extends, props } => Data::Class { stmt: *stmt, name: o(name, f), extends: o(extends, f), props: l(props, f) },
+        Data::Return { value } => Data::Return { value: o(value, f) },
+        Data::Throw { value } => Data::Throw { value: f(value) },
+        Data::Break { label } => Data::Break { label: o(label, f) },
+        Data::Continue { label } => Data::Continue { label: o(label, f) },
+        Data::Import { phase, imported_name, imported_names, module_name, attributes } => Data::Import {
+            phase: phase.clone(),
+            imported_name: o(imported_name, f),
+            imported_names: imported_names.as_ref().map(|v| l(v, f)),
+            module_name: f(module_name),
+            attributes: o(attributes, f),
+        },
+        Data::Export { is_default, names, value, definition, module_name, attributes } => Data::Export {
+            is_default: *is_default,
+            names: names.as_ref().map(|v| l(v, f)),
+            value: o(value, f),
+            definition: o(definition, f),
+            module_name: o(module_name, f),
+            attributes: o(attributes, f),
+        },
+        Data::NameMap { foreign, name } => Data::NameMap { foreign: f(foreign), name: f(name) },
+        Data::Array { elements } => Data::Array { elements: l(elements, f) },
+        Data::Object { props } => Data::Object { props: l(props, f) },
+        Data::Prop { method, key: k, value, static_, private, generator, async_ } => Data::Prop {
+            method: *method,
+            key: key(k, f),
+            value: f(value),
+            static_: *static_,
+            private: *private,
+            generator: *generator,
+            async_: *async_,
+        },
+        Data::Field { key: k, value, static_, private } => Data::Field { key: key(k, f), value: o(value, f), static_: *static_, private: *private },
+        Data::StaticBlock { body } => Data::StaticBlock { body: l(body, f) },
+        Data::Spread { expr } => Data::Spread { expr: f(expr) },
+        Data::Destructuring { array, names } => Data::Destructuring { array: *array, names: l(names, f) },
+        Data::Seq { exprs } => Data::Seq { exprs: l(exprs, f) },
+        Data::Dot { expr, prop, optional, quote, private } => Data::Dot { expr: f(expr), prop: prop.clone(), optional: *optional, quote: *quote, private: *private },
+        Data::Sub { expr, prop, optional } => Data::Sub { expr: f(expr), prop: f(prop), optional: *optional },
+        Data::Chain { expr } => Data::Chain { expr: f(expr) },
+        Data::Call { expr, args, optional, is_new } => Data::Call { expr: f(expr), args: l(args, f), optional: *optional, is_new: *is_new },
+        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: f(expr), prefix: *prefix },
+        Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: f(left), right: f(right) },
+        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: f(left), right: f(right), logical: *logical },
+        Data::DefaultAssign { left, right } => Data::DefaultAssign { left: f(left), right: f(right) },
+        Data::Cond { cond, cons, alt } => Data::Cond { cond: f(cond), cons: f(cons), alt: f(alt) },
+        Data::Await { expr } => Data::Await { expr: f(expr) },
+        Data::Yield { expr, star } => Data::Yield { expr: o(expr, f), star: *star },
+        Data::Template { segments } => Data::Template {
+            segments: segments
+                .iter()
+                .map(|s| match s {
+                    Seg::Expr(e) => Seg::Expr(f(e)),
+                    other => other.clone(),
+                })
+                .collect(),
+        },
+        Data::TaggedTemplate { tag, template } => Data::TaggedTemplate { tag: f(tag), template: f(template) },
+        Data::DynImport { args, phase } => Data::DynImport { args: l(args, f), phase: phase.clone() },
+        Data::PrivateIn { key: k, value } => Data::PrivateIn { key: f(k), value: f(value) },
+        other => other.clone(),
+    };
+    Rc::new(Node { start: n.start.clone(), end: n.end.clone(), data })
+}
+
+/// terser `AST_Node.clone(true)`: every node is new.
+pub fn deep_clone(n: &N) -> N {
+    map_children(n, &mut |c| deep_clone(c))
+}

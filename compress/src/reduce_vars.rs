@@ -1358,11 +1358,18 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     if table.node_def.get(&syms::ptr(named)).copied() == Some(id) {
         return true;
     }
-    table.node_scope.get(&syms::ptr(node)).copied() == Some(table.defs[id].scope)
+    match table.node_scope.get(&syms::ptr(node)).copied() {
+        Some(scope) => scope == table.defs[id].scope,
+        // A function expression built from the declaration (`expr_value`):
+        // terser points its recursive refs at the new lambda name.
+        None => matches!(named.data, Data::Symbol { kind: SymKind::Lambda, .. }),
+    }
 }
 
 fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
-    parents.iter().rev().skip(1).find_map(|n| table.node_scope.get(&syms::ptr(n)).copied())
+    // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
+    // pointer is not in `node_scope`.
+    parents.iter().rev().skip(1).find_map(|n| table.node_scope.get(&syms::ptr(n)).copied()).or(Some(0))
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref` lambda and class checks.
@@ -1468,11 +1475,15 @@ fn call_targets(parent: &N, sym: &N) -> bool {
 }
 
 fn is_pure_or_noinline_call(n: &N) -> bool {
-    let Data::Call { .. } = &n.data else { return false };
-    let Some(tok) = n.start.as_ref() else { return false };
-    tok.comments_before.iter().any(|c| {
-        let v = c.value.as_str();
-        v.contains("@__PURE__") || v.contains("#__PURE__") || v.contains("@__NOINLINE__") || v.contains("#__NOINLINE__")
+    let Data::Call { expr, .. } = &n.data else { return false };
+    // Same lookup as `call.rs` `call_ann`: the call's first token, then the callee's.
+    [n, expr].iter().any(|node| {
+        node.start.as_ref().is_some_and(|tok| {
+            tok.comments_before.iter().any(|c| {
+                let v = c.value.as_str();
+                v.contains("@__PURE__") || v.contains("#__PURE__") || v.contains("@__NOINLINE__") || v.contains("#__NOINLINE__")
+            })
+        })
     })
 }
 
@@ -1663,9 +1674,16 @@ fn expr_value(n: &N) -> N {
             n,
             Data::Func {
                 kind: FuncKind::Expr,
-                name: name.clone(),
-                args: args.clone(),
-                body: body.clone(),
+                // terser `make_node(AST_Function, fixed, fixed)`: the name is
+                // now an `AST_SymbolLambda` bound inside the function.
+                name: name.as_ref().map(|nm| match &nm.data {
+                    Data::Symbol { name, quote, .. } => span_node(nm, Data::Symbol { name: name.clone(), kind: SymKind::Lambda, quote: *quote }),
+                    _ => Rc::clone(nm),
+                }),
+                // A fresh copy, so the original declaration and the inlined
+                // expression do not share symbol nodes (terser `clone(true)`).
+                args: args.iter().map(ast::deep_clone).collect(),
+                body: body.iter().map(ast::deep_clone).collect(),
                 async_: *async_,
                 generator: *generator,
             },

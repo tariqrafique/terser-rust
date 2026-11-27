@@ -27,10 +27,17 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
             node(n, Data::Toplevel { body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
         }
         Data::Func { kind, name, args, body, async_, generator } => {
+            let original = body;
             let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
+            // drop-unused.js: an `AST_Function` name nothing reads is removed
+            // (`keep_fnames` off).
+            let name = match (kind, name) {
+                (ast::FuncKind::Expr, Some(nm)) if def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
+                _ => name.clone(),
+            };
             node(n, Data::Func {
                 kind: *kind,
-                name: name.clone(),
+                name,
                 args: args.clone(),
                 body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, true),
                 async_: *async_,
@@ -128,6 +135,12 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
         return;
     }
     match &n.data {
+        // drop-unused.js `scan_ref_scoped`: a function declaration's body is
+        // walked only once its name is in use (an `initializations` entry).
+        Data::Func { kind: ast::FuncKind::Decl, name: Some(nm), .. } if record_inits && def_id(table, nm).is_some() => {
+            let id = def_id(table, nm).unwrap();
+            u.inits.entry(id).or_default().push(Rc::clone(n));
+        }
         Data::Defs { defs, .. } if record_inits => {
             for def in defs {
                 let Data::VarDef { name, value } = &def.data else { continue };
@@ -329,6 +342,18 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         _ => return Some(Rc::clone(n)),
     };
     Some(node(n, data))
+}
+
+fn name_read(body: &[N], args: &[N], table: &SymTable, id: usize) -> bool {
+    fn rec(n: &N, table: &SymTable, id: usize) -> bool {
+        if matches!(n.data, Data::Symbol { kind: SymKind::Ref, .. }) && def_id(table, n) == Some(id) {
+            return true;
+        }
+        let mut hit = false;
+        descend(n, |c| hit = hit || rec(c, table, id));
+        hit
+    }
+    body.iter().chain(args.iter()).any(|s| rec(s, table, id))
 }
 
 fn descend(n: &N, mut f: impl FnMut(&N)) {

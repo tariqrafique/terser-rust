@@ -82,3 +82,5 @@ Default board after these: 2236/3013 → 2278/3013, fixture 1539 → 1622.
 `with` and direct `eval` pin every enclosing scope (terser `uses_with` / `uses_eval`).
 
 Flatten board: default 2278/3013 → 2321/3013, 0 newly failing, fixture 1622 → 1667, lwc 260/339.
+
+Defun inline board: a single-use function declaration is inlined as a function expression with a fresh copy (`ast::deep_clone`, terser `clone(true)`) and an `AST_SymbolLambda` name. `drop_unused` drops an unread function-expression name and walks a declaration's body only once its name is in use. A rebuilt scope keeps its `node_scope` id. Default 2321/3013 → 2395/3013, fixture 1667 → 1744.

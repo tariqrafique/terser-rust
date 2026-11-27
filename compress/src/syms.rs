@@ -631,6 +631,10 @@ pub fn index_func_fixed(table: &mut SymTable) {
 
 /// Point `fixed` at `new_node` when it still holds the node that was just compressed.
 pub fn retarget_fixed(table: &mut SymTable, old_ptr: usize, new_node: &N) {
+    // The rebuilt scope node is the same scope (terser mutates in place).
+    if let Some(&scope) = table.node_scope.get(&old_ptr) {
+        table.node_scope.entry(ptr(new_node)).or_insert(scope);
+    }
     let Some(ids) = table.fixed_of_node.remove(&old_ptr) else { return };
     for id in &ids {
         if let Some(def) = table.defs.get_mut(*id) {
