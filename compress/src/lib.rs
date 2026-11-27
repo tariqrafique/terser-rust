@@ -5,6 +5,7 @@
 //! Unchanged subtrees stay the same `Rc`, so a pass that does not fire
 //! prints exactly like the input tree.
 
+mod drop_unused;
 mod eval;
 mod tighten;
 mod reduce_vars;
@@ -362,8 +363,13 @@ fn compress_pass(root: &N, opts: Opts) -> N {
     } else {
         out
     };
-    if collapse_vars {
+    let out = if collapse_vars {
         tighten::collapse(&out, unused, toplevel_vars)
+    } else {
+        out
+    };
+    if unused {
+        drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs)
     } else {
         out
     }
