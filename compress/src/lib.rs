@@ -839,7 +839,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // Statement joining (`tighten`) is part of the scope/block optimizer, so it
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
-    let twice = after_descend(twice, cx);
+    let twice = after_descend(twice, n, cx);
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
@@ -1133,7 +1133,7 @@ fn same_stmts(a: &[N], b: &[N]) -> bool {
 /// Scope and block optimizers that terser runs inside `def_optimize`, after
 /// `Compressor.before` has descended twice: `join_vars`, sequences, `if_return`,
 /// trailing-return drop, and single-statement block eviction.
-fn after_descend(n: N, cx: &Cx) -> N {
+fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
     match &n.data {
         Data::Toplevel { body } => {
             let next = tighten(body.clone(), cx);
@@ -1170,6 +1170,11 @@ fn after_descend(n: N, cx: &Cx) -> N {
             if cx.opts.if_return {
                 next = eval::drop_trailing_return(next, cx);
             }
+            let original = match &orig.data {
+                Data::Func { body, .. } => body.as_slice(),
+                _ => body.as_slice(),
+            };
+            next = eval::opt_ast_lambda(original, next, cx);
             if same_stmts(body, &next) {
                 n
             } else {
