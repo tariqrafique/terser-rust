@@ -9,6 +9,7 @@ mod call;
 mod conditional;
 mod drop_unused;
 mod eval;
+mod sequence;
 mod hoist;
 mod tighten;
 mod reduce_vars;
