@@ -4,14 +4,43 @@
 //! beautify is off, semicolons are on, ecma is 5, comments are "some".
 
 use ast::{is_basic_identifier, Comment, Data, DefKind, FuncKind, Key, MethodKind, N, SymKind};
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+
+thread_local! {
+    static MANGLED: RefCell<HashMap<usize, String>> = RefCell::new(HashMap::new());
+    static PRIVATES: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
 
 pub fn print(root: &N) -> String {
     let mut out = Out::new();
     out.print_node(root, false);
     out.print("");
     out.buf
+}
+
+/// Print with mangled names. Keys are `Rc::as_ptr` of the symbol nodes.
+pub fn print_mangled(root: &N, map: HashMap<usize, String>, privates: HashMap<String, String>) -> String {
+    MANGLED.with(|slot| *slot.borrow_mut() = map);
+    PRIVATES.with(|slot| *slot.borrow_mut() = privates);
+    let out = print(root);
+    MANGLED.with(|slot| slot.borrow_mut().clear());
+    PRIVATES.with(|slot| slot.borrow_mut().clear());
+    out
+}
+
+fn mapped_private(name: &str) -> String {
+    PRIVATES.with(|slot| slot.borrow().get(name).cloned().unwrap_or_else(|| name.to_string()))
+}
+
+fn mapped_name(node: &N, original: &str) -> String {
+    MANGLED.with(|slot| {
+        slot.borrow()
+            .get(&(Rc::as_ptr(node) as usize))
+            .cloned()
+            .unwrap_or_else(|| original.to_string())
+    })
 }
 
 struct Out {
@@ -469,13 +498,18 @@ impl Out {
             }
             Data::NameMap { foreign, name } => self.print_name_map(node, foreign, name),
             Data::Symbol { name, quote, kind } => {
+                let shown = if *kind == SymKind::Private {
+                    mapped_private(name)
+                } else {
+                    mapped_name(node, name)
+                };
                 if let Some(q) = quote {
-                    self.print_string(name, Some(*q), false);
+                    self.print_string(&shown, Some(*q), false);
                 } else {
                     if *kind == SymKind::Private {
                         self.print("#");
                     }
-                    self.print_name(name);
+                    self.print_name(&shown);
                 }
             }
             Data::This => self.print("this"),
@@ -544,7 +578,7 @@ impl Out {
                 match key {
                     Key::Private(name) | Key::Static { name, .. } if *private => {
                         self.print("#");
-                        self.print_prop_name(name, None);
+                        self.print_prop_name(&mapped_private(name), None);
                     }
                     Key::Static { name, quote } => {
                         self.print_prop_name(name, *quote);
@@ -556,7 +590,7 @@ impl Out {
                     }
                     Key::Private(name) => {
                         self.print("#");
-                        self.print_prop_name(name, None);
+                        self.print_prop_name(&mapped_private(name), None);
                     }
                 }
                 if let Some(value) = value {
@@ -603,7 +637,7 @@ impl Out {
                         self.print("?");
                     }
                     self.print(".#");
-                    self.print_name(prop);
+                    self.print_name(&mapped_private(prop));
                 } else {
                     let computed = if is_reserved(prop) {
                         false
@@ -941,7 +975,7 @@ impl Out {
             }
             match key {
                 Key::Static { name, quote } => self.print_prop_name(name, *quote),
-                Key::Private(name) => self.print_prop_name(name, None),
+                Key::Private(name) => self.print_prop_name(&mapped_private(name), None),
                 Key::Computed(expr) => {
                     self.print("[");
                     self.print_node(expr, false);
@@ -960,7 +994,7 @@ impl Out {
             Key::Static { name, quote } => self.print_prop_name(name, *quote),
             Key::Private(name) => {
                 self.print("#");
-                self.print_name(name);
+                self.print_name(&mapped_private(name));
             }
             Key::Computed(expr) => {
                 self.print("[");

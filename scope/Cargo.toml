@@ -7,3 +7,4 @@ description = "Scope analysis and name mangling"
 
 [dependencies]
 ast = { path = "../ast" }
+codegen = { path = "../codegen" }

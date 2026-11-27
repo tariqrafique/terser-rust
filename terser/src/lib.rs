@@ -98,11 +98,15 @@ impl std::error::Error for MinifyError {}
 /// substitute for a terser parse error: the harness compares error text
 /// byte for byte as well, so a blanket error does not count as a pass.
 pub fn minify(src: &str, opts: &Options) -> Result<Output, MinifyError> {
-    if is_roundtrip(opts) {
+    if is_roundtrip(opts) || is_mangle(opts) {
         let ast = parser::parse(src).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
-        return Ok(Output {
-            code: codegen::print(&ast),
-        });
+        let code = if is_mangle(opts) {
+            let (map, privates) = scope::mangle_map(&ast).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
+            codegen::print_mangled(&ast, map, privates)
+        } else {
+            codegen::print(&ast)
+        };
+        return Ok(Output { code });
     }
     let _ = src;
     compress::touch();
@@ -113,6 +117,12 @@ fn is_roundtrip(opts: &Options) -> bool {
     let value = opts.as_value();
     value.get("compress").and_then(|v| v.as_bool()) == Some(false)
         && value.get("mangle").and_then(|v| v.as_bool()) == Some(false)
+}
+
+fn is_mangle(opts: &Options) -> bool {
+    let value = opts.as_value();
+    value.get("compress").and_then(|v| v.as_bool()) == Some(false)
+        && value.get("mangle").and_then(|v| v.as_bool()) == Some(true)
 }
 
 #[cfg(test)]
