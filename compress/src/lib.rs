@@ -1041,7 +1041,8 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let hoisted;
     let n = if was_scope(&n.data) && !cx.in_asm() {
         hoisted = hoist::hoist(n, cx.opts.hoist_props, cx.opts.hoist_funs, cx.opts.hoist_vars, cx.opts.toplevel_vars, cx.opts.top_retain.as_deref(), cx.syms.as_ref());
-        // The rebuilt scope node is the same scope.
+        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its
+        // scopes and definitions.
         if !Rc::ptr_eq(&hoisted, n) {
             if let Some(table) = cx.syms.as_mut() {
                 if let Some(&sc) = table.node_scope.get(&ptr) {
@@ -1049,6 +1050,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
                     cx.flag_keep.push(Rc::clone(&hoisted));
                 }
             }
+            transfer_flags(n, &hoisted, cx);
         }
         &hoisted
     } else {
@@ -1087,6 +1089,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // `parent.left === self` sees updated children, then the original for `fold`.
     cx.stack.push(Rc::clone(n));
     let once = map_children(n, cx);
+    alias_scope_node(cx, n, &once);
     *cx.stack.last_mut().unwrap() = Rc::clone(&once);
     set_parent(cx, &once);
     let twice = map_children(&once, cx);
@@ -1147,6 +1150,18 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     out
 }
 
+/// A rebuilt copy of a scope node is the same scope (terser mutates in place).
+fn alias_scope_node(cx: &mut Cx, from: &N, to: &N) {
+    if Rc::ptr_eq(from, to) {
+        return;
+    }
+    if let Some(table) = cx.syms.as_ref() {
+        if let Some(sc) = table.scope_lookup(&(Rc::as_ptr(from) as usize)) {
+            table.alias_scope.borrow_mut().insert(Rc::as_ptr(to) as usize, (sc, Rc::clone(to)));
+        }
+    }
+}
+
 fn retarget(cx: &mut Cx, orig_ptr: usize, out: &N) {
     if Rc::as_ptr(out) as usize == orig_ptr {
         return;
@@ -1189,6 +1204,21 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         return;
     }
     let ptr = Rc::as_ptr(old) as usize;
+    // The rebuilt node keeps its scope and definition (terser edits in place).
+    if let Some(table) = cx.syms.as_ref() {
+        let np = Rc::as_ptr(new) as usize;
+        if table.scope_lookup(&np).is_none() {
+            if let Some(sc) = table.scope_lookup(&ptr) {
+                table.alias_scope.borrow_mut().insert(np, (sc, Rc::clone(new)));
+            }
+        }
+        let same_name = matches!((&old.data, &new.data), (Data::Symbol { name: a, .. }, Data::Symbol { name: b, .. }) if a == b);
+        if same_name && table.lookup(&np).is_none() {
+            if let Some(id) = table.lookup(&ptr) {
+                table.alias.borrow_mut().insert(np, (id, Rc::clone(new)));
+            }
+        }
+    }
     if cx.fresh.borrow().contains_key(&ptr) {
         cx.fresh.borrow_mut().insert(Rc::as_ptr(new) as usize, Rc::clone(new));
     }
