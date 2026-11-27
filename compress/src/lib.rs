@@ -687,7 +687,6 @@ impl Cx {
             return false;
         };
         Rc::ptr_eq(expr, node) || self.parents.last().is_some_and(|top| Rc::ptr_eq(expr, top))
->>>>>>> 95d3145 (default 1630/3013 -> 1655/3013: AST_Call and AST_New)
     }
 }
 
@@ -807,14 +806,12 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     };
     cx.parents.push(Rc::clone(n));
     let entered = cx.enter(n);
-    cx.parents.push(Rc::clone(n));
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.
     if cx.in_asm() {
         let once = map_children(n, cx);
         let out = map_children(&once, cx);
         mark_squeezed(cx, &out);
-        cx.parents.pop();
         cx.leave(entered);
         cx.parents.pop();
         return out;
