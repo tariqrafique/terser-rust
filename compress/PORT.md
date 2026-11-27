@@ -55,4 +55,6 @@ Object board `916f95ba3b34-848142da17ac`: default 1810/3013 → 1825/3013, 15 ne
 
 Loops board `41202a3b48a2-848142da17ac`: default 1825/3013 → 1896/3013, 71 newly passing, 0 newly failing, lwc 174/339 → 177/339.
 
-Next: side-effect folds still in the shared chain (`fold_bool`, `fold_value`, `drop_statement`, `unwrap_void_statement`, `negate_iife`).
+Side-effect board: default 1896/3013 → 1991/3013, 95 newly passing, 0 newly failing, lwc 177/339.
+
+`fold()` is still the dispatcher. The per-type bodies that have landed are named above.

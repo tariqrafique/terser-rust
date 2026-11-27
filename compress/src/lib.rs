@@ -44,9 +44,6 @@ struct Opts {
     sequences_limit: i32,
     join_vars: bool,
     negate_iife: bool,
-    /// terser `expression`. Off unless set. Completion statements are `return`
-    /// during the passes, then statements again.
-    expression: bool,
     properties: bool,
     loops: bool,
     computed_props: bool,
@@ -118,7 +115,6 @@ impl Opts {
             sequences_limit: 800,
             join_vars: true,
             negate_iife: true,
-            expression: false,
             properties: true,
             loops: true,
             computed_props: true,
@@ -161,7 +157,6 @@ impl Opts {
             sequences_limit: 0,
             join_vars: false,
             negate_iife: false,
-            expression: false,
             properties: false,
             loops: false,
             computed_props: false,
@@ -229,9 +224,6 @@ impl Opts {
         }
         if let Some(v) = bool_key(obj, "negate_iife") {
             opts.negate_iife = v;
-        }
-        if let Some(v) = bool_key(obj, "expression") {
-            opts.expression = v;
         }
         if let Some(v) = bool_key(obj, "properties") {
             opts.properties = v;
@@ -340,7 +332,6 @@ impl Opts {
             || self.sequences_limit > 0
             || self.join_vars
             || self.negate_iife
-            || self.expression
             || self.properties
             || self.loops
             || self.computed_props
