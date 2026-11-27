@@ -222,10 +222,19 @@ thread_local! {
 /// Bindings of a function (params and hoisted names) or a toplevel body.
 pub(crate) fn scope_bindings(params: &[N], body: &[N]) -> HashSet<String> {
     let mut locals = HashSet::new();
-    for param in params {
-        if let Some(name) = sym_name(param) {
-            locals.insert(name.to_string());
+    fn pattern(n: &N, out: &mut HashSet<String>) {
+        match &n.data {
+            Data::Symbol { name, .. } => {
+                out.insert(name.clone());
+            }
+            Data::Destructuring { names, .. } => names.iter().for_each(|x| pattern(x, out)),
+            Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => pattern(left, out),
+            Data::Prop { value, .. } => pattern(value, out),
+            _ => {}
         }
+    }
+    for param in params {
+        pattern(param, &mut locals);
     }
     collect_locals(body, &mut locals);
     locals
@@ -750,6 +759,7 @@ fn apply_candidate(
         may_throw,
         in_try: env.in_try,
         reads_left: target_reads,
+        inner_shadow: inner_lvalue_names(&cand.value).iter().any(|n| env.declared.contains(n) || env.locals.contains(n)),
     };
     scan_node(&stmts[index], &mut scan);
     if !scan.abort {
@@ -811,6 +821,10 @@ struct Scan<'a> {
     may_throw: bool,
     in_try: bool,
     reads_left: usize,
+    /// terser `get_lvalues` keeps the last symbol per name. When that is a
+    /// binding of a function inside the value, `shadows` finds a different
+    /// definition at any site where the name is declared.
+    inner_shadow: bool,
 }
 
 fn scan_node(n: &N, st: &mut Scan<'_>) {
@@ -880,6 +894,7 @@ fn pre_scan(n: &N, st: &mut Scan<'_>) -> bool {
     if ref_name(n) == Some(st.cand.name.as_str())
         && !is_write(n, parent)
         && !shadows(&st.parents, &st.cand.path, st.lvalues)
+        && !st.inner_shadow
     {
         if st.stop_if_hit.is_some() {
             st.abort = true;
@@ -1843,14 +1858,25 @@ struct Counts {
 
 impl Counts {
     fn new(stmts: &[N]) -> Self {
-        fn refs_rec(n: &N, parent: Option<&N>, hidden: bool, out: &mut HashMap<String, (usize, usize, usize)>) {
-            if let Data::Func { body, .. } = &n.data {
-                for s in body {
-                    refs_rec(s, None, true, out);
+        fn refs_rec(n: &N, parent: Option<&N>, hidden: bool, out: &mut HashMap<String, (usize, usize, usize)>, own: &mut Vec<HashSet<String>>) {
+            if let Data::Func { body, args, name, .. } = &n.data {
+                // A name the nested function binds itself is not this scope's.
+                let mut b = scope_bindings(args, body);
+                if let Some(nm) = name.as_ref().and_then(sym_name) {
+                    b.insert(nm.to_string());
                 }
+                own.push(b);
+                for s in body {
+                    refs_rec(s, None, true, out, own);
+                }
+                own.pop();
                 return;
             }
             if let Some(name) = ref_name(n) {
+                if own.iter().any(|b| b.contains(name)) {
+                    each_child(&n.data, |c| refs_rec(c, Some(n), hidden, out, own));
+                    return;
+                }
                 let e = out.entry(name.to_string()).or_insert((0, 0, 0));
                 if hidden {
                     e.2 += 1;
@@ -1860,7 +1886,7 @@ impl Counts {
                     e.0 += 1;
                 }
             }
-            each_child(&n.data, |c| refs_rec(c, Some(n), hidden, out));
+            each_child(&n.data, |c| refs_rec(c, Some(n), hidden, out, own));
         }
         fn decls_rec(n: &N, out: &mut HashMap<String, usize>) {
             match &n.data {
@@ -1875,7 +1901,7 @@ impl Counts {
         let mut refs = HashMap::new();
         let mut decls = HashMap::new();
         for s in stmts {
-            refs_rec(s, None, false, &mut refs);
+            refs_rec(s, None, false, &mut refs, &mut Vec::new());
             decls_rec(s, &mut decls);
         }
         PHANTOM.with(|p| {
@@ -2112,6 +2138,51 @@ fn lvalues_of(value: &N) -> HashMap<String, bool> {
     }
     rec(value, &mut stack, &mut out);
     out
+}
+
+/// Names whose last `get_lvalues` entry is a parameter or local of a function
+/// nested in `value` (and no earlier entry was modified).
+fn inner_lvalue_names(value: &N) -> HashSet<String> {
+    fn rec(n: &N, bound: &mut Vec<HashSet<String>>, last: &mut HashMap<String, (bool, bool)>, stack: &mut Vec<N>) {
+        if let Some(name) = symbol_root(n) {
+            let inner = bound.iter().any(|b| b.contains(&name));
+            let m = modified(n, stack);
+            match last.get(&name) {
+                Some((true, _)) => {}
+                _ => {
+                    last.insert(name, (m, inner));
+                }
+            }
+        }
+        let pushed = if let Data::Func { args, body, name, .. } = &n.data {
+            let mut own = HashSet::new();
+            for a in args {
+                if let Some(nm) = sym_name(a) {
+                    own.insert(nm.to_string());
+                }
+            }
+            if let Some(nm) = name.as_ref().and_then(sym_name) {
+                own.insert(nm.to_string());
+            }
+            collect_locals(body, &mut own);
+            bound.push(own);
+            true
+        } else {
+            false
+        };
+        stack.push(Rc::clone(n));
+        let _ = ast::map_children(n, &mut |c| {
+            rec(c, bound, last, stack);
+            Rc::clone(c)
+        });
+        stack.pop();
+        if pushed {
+            bound.pop();
+        }
+    }
+    let mut last = HashMap::new();
+    rec(value, &mut Vec::new(), &mut last, &mut Vec::new());
+    last.into_iter().filter(|(_, (_, inner))| *inner).map(|(k, _)| k).collect()
 }
 
 fn symbol_root(n: &N) -> Option<String> {
