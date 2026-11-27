@@ -7,7 +7,7 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `compress/index.js` `compress` | `compress/src/lib.rs` `compress` | passes loop done. `expression` runs `process_expression` around the passes |
 | `reduce-vars.js` `reset_def` / `safe_to_assign` / `AST_SymbolRef` / `mark_escaped` / `mark_lambda` / `AST_Unary` | `reduce_vars.rs` | constants, lambda and class `single_use`, IIFE virtual params, `++`/`--` chained `fixed`, escaped depth through property reads. A function name is not a fixed write. Declaration names stay on the enclosing scope |
 | `inline.js` `inline_into_symbolref` | `reduce_vars.rs` `inline_ref` | constants, evaluated numeric `fixed`, and a single-use lambda or class (`reduce_funcs`, loop guard, scope enclosure). Regexp is not a constant. Const write clears `fixed` |
-| `tighten-body.js` `collapse` | `tighten.rs` `collapse` | scan + `find_stop`. Straight-line helper removed |
+| `tighten-body.js` `collapse` | `tighten.rs` `collapse` | `extract_candidates`, `find_stop`, `get_lhs`, `mangleable_var`, `replace_all_symbols`, `is_lhs_local`, `get_lvalues`, `value_has_side_effects`, `handle_custom_scan_order`, `remove_candidate`, `maintain_this_binding`. One read is replaced; a single-use `var` substitutes the value |
 | `drop-unused.js` `drop_unused` | `drop_unused.rs` `drop_unused` / `passes` | three walks. Not yet: `top_retain`, direct `eval`, `keep_fnames` |
 | `drop-unused.js` `assign_as_unused` | `drop_unused.rs` `assign_as_unused` | `=` of a symbol. Write-only `++` not yet |
 | `drop-unused.js` `scan_ref_scoped` | `drop_unused.rs` `scan_ref_scoped` | pass 1. Side-effect inits only; destructuring values always |
@@ -63,4 +63,6 @@ Dispatch board: default 1991/3013 → 2008/3013, 17 newly passing, 0 newly faili
 
 `reduce_funcs` defaults on. `inline_into_symbolref` turns a single-use function declaration into a function expression. IIFE parameters are fixed to the call arguments (`mark_lambda`). `mark_escaped` keeps depth above 1 when the value is a constant expression.
 
-Reduce-vars board `1c3bdeb06b1b-848142da17ac`: default 2008/3013 → 2041/3013, 33 newly passing, 0 newly failing, lwc 184/339.
+Reduce-vars board `947e9cd109bb-848142da17ac`: default 2008/3013 → 2041/3013, 33 newly passing, 0 newly failing, lwc 184/339.
+
+Collapse was measured against `1c3bdeb` as default 2008/3013 → 2055/3013, 47 newly passing, 0 newly failing. Rebased onto `947e9cd` and remeasured below.
