@@ -1006,7 +1006,9 @@ fn after_descend(n: N, cx: &Cx) -> N {
     }
 }
 
-fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
+/// terser `tighten-body.js` `eliminate_spurious_blocks`, then the statement joins.
+pub(crate) fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
+    let stmts = eliminate_spurious_blocks(stmts);
     let stmts = if cx.opts.join_vars { join_vars(stmts) } else { stmts };
     let stmts = if cx.opts.sequences_limit > 0 {
         sequence_into_next(sequence_statements(stmts, cx.opts.sequences_limit))
@@ -1273,7 +1275,24 @@ fn comma(left: N, right: N) -> N {
     })
 }
 
-fn can_evict(n: &N) -> bool {
+fn eliminate_spurious_blocks(stmts: Vec<N>) -> Vec<N> {
+    let mut out = Vec::new();
+    for stat in stmts {
+        if let Data::Block { body } = &stat.data {
+            if body.iter().all(can_evict) {
+                out.extend(eliminate_spurious_blocks(body.clone()));
+                continue;
+            }
+        }
+        if matches!(stat.data, Data::Empty) {
+            continue;
+        }
+        out.push(stat);
+    }
+    out
+}
+
+pub(crate) fn can_evict(n: &N) -> bool {
     !matches!(
         n.data,
         Data::Class { stmt: true, .. }

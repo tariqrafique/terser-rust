@@ -71,15 +71,9 @@ pub fn fold(n: &N, cx: &Cx) -> N {
             return rewritten;
         }
     }
-    if cx.opts.dead_code && cx.opts.conditionals {
-        if let Some(rewritten) = fold_if(n) {
-            return rewritten;
-        }
-    }
-    if cx.opts.conditionals {
-        if let Some(rewritten) = fold_if_shape(n, cx) {
-            return rewritten;
-        }
+    // terser `lib/compress/index.js` `def_optimize(AST_If)`
+    if let Some(rewritten) = optimize_if(n, cx) {
+        return rewritten;
     }
     if cx.opts.evaluate {
         if let Some(rewritten) = fold_and_or(n) {
@@ -437,28 +431,106 @@ fn fold_cond(n: &N) -> Option<N> {
     Some(Rc::clone(if lit.truthy() { cons } else { alt }))
 }
 
-fn fold_if_shape(n: &N, cx: &Cx) -> Option<N> {
+/// terser `lib/compress/index.js` `def_optimize(AST_If)`.
+fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
     let Data::If { cond, body, alt } = &n.data else {
         return None;
     };
-    let body_kind = stmt_kind(body);
-    let alt_kind = match alt {
+    let orig_cond = Rc::clone(cond);
+    let orig_body = Rc::clone(body);
+    let orig_alt = alt.clone();
+    let mut cond = Rc::clone(cond);
+    let mut body = Rc::clone(body);
+    // `is_empty(self.alternative)` clears an empty else before the option check.
+    let mut alt = alt.clone().filter(|a| !is_empty_stmt(a));
+    if !cx.opts.conditionals {
+        return alt_changed(&orig_alt, &alt).then(|| if_node(n, cond, body, alt));
+    }
+    if !cx.opts.dead_code {
+        if let Some(lit) = eval_if_cond(&cond, cx) {
+            let made = fold(&lit_node(&cond, lit, cx), cx);
+            if node_size(&made) <= node_size(&cond) {
+                cond = made;
+            }
+        }
+    }
+    if cx.opts.dead_code {
+        let lit = eval_if_cond(&cond, cx).or_else(|| eval_if_cond(tail_node(&cond), cx));
+        if let Some(lit) = lit {
+            return Some(dead_if(n, &cond, &body, alt.as_ref(), lit.truthy(), cx));
+        }
+    }
+    let negated = negate_expr(&cond, cx);
+    let self_len = node_size(&cond);
+    let neg_len = node_size(&negated);
+    let mut negated_is_best = neg_len < self_len;
+    if alt.is_some() && negated_is_best {
+        negated_is_best = false;
+        let new_body = alt.take().unwrap();
+        alt = Some(body);
+        body = new_body;
+        cond = Rc::clone(&negated);
+    }
+    let body_kind = stmt_kind(&body);
+    let alt_kind = match &alt {
         None => StmtClass::Empty,
         Some(a) => stmt_kind(a),
     };
     match (body_kind, alt_kind) {
-        (StmtClass::Empty, StmtClass::Empty) => Some(simple(n, Rc::clone(cond))),
+        (StmtClass::Empty, StmtClass::Empty) => {
+            return Some(simple_opt(n, Rc::clone(&cond), cx));
+        }
+        (StmtClass::Expr(cons), StmtClass::Expr(alt_expr)) => {
+            let expr = factor_conditional(n, Rc::clone(&cond), cons, alt_expr, cx);
+            return Some(simple_opt(n, expr, cx));
+        }
         (StmtClass::Expr(expr), StmtClass::Empty) => {
-            Some(simple(n, binary(n, "&&", Rc::clone(cond), expr)))
+            let mut use_neg = negated_is_best;
+            if self_len == neg_len && !use_neg && is_or(&cond) {
+                // `||` needs parens as the left of `&&`; the negated form does not.
+                // terser `index.js` `def_optimize(AST_If)` (UglifyJS2 #979).
+                use_neg = true;
+            }
+            let expr = if use_neg {
+                binary(n, "||", Rc::clone(&negated), expr)
+            } else {
+                binary(n, "&&", Rc::clone(&cond), expr)
+            };
+            return Some(simple_opt(n, expr, cx));
         }
         (StmtClass::Empty, StmtClass::Expr(expr)) => {
-            Some(simple(n, binary(n, "||", Rc::clone(cond), expr)))
+            return Some(simple_opt(n, binary(n, "||", Rc::clone(&cond), expr), cx));
         }
-        (StmtClass::Expr(cons), StmtClass::Expr(alt_expr)) => Some(simple(
-            n,
-            factor_conditional(n, Rc::clone(cond), cons, alt_expr, cx),
-        )),
-        _ => None,
+        _ => {}
+    }
+    if let (Some(left), Some(right)) = (as_exit(&body), alt.as_ref().and_then(as_exit)) {
+        if left.kind == right.kind {
+            return Some(exit_conditional(n, &cond, left, right, cx));
+        }
+    }
+    if alt.is_none() {
+        if let Data::If { cond: inner_cond, body: inner_body, alt: None } = &body.data {
+            cond = binary(n, "&&", cond, Rc::clone(inner_cond));
+            body = Rc::clone(inner_body);
+        }
+    }
+    if aborts(&body) {
+        if let Some(alt_stmt) = alt.take() {
+            let iff = if_node(n, cond, body, None);
+            return Some(finish_block(n, vec![iff, alt_stmt], cx));
+        }
+    }
+    if alt.as_ref().is_some_and(|a| aborts(a)) {
+        let orig_body = body;
+        body = alt.take().unwrap();
+        cond = if negated_is_best { Rc::clone(&negated) } else { negate_expr(&cond, cx) };
+        let iff = if_node(n, cond, body, None);
+        return Some(finish_block(n, vec![iff, orig_body], cx));
+    }
+    if Rc::ptr_eq(&cond, &orig_cond) && Rc::ptr_eq(&body, &orig_body) && !alt_changed(&orig_alt, &alt) {
+        None
+    } else {
+        Some(if_node(n, cond, body, alt))
     }
 }
 
@@ -550,21 +622,496 @@ fn binary(span: &N, op: &str, left: N, right: N) -> N {
     )
 }
 
-fn fold_if(n: &N) -> Option<N> {
-    let Data::If { cond, body, alt } = &n.data else {
-        return None;
-    };
-    let lit = eval(cond)?;
-    if !is_pure(cond) {
+fn alt_changed(orig: &Option<N>, now: &Option<N>) -> bool {
+    match (orig, now) {
+        (None, None) => false,
+        (Some(a), Some(b)) => !Rc::ptr_eq(a, b),
+        _ => true,
+    }
+}
+
+fn is_empty_stmt(n: &N) -> bool {
+    match &n.data {
+        Data::Empty => true,
+        Data::Block { body } if body.is_empty() => true,
+        _ => false,
+    }
+}
+
+fn is_or(n: &N) -> bool {
+    matches!(&n.data, Data::Binary { op, .. } if op == "||")
+}
+
+fn if_node(span: &N, cond: N, body: N, alt: Option<N>) -> N {
+    atom(span, Data::If { cond, body, alt })
+}
+
+fn tail_node(n: &N) -> &N {
+    match &n.data {
+        Data::Seq { exprs } if !exprs.is_empty() => exprs.last().unwrap(),
+        _ => n,
+    }
+}
+
+/// terser `evaluate.js` `AST_Node.evaluate`: a constant, or nothing when the
+/// expression is not a value (or the string would print longer).
+fn eval_if_cond(n: &N, cx: &Cx) -> Option<Lit> {
+    if !cx.opts.evaluate {
         return None;
     }
-    if lit.truthy() {
-        Some(Rc::clone(body))
-    } else if let Some(alt) = alt {
-        Some(Rc::clone(alt))
+    let lit = eval(n)?;
+    if let Lit::Str(s) = &lit {
+        if !s.is_empty() && utf16_len(s) + 2 > node_size(n) {
+            return None;
+        }
+    }
+    Some(lit)
+}
+
+fn dead_if(span: &N, cond: &N, body: &N, alt: Option<&N>, truthy: bool, cx: &Cx) -> N {
+    let mut stmts = Vec::new();
+    if !truthy {
+        extract_unreachable(body, &mut stmts, cx, true);
+        stmts.push(simple(span, Rc::clone(cond)));
+        if let Some(alt) = alt {
+            stmts.push(Rc::clone(alt));
+        }
     } else {
-        Some(empty(n))
+        stmts.push(simple(span, Rc::clone(cond)));
+        stmts.push(Rc::clone(body));
+        if let Some(alt) = alt {
+            extract_unreachable(alt, &mut stmts, cx, true);
+        }
     }
+    finish_block(span, stmts, cx)
+}
+
+fn finish_block(span: &N, body: Vec<N>, cx: &Cx) -> N {
+    let mut out = Vec::new();
+    for stat in body {
+        if matches!(stat.data, Data::Empty) {
+            continue;
+        }
+        if cx.opts.side_effects {
+            if let Data::Simple { body } = &stat.data {
+                if statement_pure(body, cx) {
+                    continue;
+                }
+            }
+        }
+        out.push(stat);
+    }
+    if out.is_empty() {
+        return empty(span);
+    }
+    if out.len() == 1 && super::can_evict(&out[0]) {
+        return out.pop().unwrap();
+    }
+    atom(span, Data::Block { body: out })
+}
+
+fn simple_opt(span: &N, body: N, cx: &Cx) -> N {
+    if cx.opts.side_effects && statement_pure(&body, cx) {
+        empty(span)
+    } else {
+        simple(span, body)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExitKind {
+    Return,
+    Throw,
+}
+
+struct ExitPair {
+    kind: ExitKind,
+    value: Option<N>,
+}
+
+fn as_exit(n: &N) -> Option<ExitPair> {
+    match &n.data {
+        Data::Return { value } => Some(ExitPair { kind: ExitKind::Return, value: value.clone() }),
+        Data::Throw { value } => Some(ExitPair { kind: ExitKind::Throw, value: Some(Rc::clone(value)) }),
+        _ => None,
+    }
+}
+
+fn exit_conditional(span: &N, cond: &N, left: ExitPair, right: ExitPair, cx: &Cx) -> N {
+    let cons = left.value.unwrap_or_else(|| void0(span));
+    let alt = right.value.unwrap_or_else(|| void0(span));
+    let value = fold(
+        &atom(span, Data::Cond { cond: Rc::clone(cond), cons, alt }),
+        cx,
+    );
+    match left.kind {
+        ExitKind::Return => {
+            let value = if is_undefined_like(&value) { None } else { Some(value) };
+            atom(span, Data::Return { value })
+        }
+        ExitKind::Throw => atom(span, Data::Throw { value }),
+    }
+}
+
+fn is_undefined_like(n: &N) -> bool {
+    match &n.data {
+        Data::Unary { op, expr, prefix: true } if op == "void" && is_pure(expr) => true,
+        _ => false,
+    }
+}
+
+/// terser `inference.js` `aborts`.
+fn aborts(n: &N) -> bool {
+    match &n.data {
+        Data::Return { .. } | Data::Throw { .. } | Data::Break { .. } | Data::Continue { .. } => true,
+        Data::Block { body } | Data::StaticBlock { body } => body.iter().any(aborts),
+        Data::If { body, alt, .. } => alt.as_ref().is_some_and(|a| aborts(body) && aborts(a)),
+        Data::Class { props, .. } => props.iter().any(|p| matches!(p.data, Data::StaticBlock { .. }) && aborts(p)),
+        _ => false,
+    }
+}
+
+/// terser `tighten-body.js` `extract_from_unreachable_code`.
+fn extract_unreachable(stat: &N, target: &mut Vec<N>, cx: &Cx, is_root: bool) {
+    match &stat.data {
+        Data::Defs { kind: ast::DefKind::Var, defs, .. } => {
+            if let Some(node) = strip_var_inits(stat, defs) {
+                target.push(node);
+            }
+        }
+        Data::Func { kind: ast::FuncKind::Decl, name, .. } => {
+            if is_root || cx.lookup("use strict").is_none() {
+                if is_root {
+                    target.push(Rc::clone(stat));
+                } else if let Some(name) = name {
+                    target.push(var_from_name(stat, name));
+                }
+            }
+        }
+        Data::Export { .. } | Data::Import { .. } => target.push(Rc::clone(stat)),
+        Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } | Data::Toplevel { .. } => {}
+        Data::Block { body } | Data::Default { body } => {
+            for stmt in body {
+                extract_unreachable(stmt, target, cx, false);
+            }
+        }
+        Data::If { body, alt, .. } => {
+            extract_unreachable(body, target, cx, false);
+            if let Some(alt) = alt {
+                extract_unreachable(alt, target, cx, false);
+            }
+        }
+        Data::Labeled { body, .. }
+        | Data::While { body, .. }
+        | Data::Do { body, .. }
+        | Data::With { body, .. }
+        | Data::Finally { body } => extract_unreachable(body, target, cx, false),
+        Data::For { init, body, .. } => {
+            if let Some(init) = init {
+                extract_unreachable(init, target, cx, false);
+            }
+            extract_unreachable(body, target, cx, false);
+        }
+        Data::ForIn { init, body, .. } | Data::ForOf { init, body, .. } => {
+            extract_unreachable(init, target, cx, false);
+            extract_unreachable(body, target, cx, false);
+        }
+        Data::Switch { body, .. } => {
+            for arm in body {
+                extract_unreachable(arm, target, cx, false);
+            }
+        }
+        Data::Case { body, .. } => {
+            for stmt in body {
+                extract_unreachable(stmt, target, cx, false);
+            }
+        }
+        Data::Try { body, catch, finally } => {
+            extract_unreachable(body, target, cx, false);
+            if let Some(catch) = catch {
+                extract_unreachable(catch, target, cx, false);
+            }
+            if let Some(finally) = finally {
+                extract_unreachable(finally, target, cx, false);
+            }
+        }
+        Data::Catch { body, .. } => extract_unreachable(body, target, cx, false),
+        _ => {}
+    }
+}
+
+fn strip_var_inits(span: &N, defs: &[N]) -> Option<N> {
+    let mut out = Vec::new();
+    for def in defs {
+        let Data::VarDef { name, .. } = &def.data else {
+            continue;
+        };
+        let mut syms = Vec::new();
+        binding_symbols(name, &mut syms);
+        for sym in syms {
+            out.push(atom(def, Data::VarDef { name: sym, value: None }));
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(atom(span, Data::Defs { kind: ast::DefKind::Var, defs: out, await_: false }))
+    }
+}
+
+fn binding_symbols(n: &N, out: &mut Vec<N>) {
+    match &n.data {
+        Data::Symbol { .. } => out.push(Rc::clone(n)),
+        Data::Destructuring { names, .. } => {
+            for name in names {
+                binding_symbols(name, out);
+            }
+        }
+        Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => binding_symbols(left, out),
+        Data::Prop { value, .. } => binding_symbols(value, out),
+        Data::Hole => {}
+        _ => {}
+    }
+}
+
+fn var_from_name(span: &N, name_node: &N) -> N {
+    let sym = match &name_node.data {
+        Data::Symbol { name, quote, .. } => atom(
+            name_node,
+            Data::Symbol { name: name.clone(), kind: ast::SymKind::Var, quote: *quote },
+        ),
+        _ => Rc::clone(name_node),
+    };
+    atom(
+        span,
+        Data::Defs {
+            kind: ast::DefKind::Var,
+            defs: vec![atom(span, Data::VarDef { name: sym, value: None })],
+            await_: false,
+        },
+    )
+}
+
+/// terser `inference.js` `negate`. `first_in_statement` is false for an `if` test.
+fn negate_expr(n: &N, cx: &Cx) -> N {
+    match &n.data {
+        Data::Unary { op, expr, prefix: true } if op == "!" => Rc::clone(expr),
+        Data::Seq { exprs } if exprs.len() >= 2 => {
+            let mut exprs = exprs.clone();
+            let last = exprs.pop().unwrap();
+            exprs.push(negate_expr(&last, cx));
+            sequence(n, exprs)
+        }
+        Data::Cond { cond, cons, alt } => {
+            let flipped = atom(
+                n,
+                Data::Cond {
+                    cond: Rc::clone(cond),
+                    cons: negate_expr(cons, cx),
+                    alt: negate_expr(alt, cx),
+                },
+            );
+            best_expr(&basic_negate(n), &flipped)
+        }
+        Data::Binary { op, left, right } => match op.as_str() {
+            "==" => binary(n, "!=", Rc::clone(left), Rc::clone(right)),
+            "!=" => binary(n, "==", Rc::clone(left), Rc::clone(right)),
+            "===" => binary(n, "!==", Rc::clone(left), Rc::clone(right)),
+            "!==" => binary(n, "===", Rc::clone(left), Rc::clone(right)),
+            "&&" | "||" => {
+                let nop = if op == "&&" { "||" } else { "&&" };
+                let flipped = binary(n, nop, negate_expr(left, cx), negate_expr(right, cx));
+                best_expr(&basic_negate(n), &flipped)
+            }
+            _ => basic_negate(n),
+        },
+        _ => basic_negate(n),
+    }
+}
+
+fn basic_negate(n: &N) -> N {
+    unary(n, "!", Rc::clone(n))
+}
+
+fn best_expr(a: &N, b: &N) -> N {
+    if node_size(a) > node_size(b) { Rc::clone(b) } else { Rc::clone(a) }
+}
+
+/// terser `size.js` `AST_Node.size`. Parentheses follow `output.js` `needs_parens`
+/// for binaries; the root's parent is the `if`, which adds none.
+fn node_size(n: &N) -> usize {
+    size_at(n, None)
+}
+
+fn size_at(n: &N, parent: Option<&N>) -> usize {
+    let own = own_size(n, parent);
+    let mut kids = 0usize;
+    each_size_child(n, |child| kids += size_at(child, Some(n)));
+    own + kids
+}
+
+fn own_size(n: &N, parent: Option<&N>) -> usize {
+    match &n.data {
+        Data::Binary { op, right, .. } | Data::Assign { op, right, .. } => {
+            let mut size = if op == "in" { 4 } else { op.len() };
+            if op == "+" || op == "-" {
+                if let Data::Unary { op: rop, prefix: true, .. } = &right.data {
+                    if rop == op {
+                        size += 1;
+                    }
+                }
+            }
+            size + binary_paren_cost(parent, n, op)
+        }
+        Data::Unary { op, .. } => match op.as_str() {
+            "typeof" => 7,
+            "void" => 5,
+            _ => op.len(),
+        },
+        Data::Number { value, .. } => number_size(*value),
+        Data::String { value, .. } => utf16_len(value) + 2,
+        Data::True => 4,
+        Data::False => 5,
+        Data::Null => 4,
+        Data::Infinity => 8,
+        Data::This => 4,
+        Data::Symbol { name, .. } => {
+            if name == "arguments" { 9 } else { name.chars().count() }
+        }
+        Data::Cond { .. } => 3,
+        Data::Seq { exprs } => exprs.len().saturating_sub(1),
+        Data::Array { elements } => 2 + elements.len().saturating_sub(1),
+        Data::Call { args, optional, is_new, .. } => {
+            let base = if *is_new { 6 } else if *optional { 4 } else { 2 };
+            base + args.len().saturating_sub(1)
+        }
+        Data::Dot { prop, optional, private, .. } => prop.len() + 1 + usize::from(*optional) + usize::from(*private),
+        Data::Sub { optional, .. } => {
+            if *optional { 4 } else { 2 }
+        }
+        Data::Object { props } => 2 + props.len().saturating_sub(1),
+        _ => 0,
+    }
+}
+
+fn each_size_child(n: &N, mut f: impl FnMut(&N)) {
+    match &n.data {
+        Data::Unary { expr, .. }
+        | Data::Dot { expr, .. }
+        | Data::Chain { expr, .. }
+        | Data::Spread { expr, .. }
+        | Data::Await { expr, .. } => f(expr),
+        Data::Binary { left, right, .. }
+        | Data::Assign { left, right, .. }
+        | Data::DefaultAssign { left, right } => {
+            f(left);
+            f(right);
+        }
+        Data::Cond { cond, cons, alt } => {
+            f(cond);
+            f(cons);
+            f(alt);
+        }
+        Data::Seq { exprs } | Data::Array { elements: exprs } => {
+            for expr in exprs {
+                f(expr);
+            }
+        }
+        Data::Call { expr, args, .. } => {
+            f(expr);
+            for arg in args {
+                f(arg);
+            }
+        }
+        Data::Sub { expr, prop, .. } => {
+            f(expr);
+            f(prop);
+        }
+        Data::Object { props } => {
+            for prop in props {
+                f(prop);
+            }
+        }
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(expr) = key {
+                f(expr);
+            }
+            f(value);
+        }
+        _ => {}
+    }
+}
+
+fn binary_paren_cost(parent: Option<&N>, node: &N, op: &str) -> usize {
+    let Some(p) = parent else {
+        return 0;
+    };
+    let needs = match &p.data {
+        Data::Call { expr, .. } if Rc::ptr_eq(expr, node) => true,
+        Data::Unary { .. } => true,
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } if Rc::ptr_eq(expr, node) => true,
+        Data::Binary { op: pop, right, .. } | Data::Assign { op: pop, right, .. } => {
+            let mixed = (op == "??" && (pop == "||" || pop == "&&")) || (pop == "??" && (op == "||" || op == "&&"));
+            if mixed {
+                true
+            } else {
+                match (prec_rank(pop), prec_rank(op)) {
+                    (Some(pp), Some(sp)) => pp > sp || (pp == sp && (Rc::ptr_eq(right, node) || pop == "**")),
+                    _ => false,
+                }
+            }
+        }
+        Data::PrivateIn { value, .. } => match (prec_rank("in"), prec_rank(op)) {
+            (Some(pp), Some(sp)) => pp > sp || (pp == sp && Rc::ptr_eq(value, node)),
+            _ => false,
+        },
+        _ => false,
+    };
+    if needs { 2 } else { 0 }
+}
+
+fn prec_rank(op: &str) -> Option<i32> {
+    Some(match op {
+        "||" => 1,
+        "??" => 2,
+        "&&" => 3,
+        "|" => 4,
+        "^" => 5,
+        "&" => 6,
+        "==" | "===" | "!=" | "!==" => 7,
+        "<" | ">" | "<=" | ">=" | "in" | "instanceof" => 8,
+        ">>" | "<<" | ">>>" => 9,
+        "+" | "-" => 10,
+        "*" | "/" | "%" => 11,
+        "**" => 12,
+        _ => return None,
+    })
+}
+
+fn number_size(value: f64) -> usize {
+    if value == 0.0 {
+        return 1;
+    }
+    if value > 0.0 && value.is_finite() && value.fract() == 0.0 && value < 1e21 {
+        return (value.log10().floor() as usize) + 1;
+    }
+    if value.is_nan() {
+        return 3;
+    }
+    if value.is_infinite() {
+        return if value.is_sign_negative() { 9 } else { 8 };
+    }
+    let text = format!("{value}");
+    let text = text.strip_suffix(".0").unwrap_or(&text);
+    let mut len = text.len();
+    if text.contains('e') && !text.contains("e-") && !text.contains("e+") {
+        len += 1;
+    }
+    len
+}
+
+fn utf16_len(s: &str) -> usize {
+    s.encode_utf16().count()
 }
 
 fn fold_and_or(n: &N) -> Option<N> {
