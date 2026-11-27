@@ -1763,6 +1763,14 @@ fn needs_parens(out: &Out, node: &N) -> bool {
         },
         Data::Object { .. } => !out.has_parens && first_in_statement(out),
         Data::Class { stmt: false, .. } => first_in_statement(out),
+        Data::Number { value, .. }
+            if *value < 0.0 || (*value == 0.0 && value.is_sign_negative()) =>
+        {
+            match &p.data {
+                Data::Binary { op, left, .. } if op == "**" && Rc::ptr_eq(left, node) => true,
+                _ => false,
+            }
+        }
         Data::Unary { op, prefix, .. } => match &p.data {
             Data::Dot { expr, .. } | Data::Sub { expr, .. } | Data::Call { expr, .. } if Rc::ptr_eq(expr, node) => true,
             Data::Binary { op: pop, left, .. } if pop == "**" && *prefix && Rc::ptr_eq(left, node) && op != "++" && op != "--" => true,
@@ -2096,6 +2104,10 @@ fn js_number_string(n: f64) -> String {
         }
     }
     s
+}
+
+pub fn js_number(num: f64) -> String {
+    make_num(num)
 }
 
 fn make_num(num: f64) -> String {

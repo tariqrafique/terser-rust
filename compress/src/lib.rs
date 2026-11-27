@@ -5,9 +5,11 @@
 //! Unchanged subtrees stay the same `Rc`, so a pass that does not fire
 //! prints exactly like the input tree.
 
+mod eval;
+
 use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// Marks the crate as linked into the minify pipeline.
@@ -20,15 +22,39 @@ pub fn touch() {
 struct Opts {
     drop_debugger: bool,
     directives: bool,
+    evaluate: bool,
+    side_effects: bool,
+    booleans: bool,
+    conditionals: bool,
+    dead_code: bool,
+    ie8: bool,
 }
 
 impl Opts {
     fn defaults() -> Self {
-        Self { drop_debugger: true, directives: true }
+        Self {
+            drop_debugger: true,
+            directives: true,
+            evaluate: true,
+            side_effects: true,
+            booleans: true,
+            conditionals: true,
+            dead_code: true,
+            ie8: false,
+        }
     }
 
     fn all_off() -> Self {
-        Self { drop_debugger: false, directives: false }
+        Self {
+            drop_debugger: false,
+            directives: false,
+            evaluate: false,
+            side_effects: false,
+            booleans: false,
+            conditionals: false,
+            dead_code: false,
+            ie8: false,
+        }
     }
 
     fn from_compress(value: &Value) -> Self {
@@ -43,11 +69,35 @@ impl Opts {
         if let Some(v) = bool_key(obj, "directives") {
             opts.directives = v;
         }
+        if let Some(v) = bool_key(obj, "evaluate") {
+            opts.evaluate = v;
+        }
+        if let Some(v) = bool_key(obj, "side_effects") {
+            opts.side_effects = v;
+        }
+        if let Some(v) = bool_key(obj, "booleans") {
+            opts.booleans = v;
+        }
+        if let Some(v) = bool_key(obj, "conditionals") {
+            opts.conditionals = v;
+        }
+        if let Some(v) = bool_key(obj, "dead_code") {
+            opts.dead_code = v;
+        }
+        if let Some(v) = bool_key(obj, "ie8") {
+            opts.ie8 = v;
+        }
         opts
     }
 
     fn any(&self) -> bool {
-        self.drop_debugger || self.directives
+        self.drop_debugger
+            || self.directives
+            || self.evaluate
+            || self.side_effects
+            || self.booleans
+            || self.conditionals
+            || self.dead_code
     }
 }
 
@@ -68,44 +118,92 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if !opts.any() {
         return Rc::clone(root);
     }
-    let mut cx = Cx { opts, frames: vec![HashMap::new()] };
+    let mut cx = Cx {
+        opts,
+        frames: vec![HashMap::new()],
+        in_bool: false,
+        eq_cmp: false,
+        locals: vec![HashSet::new()],
+    };
     transform(root, &mut cx)
 }
 
 struct Cx {
     opts: Opts,
     frames: Vec<HashMap<String, usize>>,
+    in_bool: bool,
+    eq_cmp: bool,
+    locals: Vec<HashSet<String>>,
 }
 
 impl Cx {
-    fn enter(&mut self, n: &N) -> bool {
+    fn shadowed(&self, name: &str) -> bool {
+        self.locals.iter().any(|set| set.contains(name))
+    }
+
+    fn enter(&mut self, n: &N) -> Enter {
         let ptr = Rc::as_ptr(n) as usize;
         match &n.data {
-            Data::Func { .. } | Data::StaticBlock { .. } => {
+            Data::Func { args, body, .. } => {
                 self.frames.push(HashMap::new());
-                true
+                let mut names = HashSet::new();
+                for arg in args {
+                    collect_binding(arg, &mut names);
+                }
+                scan_hoisted(body, &mut names);
+                self.locals.push(names);
+                Enter::Scope
+            }
+            Data::StaticBlock { body } => {
+                self.frames.push(HashMap::new());
+                let mut names = HashSet::new();
+                scan_lexical(body, &mut names);
+                self.locals.push(names);
+                Enter::Scope
+            }
+            Data::Block { body } => {
+                let mut names = HashSet::new();
+                scan_lexical(body, &mut names);
+                self.locals.push(names);
+                Enter::Locals
+            }
+            Data::Catch { arg, .. } => {
+                let mut names = HashSet::new();
+                if let Some(arg) = arg {
+                    collect_binding(arg, &mut names);
+                }
+                self.locals.push(names);
+                Enter::Locals
             }
             Data::Class { .. } => {
                 let already = self.lookup("use strict").is_some();
                 self.frames.push(HashMap::new());
+                self.locals.push(HashSet::new());
                 if !already {
                     self.frames.last_mut().unwrap().insert("use strict".into(), ptr);
                 }
-                true
+                Enter::Scope
             }
             Data::Directive { value, .. } => {
                 if self.lookup(value).is_none() {
                     self.frames.last_mut().unwrap().insert(value.clone(), ptr);
                 }
-                false
+                Enter::None
             }
-            _ => false,
+            _ => Enter::None,
         }
     }
 
-    fn leave(&mut self, entered: bool) {
-        if entered {
-            self.frames.pop();
+    fn leave(&mut self, entered: Enter) {
+        match entered {
+            Enter::Scope => {
+                self.frames.pop();
+                self.locals.pop();
+            }
+            Enter::Locals => {
+                self.locals.pop();
+            }
+            Enter::None => {}
         }
     }
 
@@ -128,15 +226,118 @@ impl Cx {
     }
 }
 
+enum Enter {
+    None,
+    Scope,
+    Locals,
+}
+
+fn collect_binding(n: &N, names: &mut HashSet<String>) {
+    match &n.data {
+        Data::Symbol { name, .. } => {
+            names.insert(name.clone());
+        }
+        Data::DefaultAssign { left, .. } | Data::Assign { left, .. } => collect_binding(left, names),
+        Data::Destructuring { names: inner, .. } => {
+            for n in inner {
+                collect_binding(n, names);
+            }
+        }
+        Data::Spread { expr } => collect_binding(expr, names),
+        Data::Prop { value, .. } => collect_binding(value, names),
+        Data::VarDef { name, .. } => collect_binding(name, names),
+        _ => {}
+    }
+}
+
+fn scan_hoisted(body: &[N], names: &mut HashSet<String>) {
+    for n in body {
+        scan_hoisted_node(n, names);
+    }
+}
+
+fn scan_hoisted_node(n: &N, names: &mut HashSet<String>) {
+    match &n.data {
+        Data::Defs { kind: ast::DefKind::Var, defs, .. } => {
+            for d in defs {
+                collect_binding(d, names);
+            }
+        }
+        Data::Func { kind: ast::FuncKind::Decl, name, .. } => {
+            if let Some(name) = name {
+                collect_binding(name, names);
+            }
+        }
+        Data::Func { .. } | Data::Class { .. } => {}
+        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => scan_hoisted(body, names),
+        Data::If { body, alt, .. } => {
+            scan_hoisted_node(body, names);
+            if let Some(alt) = alt {
+                scan_hoisted_node(alt, names);
+            }
+        }
+        Data::Labeled { body, .. } | Data::Do { body, .. } | Data::While { body, .. } | Data::With { body, .. } | Data::Finally { body } => {
+            scan_hoisted_node(body, names);
+        }
+        Data::For { init, body, .. } => {
+            if let Some(init) = init {
+                scan_hoisted_node(init, names);
+            }
+            scan_hoisted_node(body, names);
+        }
+        Data::ForIn { init, body, .. } | Data::ForOf { init, body, .. } => {
+            scan_hoisted_node(init, names);
+            scan_hoisted_node(body, names);
+        }
+        Data::Switch { body, .. } => scan_hoisted(body, names),
+        Data::Case { body, .. } => scan_hoisted(body, names),
+        Data::Try { body, catch, finally } => {
+            scan_hoisted_node(body, names);
+            if let Some(c) = catch {
+                scan_hoisted_node(c, names);
+            }
+            if let Some(f) = finally {
+                scan_hoisted_node(f, names);
+            }
+        }
+        Data::Catch { body, .. } => scan_hoisted_node(body, names),
+        _ => {}
+    }
+}
+
+fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
+    for n in body {
+        if let Data::Defs { kind, defs, .. } = &n.data {
+            if matches!(kind, ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using) {
+                for d in defs {
+                    collect_binding(d, names);
+                }
+            }
+        }
+        if let Data::Class { stmt: true, name: Some(name), .. } = &n.data {
+            collect_binding(name, names);
+        }
+    }
+}
+
 fn transform(n: &N, cx: &mut Cx) -> N {
     let entered = cx.enter(n);
     let ptr = Rc::as_ptr(n) as usize;
-    let out = if let Some(rep) = optimize(n, ptr, cx) {
+    let mapped = map_children(n, cx);
+    let out = if let Some(rep) = optimize(&mapped, ptr, cx) {
         rep
     } else {
-        map_children(n, cx)
+        eval::fold(&mapped, cx)
     };
     cx.leave(entered);
+    out
+}
+
+fn transform_bool(n: &N, cx: &mut Cx) -> N {
+    let old = cx.in_bool;
+    cx.in_bool = true;
+    let out = transform(n, cx);
+    cx.in_bool = old;
     out
 }
 
@@ -174,6 +375,17 @@ fn map_list(list: &[N], cx: &mut Cx) -> (Vec<N>, bool) {
         out.push(m);
     }
     (out, changed)
+}
+
+fn map_opt_bool(n: &Option<N>, cx: &mut Cx) -> (Option<N>, bool) {
+    match n {
+        None => (None, false),
+        Some(n) => {
+            let m = transform_bool(n, cx);
+            let changed = !Rc::ptr_eq(&m, n);
+            (Some(m), changed)
+        }
+    }
 }
 
 fn map_opt(n: &Option<N>, cx: &mut Cx) -> (Option<N>, bool) {
@@ -243,19 +455,19 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Do { body, cond } => {
             let body_m = transform(body, cx);
-            let cond_m = transform(cond, cx);
+            let cond_m = transform_bool(cond, cx);
             let c = !Rc::ptr_eq(&body_m, body) || !Rc::ptr_eq(&cond_m, cond);
             finish(n, Data::Do { body: body_m, cond: cond_m }, c)
         }
         Data::While { cond, body } => {
-            let cond_m = transform(cond, cx);
+            let cond_m = transform_bool(cond, cx);
             let body_m = transform(body, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::While { cond: cond_m, body: body_m }, c)
         }
         Data::For { init, cond, step, body } => {
             let (init, c1) = map_opt(init, cx);
-            let (cond, c2) = map_opt(cond, cx);
+            let (cond, c2) = map_opt_bool(cond, cx);
             let (step, c3) = map_opt(step, cx);
             let body_m = transform(body, cx);
             let c = c1 || c2 || c3 || !Rc::ptr_eq(&body_m, body);
@@ -282,7 +494,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::With { expr: expr_m, body: body_m }, c)
         }
         Data::If { cond, body, alt } => {
-            let cond_m = transform(cond, cx);
+            let cond_m = transform_bool(cond, cx);
             let body_m = transform(body, cx);
             let (alt, c3) = map_opt(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body) || c3;
@@ -458,13 +670,26 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::Call { expr: expr_m, args, optional: *optional, is_new: *is_new }, c1 || c2)
         }
         Data::Unary { op, expr, prefix } => {
-            let m = transform(expr, cx);
+            let m = if op == "!" { transform_bool(expr, cx) } else { transform(expr, cx) };
             let c = !Rc::ptr_eq(&m, expr);
             finish(n, Data::Unary { op: op.clone(), expr: m, prefix: *prefix }, c)
         }
         Data::Binary { op, left, right } => {
+            let old_bool = cx.in_bool;
+            let old_eq = cx.eq_cmp;
+            if op == "&&" || op == "||" {
+                // Boolean context reaches into && and || only when they are already in one.
+            } else if op == "==" || op == "!=" {
+                cx.in_bool = false;
+                cx.eq_cmp = true;
+            } else {
+                cx.in_bool = false;
+                cx.eq_cmp = false;
+            }
             let left_m = transform(left, cx);
             let right_m = transform(right, cx);
+            cx.in_bool = old_bool;
+            cx.eq_cmp = old_eq;
             let c = !Rc::ptr_eq(&left_m, left) || !Rc::ptr_eq(&right_m, right);
             finish(n, Data::Binary { op: op.clone(), left: left_m, right: right_m }, c)
         }
@@ -481,7 +706,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::DefaultAssign { left: left_m, right: right_m }, c)
         }
         Data::Cond { cond, cons, alt } => {
-            let cond_m = transform(cond, cx);
+            let cond_m = transform_bool(cond, cx);
             let cons_m = transform(cons, cx);
             let alt_m = transform(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&cons_m, cons) || !Rc::ptr_eq(&alt_m, alt);
