@@ -2079,7 +2079,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Defs { kind, defs, await_ } => {
             let (defs, c) = map_list(defs, cx);
-            if cx.opts.reduce_vars && *kind == ast::DefKind::Const && !cx.in_for_init {
+            if cx.opts.reduce_vars && *kind == ast::DefKind::Const && !cx.in_for_init && cx.syms.is_none() {
                 bind_short_consts(&defs, cx);
             }
             finish(n, Data::Defs { kind: *kind, defs, await_: *await_ }, c)
