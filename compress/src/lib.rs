@@ -1189,6 +1189,9 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         return;
     }
     let ptr = Rc::as_ptr(old) as usize;
+    if cx.fresh.borrow().contains_key(&ptr) {
+        cx.fresh.borrow_mut().insert(Rc::as_ptr(new) as usize, Rc::clone(new));
+    }
     if cx.squeezed.contains(&ptr) {
         mark_squeezed(cx, new);
     }
