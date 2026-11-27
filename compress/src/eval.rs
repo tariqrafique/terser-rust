@@ -82,6 +82,10 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = fold_binary(n, cx) {
         return rewritten;
     }
+    // terser `lib/compress/index.js` `def_optimize(AST_Assign)`.
+    if let Some(rewritten) = crate::assign::optimize(n, cx) {
+        return rewritten;
+    }
     // terser `lib/compress/index.js` `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)`.
     if cx.opts.properties || cx.opts.evaluate {
         if let Some(rewritten) = fold_prop_access(n, cx) {
@@ -1163,7 +1167,7 @@ fn apply_lhs(n: &N, cx: &Cx) -> N {
 }
 
 /// terser `lib/compress/common.js` `make_sequence` then `def_optimize(AST_Sequence)`.
-fn tighten_seq(span: &N, exprs: Vec<N>, cx: &Cx) -> N {
+pub(crate) fn tighten_seq(span: &N, exprs: Vec<N>, cx: &Cx) -> N {
     crate::sequence::make_and_optimize(span, exprs, cx)
 }
 
