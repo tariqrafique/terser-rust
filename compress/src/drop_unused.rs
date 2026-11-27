@@ -166,7 +166,9 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
     match &n.data {
         // drop-unused.js `scan_ref_scoped`: a function declaration's body is
         // walked only once its name is in use (an `initializations` entry).
-        Data::Func { kind: ast::FuncKind::Decl, name: Some(nm), .. } if record_inits && def_id(table, nm).is_some() => {
+        Data::Func { kind: ast::FuncKind::Decl, name: Some(nm), .. } | Data::Class { stmt: true, name: Some(nm), .. }
+            if record_inits && def_id(table, nm).is_some() && class_pure(n) =>
+        {
             let id = def_id(table, nm).unwrap();
             u.inits.entry(id).or_default().push(Rc::clone(n));
         }
@@ -347,6 +349,14 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             }
         }
     }
+    // drop-unused.js: an unused `class` declaration goes when it has no side effects.
+    if drop_funcs {
+        if let Data::Class { stmt: true, name: Some(name), .. } = &n.data {
+            if class_pure(n) && owned(table, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
+                return;
+            }
+        }
+    }
     if drop_funcs {
         if let Data::Func { name: Some(name), .. } = &n.data {
             if owned(table, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
@@ -518,6 +528,23 @@ fn one(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: boo
         1 => out.pop().unwrap(),
         _ => node(n, Data::Block { body: out }),
     }
+}
+
+/// A class whose definition runs no code: no `extends` with effects, no
+/// static block, computed key, or static initializer with effects.
+fn class_pure(n: &N) -> bool {
+    let Data::Class { extends, props, .. } = &n.data else { return true };
+    if extends.as_ref().is_some_and(has_side_effects) {
+        return false;
+    }
+    props.iter().all(|p| match &p.data {
+        Data::StaticBlock { body } => body.is_empty(),
+        Data::Field { key, value, static_, .. } => {
+            !matches!(key, Key::Computed(k) if has_side_effects(k)) && !(*static_ && value.as_ref().is_some_and(has_side_effects))
+        }
+        Data::Prop { key: Key::Computed(k), .. } => !has_side_effects(k),
+        _ => true,
+    })
 }
 
 fn seq(span: &N, mut exprs: Vec<N>) -> N {

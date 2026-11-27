@@ -164,7 +164,9 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     } else {
                         (id, SymKind::Class)
                     };
-                    define(table, scopes, dest, sym_name, name, kind, None, false);
+                    // terser `def_function(node, defun)`: a class declaration's `init` is the class.
+                    let init = if *stmt { Some(Rc::clone(n)) } else { None };
+                    define(table, scopes, dest, sym_name, name, kind, init, false);
                 }
             }
             for prop in props {
