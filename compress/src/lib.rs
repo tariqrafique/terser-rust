@@ -59,6 +59,8 @@ struct Opts {
     top_retain: Option<String>,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
+    /// terser `unsafe_comps`. Off unless the fixture sets it.
+    unsafe_comps: bool,
 }
 
 impl Opts {
@@ -94,6 +96,7 @@ impl Opts {
             hoist_funs: false,
             top_retain: None,
             passes: 1,
+            unsafe_comps: false,
         }
     }
 
@@ -129,6 +132,7 @@ impl Opts {
             hoist_funs: false,
             top_retain: None,
             passes: 1,
+            unsafe_comps: false,
         }
     }
 
@@ -188,6 +192,9 @@ impl Opts {
         }
         if let Some(v) = bool_key(obj, "typeofs") {
             opts.typeofs = v;
+        }
+        if let Some(v) = bool_key(obj, "unsafe_comps") {
+            opts.unsafe_comps = v;
         }
         if let Some(v) = bool_key(obj, "if_return") {
             opts.if_return = v;
@@ -262,6 +269,7 @@ impl Opts {
             || self.comparisons
             || self.lhs_constants
             || self.typeofs
+            || self.unsafe_comps
             || self.if_return
             || self.inline > 0
             || self.switches
@@ -378,6 +386,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         squeezed: HashSet::new(),
         optimized: HashSet::new(),
         flag_keep: Vec::new(),
+        stack: Vec::new(),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -426,6 +435,8 @@ struct Cx {
     optimized: HashSet<usize>,
     /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
     flag_keep: Vec<N>,
+    /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
+    stack: Vec<N>,
 }
 
 impl Cx {
@@ -661,8 +672,13 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         cx.leave(entered);
         return out;
     }
+    // The stack top is the once-rewritten node during the second descend so
+    // `parent.left === self` sees updated children, then the original for `fold`.
+    cx.stack.push(Rc::clone(n));
     let once = map_children(n, cx);
+    *cx.stack.last_mut().unwrap() = Rc::clone(&once);
     let twice = map_children(&once, cx);
+    *cx.stack.last_mut().unwrap() = Rc::clone(n);
     // Statement joining (`tighten`) is part of the scope/block optimizer, so it
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
@@ -699,6 +715,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if same {
         mark_squeezed(cx, &out);
     }
+    cx.stack.pop();
     cx.leave(entered);
     out
 }

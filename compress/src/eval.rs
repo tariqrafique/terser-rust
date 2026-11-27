@@ -75,15 +75,14 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = optimize_if(n, cx) {
         return rewritten;
     }
-    if cx.opts.evaluate {
-        if let Some(rewritten) = fold_and_or(n) {
-            return rewritten;
-        }
+    // terser `lib/compress/index.js` `def_optimize(AST_UnaryPrefix)` calls
+    // `AST_Binary.negate` (`inference.js`) when `!` is in boolean context.
+    if let Some(rewritten) = fold_not_binary(n, cx) {
+        return rewritten;
     }
-    if cx.opts.comparisons || cx.opts.lhs_constants {
-        if let Some(rewritten) = fold_compare(n, cx) {
-            return rewritten;
-        }
+    // terser `lib/compress/index.js` `def_optimize(AST_Binary)`.
+    if let Some(rewritten) = fold_binary(n, cx) {
+        return rewritten;
     }
     if cx.opts.properties {
         if let Some(rewritten) = fold_property(n) {
@@ -1114,46 +1113,668 @@ fn utf16_len(s: &str) -> usize {
     s.encode_utf16().count()
 }
 
-fn fold_and_or(n: &N) -> Option<N> {
+/// terser `lib/compress/index.js` `def_optimize(AST_Binary)`.
+///
+/// Comparisons, `&&` / `||` / `??`, the commutative lhs swap, and `===` → `==`.
+/// String-concat, bitwise De Morgan, and template joins stay out of this pass.
+fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { .. } = &n.data else {
+        return None;
+    };
+    let mut cur = apply_lhs(n, cx);
+    if let Some(lifted) = lift_sequences(&cur, cx) {
+        return Some(lifted);
+    }
+    if cx.opts.comparisons || cx.opts.lhs_constants {
+        if let Some(next) = fold_compare(&cur, cx) {
+            if !matches!(next.data, Data::Binary { .. }) {
+                return Some(next);
+            }
+            cur = next;
+        }
+    }
+    if let Some(next) = unsafe_comp_reverse(&cur, cx) {
+        cur = next;
+    }
+    if cx.opts.evaluate {
+        if let Some(next) = eval_logical(&cur, cx) {
+            return Some(next);
+        }
+        if let Some(next) = plus_to_minus(&cur, cx) {
+            return Some(next);
+        }
+        if let Some(next) = numeric_swap(&cur, cx) {
+            cur = next;
+        }
+    }
+    if let Some(next) = reassoc_lazy(&cur) {
+        cur = next;
+    }
+    if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
+}
+
+/// terser `def_optimize(AST_Binary)` `lhs_constants` + `commutativeOperators`.
+fn apply_lhs(n: &N, cx: &Cx) -> N {
+    let Data::Binary { op, left, right } = &n.data else {
+        return Rc::clone(n);
+    };
+    if !(cx.opts.lhs_constants && commutative(op) && is_constant(right) && !is_constant(left)) {
+        return Rc::clone(n);
+    }
+    let blocked = match &left.data {
+        Data::Binary { op: left_op, .. } => prec(left_op) >= prec(op),
+        _ => false,
+    };
+    if blocked {
+        Rc::clone(n)
+    } else {
+        binary(n, op, Rc::clone(right), Rc::clone(left))
+    }
+}
+
+/// terser `index.js` `AST_Binary.lift_sequences`.
+fn lift_sequences(n: &N, cx: &Cx) -> Option<N> {
+    if cx.opts.sequences_limit <= 0 {
+        return None;
+    }
     let Data::Binary { op, left, right } = &n.data else {
         return None;
     };
-    if op != "&&" && op != "||" && op != "??" {
+    if let Data::Seq { exprs } = &left.data {
+        if exprs.is_empty() {
+            return None;
+        }
+        let mut parts = exprs.clone();
+        let tail = parts.pop().unwrap();
+        parts.push(binary(n, op, tail, Rc::clone(right)));
+        return Some(tighten_seq(n, parts, cx));
+    }
+    if let Data::Seq { exprs } = &right.data {
+        if exprs.is_empty() || has_side(left, cx) {
+            return None;
+        }
+        let last = exprs.len() - 1;
+        let mut i = 0;
+        while i < last && !has_side(&exprs[i], cx) {
+            i += 1;
+        }
+        if i == 0 {
+            return None;
+        }
+        if i == last {
+            let mut parts = exprs.clone();
+            let tail = parts.pop().unwrap();
+            parts.push(binary(n, op, Rc::clone(left), tail));
+            return Some(tighten_seq(n, parts, cx));
+        }
+        let mut parts = exprs[..i].to_vec();
+        let rest = atom(n, Data::Seq { exprs: exprs[i..].to_vec() });
+        parts.push(binary(n, op, Rc::clone(left), rest));
+        return Some(tighten_seq(n, parts, cx));
+    }
+    None
+}
+
+/// terser `common.js` `make_sequence` + `def_optimize(AST_Sequence)` side-effect trim.
+fn tighten_seq(span: &N, exprs: Vec<N>, cx: &Cx) -> N {
+    let mut flat = Vec::new();
+    for e in exprs {
+        if let Data::Seq { exprs } = &e.data {
+            flat.extend(exprs.iter().cloned());
+        } else {
+            flat.push(e);
+        }
+    }
+    if cx.opts.side_effects && !flat.is_empty() {
+        let last = flat.len() - 1;
+        flat = flat
+            .into_iter()
+            .enumerate()
+            .filter(|(i, e)| *i == last || has_side(e, cx))
+            .map(|(_, e)| e)
+            .collect();
+    }
+    match flat.len() {
+        0 => num(span, 0.0),
+        1 => maintain_this(cx, flat.pop().unwrap()),
+        _ => atom(span, Data::Seq { exprs: flat }),
+    }
+}
+
+/// terser `common.js` `maintain_this_binding`.
+fn maintain_this(cx: &Cx, val: N) -> N {
+    let len = cx.stack.len();
+    if len < 2 {
+        return val;
+    }
+    let self_n = &cx.stack[len - 1];
+    let parent = &cx.stack[len - 2];
+    let needs = match &parent.data {
+        Data::Unary { op, expr, prefix: true } if op == "delete" && Rc::ptr_eq(expr, self_n) => true,
+        Data::Call { expr, .. } if Rc::ptr_eq(expr, self_n) => match &val.data {
+            Data::Chain { .. } | Data::Dot { .. } | Data::Sub { .. } => true,
+            Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "eval" => true,
+            _ => false,
+        },
+        _ => false,
+    };
+    if needs {
+        let zero = num(self_n, 0.0);
+        atom(self_n, Data::Seq { exprs: vec![zero, val] })
+    } else {
+        val
+    }
+}
+
+/// terser `Compressor.in_boolean_context`.
+fn in_boolean_context(cx: &Cx) -> bool {
+    if !cx.opts.booleans || cx.stack.len() < 2 {
+        return false;
+    }
+    let mut self_n = cx.stack.last().unwrap().clone();
+    for i in (0..cx.stack.len() - 1).rev() {
+        let parent = &cx.stack[i];
+        if bool_producer(parent, &self_n) {
+            return true;
+        }
+        if bool_continues(parent, &self_n) {
+            self_n = Rc::clone(parent);
+        } else {
+            return false;
+        }
+    }
+    false
+}
+
+fn bool_producer(parent: &N, self_n: &N) -> bool {
+    match &parent.data {
+        Data::Simple { body } => Rc::ptr_eq(body, self_n),
+        Data::Cond { cond, .. } | Data::Do { cond, .. } | Data::While { cond, .. } | Data::If { cond, .. } => {
+            Rc::ptr_eq(cond, self_n)
+        }
+        Data::For { cond: Some(cond), .. } => Rc::ptr_eq(cond, self_n),
+        Data::Unary { op, expr, prefix: true } if op == "!" => Rc::ptr_eq(expr, self_n),
+        _ => false,
+    }
+}
+
+fn bool_continues(parent: &N, self_n: &N) -> bool {
+    match &parent.data {
+        Data::Binary { op, .. } if op == "&&" || op == "||" => true,
+        Data::Cond { .. } => true,
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, self_n)),
+        _ => false,
+    }
+}
+
+fn left_of(cx: &Cx, op: &str) -> bool {
+    let len = cx.stack.len();
+    if len < 2 {
+        return false;
+    }
+    let self_n = &cx.stack[len - 1];
+    match &cx.stack[len - 2].data {
+        Data::Binary { op: pop, left, .. } => pop == op && Rc::ptr_eq(left, self_n),
+        _ => false,
+    }
+}
+
+/// terser `def_optimize(AST_Binary)` `evaluate` switch for `&&`, `||`, and `??`.
+fn eval_logical(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { op, left, right } = &n.data else {
+        return None;
+    };
+    match op.as_str() {
+        "&&" => eval_and(n, left, right, cx),
+        "||" => eval_or(n, left, right, cx),
+        "??" => eval_nullish(n, left, right, cx),
+        _ => None,
+    }
+}
+
+fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
+    if let Some(ll) = eval(left) {
+        if !ll.truthy() {
+            return Some(maintain_this(cx, Rc::clone(left)));
+        }
+        return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
+    }
+    if let Some(rr) = eval(right) {
+        if !rr.truthy() {
+            if in_boolean_context(cx) {
+                return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 0.0)], cx));
+            }
+        } else if left_of(cx, "&&") || in_boolean_context(cx) {
+            return Some(maintain_this(cx, Rc::clone(left)));
+        }
+    }
+    // `(x || false) && y` => `x ? y : false`
+    if let Data::Binary { op, left: ll, right: lr } = &left.data {
+        if op == "||" {
+            if let Some(v) = eval(lr) {
+                if !v.truthy() {
+                    let node = atom(
+                        span,
+                        Data::Cond {
+                            cond: Rc::clone(ll),
+                            cons: Rc::clone(right),
+                            alt: Rc::clone(lr),
+                        },
+                    );
+                    return Some(fold_cond(&node).unwrap_or(node));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
+    if let Some(ll) = eval(left) {
+        if !ll.truthy() {
+            return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
+        }
+        return Some(maintain_this(cx, Rc::clone(left)));
+    }
+    if let Some(rr) = eval(right) {
+        if !rr.truthy() {
+            if left_of(cx, "||") || in_boolean_context(cx) {
+                return Some(maintain_this(cx, Rc::clone(left)));
+            }
+        } else if in_boolean_context(cx) {
+            return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 1.0)], cx));
+        }
+    }
+    // `(x && true) || y` => `x ? true : y`
+    if let Data::Binary { op, left: ll, right: lr } = &left.data {
+        if op == "&&" {
+            if let Some(v) = eval(lr) {
+                if v.truthy() {
+                    let node = atom(
+                        span,
+                        Data::Cond {
+                            cond: Rc::clone(ll),
+                            cons: Rc::clone(lr),
+                            alt: Rc::clone(right),
+                        },
+                    );
+                    return Some(fold_cond(&node).unwrap_or(node));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn eval_nullish(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
+    let _ = span;
+    if is_nullish_node(left, cx) {
+        return Some(Rc::clone(right));
+    }
+    if let Some(ll) = eval(left) {
+        return Some(if matches!(ll, Lit::Null | Lit::Undef) {
+            Rc::clone(right)
+        } else {
+            Rc::clone(left)
+        });
+    }
+    if in_boolean_context(cx) {
+        if let Some(rr) = eval(right) {
+            if !rr.truthy() {
+                return Some(Rc::clone(left));
+            }
+        }
+    }
+    None
+}
+
+fn is_nullish_node(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Null => true,
+        Data::Unary { op, expr, prefix: true } if op == "void" => !has_side(expr, cx),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.shadowed(name),
+        _ => false,
+    }
+}
+
+/// terser `def_optimize(AST_Binary)` `a + -b => a - b` and `-a + b => b - a`.
+fn plus_to_minus(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { op, left, right } = &n.data else {
+        return None;
+    };
+    if op != "+" {
         return None;
     }
-    let lit = eval(left)?;
+    if let Data::Unary { op: uop, expr, prefix: true } = &right.data {
+        if uop == "-" && is_number_or_bigint(left) {
+            return Some(binary(n, "-", Rc::clone(left), Rc::clone(expr)));
+        }
+    }
+    if let Data::Unary { op: uop, expr, prefix: true } = &left.data {
+        if uop == "-" && reversible(left, right, cx) && is_number_or_bigint(right) {
+            return Some(binary(n, "-", Rc::clone(right), Rc::clone(expr)));
+        }
+    }
+    None
+}
+
+/// terser `def_optimize(AST_Binary)` `a + +b => +b + a` (`best_of` on `+ * & | ^`).
+fn numeric_swap(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { op, left, right } = &n.data else {
+        return None;
+    };
+    if !matches!(op.as_str(), "+" | "*" | "&" | "|" | "^") {
+        return None;
+    }
+    if !(is_number_or_bigint(left) && is_number_or_bigint(right) && reversible(left, right, cx)) {
+        return None;
+    }
+    let blocked = match &left.data {
+        Data::Binary { op: lop, .. } if lop != op && prec(lop) >= prec(op) => true,
+        _ => false,
+    };
+    if blocked {
+        return None;
+    }
+    let reversed = binary(n, op, Rc::clone(right), Rc::clone(left));
+    let prefer_reversed = is_constant(right) && !is_constant(left);
+    let pick = if prefer_reversed {
+        if print_len(n) > print_len(&reversed) { reversed } else if print_len(n) == print_len(&reversed) { reversed } else { Rc::clone(n) }
+    } else if print_len(&reversed) < print_len(n) {
+        reversed
+    } else {
+        Rc::clone(n)
+    };
+    if Rc::ptr_eq(&pick, n) { None } else { Some(pick) }
+}
+
+/// terser `def_optimize(AST_Binary)` `unsafe_comps` reversal of `<` / `<=`.
+fn unsafe_comp_reverse(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.comparisons || !cx.opts.unsafe_comps || !is_boolean_node(n) {
+        return None;
+    }
+    let Data::Binary { op, left, right } = &n.data else {
+        return None;
+    };
+    let flipped = match op.as_str() {
+        "<" => ">",
+        "<=" => ">=",
+        _ => return None,
+    };
+    if !reversible(left, right, cx) {
+        return None;
+    }
+    Some(binary(n, flipped, Rc::clone(right), Rc::clone(left)))
+}
+
+fn reversible(left: &N, right: &N, cx: &Cx) -> bool {
+    is_constant(left) || is_constant(right) || (!has_side(left, cx) && !has_side(right, cx))
+}
+
+/// `x && (y && z)` => `(x && y) && z`, and the same for `||` and `??`.
+fn reassoc_lazy(n: &N) -> Option<N> {
+    let Data::Binary { op, left, right } = &n.data else {
+        return None;
+    };
+    if !matches!(op.as_str(), "&&" | "||" | "??") {
+        return None;
+    }
+    let Data::Binary { op: rop, left: rl, right: rr } = &right.data else {
+        return None;
+    };
+    if rop != op {
+        return None;
+    }
+    let mut cur_left = binary(n, op, Rc::clone(left), Rc::clone(rl));
+    let mut cur_right = Rc::clone(rr);
+    while let Data::Binary { op: rop, left: rl, right: rr } = &cur_right.data {
+        if rop != op {
+            break;
+        }
+        cur_left = binary(n, op, cur_left, Rc::clone(rl));
+        cur_right = Rc::clone(rr);
+    }
+    Some(binary(n, op, cur_left, cur_right))
+}
+
+/// terser `inference.js` `AST_Binary.negate`, used from `AST_UnaryPrefix` `!`.
+fn fold_not_binary(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Unary { op, expr, prefix: true } = &n.data else {
+        return None;
+    };
+    if op != "!" || !matches!(expr.data, Data::Binary { .. }) || !in_boolean_context(cx) {
+        return None;
+    }
+    let neg = negate_binary(expr, cx);
+    if print_len(n) > print_len(&neg) {
+        Some(neg)
+    } else {
+        None
+    }
+}
+
+fn negate_binary(n: &N, cx: &Cx) -> N {
+    let Data::Binary { op, left, right } = &n.data else {
+        return unary(n, "!", Rc::clone(n));
+    };
+    if cx.opts.unsafe_comps {
+        let flipped = match op.as_str() {
+            "<=" => Some(">"),
+            "<" => Some(">="),
+            ">=" => Some("<"),
+            ">" => Some("<="),
+            _ => None,
+        };
+        if let Some(nop) = flipped {
+            return binary(n, nop, Rc::clone(left), Rc::clone(right));
+        }
+    }
     match op.as_str() {
-        "&&" => {
-            if !lit.truthy() {
-                Some(Rc::clone(left))
-            } else if is_pure(left) {
-                Some(Rc::clone(right))
-            } else {
-                None
+        "==" => binary(n, "!=", Rc::clone(left), Rc::clone(right)),
+        "!=" => binary(n, "==", Rc::clone(left), Rc::clone(right)),
+        "===" => binary(n, "!==", Rc::clone(left), Rc::clone(right)),
+        "!==" => binary(n, "===", Rc::clone(left), Rc::clone(right)),
+        "&&" | "||" => {
+            let nop = if op == "&&" { "||" } else { "&&" };
+            let nl = negate_node(left, cx);
+            let nr = negate_node(right, cx);
+            let alt = binary(n, nop, nl, nr);
+            let wrapped = unary(n, "!", Rc::clone(n));
+            if print_len(&wrapped) > print_len(&alt) { alt } else { wrapped }
+        }
+        _ => unary(n, "!", Rc::clone(n)),
+    }
+}
+
+fn negate_node(n: &N, cx: &Cx) -> N {
+    match &n.data {
+        Data::Unary { op, expr, prefix: true } if op == "!" => Rc::clone(expr),
+        Data::Binary { .. } => negate_binary(n, cx),
+        _ => unary(n, "!", Rc::clone(n)),
+    }
+}
+
+fn is_boolean_node(n: &N) -> bool {
+    is_boolean(n)
+}
+
+/// terser `def_optimize(AST_Binary)` object identity and 32-bit `== 0` / mask checks.
+fn fold_cmp_bits(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
+    if same_object_ref(left, right, cx) {
+        return Some(bool_value(span, op.starts_with('='), cx));
+    }
+    if is_32_bit(left) && is_32_bit(right) {
+        // Constant comparisons belong to evaluate. `0 == 0` => `!0` here
+        // leaves a switch-built `if` unchanged, so `fold_if` never runs.
+        if eval(left).is_some() && eval(right).is_some() {
+            return None;
+        }
+        if num_is_zero(left) {
+            return Some(booleanify(span, Rc::clone(right), op.starts_with('!'), cx));
+        }
+        if num_is_zero(right) {
+            return Some(booleanify(span, Rc::clone(left), op.starts_with('!'), cx));
+        }
+        if let Some(masked) = mask_bits(span, op, left, right, cx) {
+            if print_len(&masked) < print_len(span) {
+                return Some(masked);
             }
         }
-        "||" => {
-            if lit.truthy() {
-                Some(Rc::clone(left))
-            } else if is_pure(left) {
-                Some(Rc::clone(right))
-            } else {
-                None
-            }
+    }
+    None
+}
+
+fn same_object_ref(left: &N, right: &N, cx: &Cx) -> bool {
+    let (Data::Symbol { kind: ast::SymKind::Ref, .. }, Data::Symbol { kind: ast::SymKind::Ref, .. }) =
+        (&left.data, &right.data)
+    else {
+        return false;
+    };
+    let Some(table) = &cx.syms else {
+        return false;
+    };
+    let Some(&idl) = table.node_def.get(&crate::syms::ptr(left)) else {
+        return false;
+    };
+    let Some(&idr) = table.node_def.get(&crate::syms::ptr(right)) else {
+        return false;
+    };
+    if idl != idr {
+        return false;
+    }
+    let Some(fixed) = table.defs.get(idl).and_then(|d| d.fixed.as_ref()) else {
+        return false;
+    };
+    matches!(
+        fixed.data,
+        Data::Array { .. } | Data::Object { .. } | Data::Func { .. } | Data::Class { .. }
+    )
+}
+
+fn bool_value(span: &N, truth: bool, cx: &Cx) -> N {
+    if cx.opts.booleans && in_boolean_context(cx) {
+        num(span, if truth { 1.0 } else { 0.0 })
+    } else if cx.opts.booleans {
+        unary(span, "!", num(span, if truth { 0.0 } else { 1.0 }))
+    } else if truth {
+        atom(span, Data::True)
+    } else {
+        atom(span, Data::False)
+    }
+}
+
+fn booleanify(span: &N, node: N, truthy: bool, cx: &Cx) -> N {
+    if truthy {
+        if in_boolean_context(cx) {
+            node
+        } else {
+            unary(span, "!", unary(span, "!", node))
         }
-        "??" => {
-            let nullish = matches!(lit, Lit::Null | Lit::Undef);
-            if nullish {
-                if is_pure(left) {
-                    Some(Rc::clone(right))
-                } else {
-                    None
-                }
-            } else {
-                Some(Rc::clone(left))
-            }
+    } else {
+        unary(span, "!", node)
+    }
+}
+
+fn num_is_zero(n: &N) -> bool {
+    match &n.data {
+        Data::Number { value, .. } => *value == 0.0 && !value.is_nan(),
+        _ => false,
+    }
+}
+
+fn is_32_bit(n: &N) -> bool {
+    match &n.data {
+        Data::Number { value, .. } => *value == to_int32(*value) as f64,
+        Data::Unary { op, expr, prefix: true } if op == "~" => is_number(expr),
+        Data::Unary { op, expr, prefix: true } if op == "+" => is_32_bit(expr),
+        Data::Binary { op, left, right } if matches!(op.as_str(), "&" | "|" | "^" | "<<" | ">>" | ">>>" | "~") => {
+            is_number(left) || is_number(right)
         }
-        _ => None,
+        _ => false,
+    }
+}
+
+fn mask_bits(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
+    let (and_op, mask) = if matches!(&left.data, Data::Binary { .. }) {
+        (left, right)
+    } else if matches!(&right.data, Data::Binary { .. }) {
+        (right, left)
+    } else {
+        return None;
+    };
+    let Data::Binary { op: aop, left: al, right: ar } = &and_op.data else {
+        return None;
+    };
+    if aop != "&" {
+        return None;
+    }
+    let Data::Number { value, .. } = &mask.data else {
+        return None;
+    };
+    if *value != to_int32(*value) as f64 {
+        return None;
+    }
+    let x = if equivalent(al, mask) {
+        ar
+    } else if equivalent(ar, mask) {
+        al
+    } else {
+        return None;
+    };
+    let inner = binary(
+        span,
+        "&",
+        Rc::clone(mask),
+        unary(span, "~", Rc::clone(x)),
+    );
+    Some(booleanify(span, inner, op.starts_with('!'), cx))
+}
+
+fn has_side(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::BigInt { .. }
+        | Data::True
+        | Data::False
+        | Data::Null
+        | Data::Hole
+        | Data::This
+        | Data::Infinity
+        | Data::RegExp { .. } => false,
+        Data::Func { .. } => false,
+        Data::Array { elements } => elements.iter().any(|e| has_side(e, cx)),
+        Data::Object { props } => props.iter().any(|p| prop_side(p, cx)),
+        Data::Class { extends, props, .. } => {
+            extends.as_ref().is_some_and(|e| has_side(e, cx)) || props.iter().any(|p| prop_side(p, cx))
+        }
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => !cx.shadowed(name),
+        Data::Unary { op, expr, prefix: true } => {
+            matches!(op.as_str(), "delete" | "++" | "--") || has_side(expr, cx)
+        }
+        Data::Unary { .. } => true,
+        Data::Binary { op, left, right } if !is_assign(op) => has_side(left, cx) || has_side(right, cx),
+        Data::Seq { exprs } => exprs.iter().any(|e| has_side(e, cx)),
+        Data::Cond { cond, cons, alt } => has_side(cond, cx) || has_side(cons, cx) || has_side(alt, cx),
+        _ => true,
+    }
+}
+
+fn prop_side(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Prop { key, value, .. } => key_side(key, cx) || has_side(value, cx),
+        Data::Field { key, value, .. } => {
+            key_side(key, cx) || value.as_ref().is_some_and(|v| has_side(v, cx))
+        }
+        Data::Spread { expr } => has_side(expr, cx),
+        _ => true,
+    }
+}
+
+fn key_side(key: &ast::Key, cx: &Cx) -> bool {
+    match key {
+        ast::Key::Computed(expr) => has_side(expr, cx),
+        _ => false,
     }
 }
 
@@ -1187,15 +1808,26 @@ fn fold_compare(n: &N, cx: &Cx) -> Option<N> {
         }
         let still_strict = op_s.len() == 3 && (op_s == "===" || op_s == "!==");
         if matches!(op_s.as_str(), "==" | "!=" | "===" | "!==") {
+            let mut took = false;
             if !still_strict && is_undefined_value(&left_n, cx) {
                 left_n = atom(n, Data::Null);
+                took = true;
             } else if !still_strict && is_undefined_value(&right_n, cx) {
                 right_n = atom(n, Data::Null);
+                took = true;
             } else if cx.opts.typeofs {
                 if let Some((left, right, op)) = fold_typeof(&left_n, &right_n, &op_s, n, cx) {
                     left_n = left;
                     right_n = right;
                     op_s = op;
+                    took = true;
+                }
+            }
+            // terser `def_optimize(AST_Binary)` `==` / `!=` fall-through:
+            // same object ref, and 32-bit compares with `0` or a full mask.
+            if !took {
+                if let Some(done) = fold_cmp_bits(n, &op_s, &left_n, &right_n, cx) {
+                    return Some(done);
                 }
             }
         }
