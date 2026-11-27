@@ -14,4 +14,8 @@ Node is used only as an oracle (`oracle/`) and to build corpora (`harness/`).
 | `terser` | `minify(src, opts) -> Result<Output>` |
 | `harness` | Corpus, oracle driver, and the pass/fail board |
 
-`minify` is a stub until the pipeline is ported. `cargo run -p harness -- board` compares it to the oracle.
+`minify` runs parse, compress, mangle, and print. Parse, mangle, and print match terser on every corpus. The compressor is in progress: `compress/PORT.md` tracks what is ported and the current board. The goal is a full port, every board set byte-exact.
+
+Out of scope: the `acorn` / ESTree path (`--parse acorn`, `from_mozilla_ast`, `to_mozilla_ast`).
+
+`cargo run -p harness -- board` compares `minify` to the oracle.

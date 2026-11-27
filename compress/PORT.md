@@ -39,7 +39,9 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
-Stop when any one is true: default 2260/3013, fixture 2000/2671, a whole fixture family at 100%, or lwc 339/339.
+Goal: the full terser 5.51.4 port. Every set on the board matches byte for byte: `default`, `fixture`, `lwc`, `lwc-rollup`, and `bundles`. There is no intermediate stop point.
+
+Out of scope: the `acorn` path (terser's `--parse acorn` / `spidermonkey` input and `AST_Node.from_mozilla_ast` / `to_mozilla_ast`). Fixture cases that only differ through it are not targets.
 
 A class expression name is bound inside the class, so it does not keep an outer `var` of the same name. A class field initializer is a use.
 

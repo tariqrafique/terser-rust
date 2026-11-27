@@ -3,7 +3,7 @@ name = "terser"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-description = "Pure Rust port of terser. minify is still a stub."
+description = "Pure Rust port of terser."
 
 [dependencies]
 ast = { path = "../ast" }
