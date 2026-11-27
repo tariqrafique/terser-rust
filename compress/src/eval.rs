@@ -1336,7 +1336,7 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
                             alt: Rc::clone(lr),
                         },
                     );
-                    return Some(fold_cond(&node).unwrap_or(node));
+                    return Some(fold_cond(&node, cx).unwrap_or(node));
                 }
             }
         }
@@ -1373,7 +1373,7 @@ fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
                             alt: Rc::clone(right),
                         },
                     );
-                    return Some(fold_cond(&node).unwrap_or(node));
+                    return Some(fold_cond(&node, cx).unwrap_or(node));
                 }
             }
         }
