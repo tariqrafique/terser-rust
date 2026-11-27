@@ -10,3 +10,6 @@ path = "src/main.rs"
 
 [dependencies]
 terser = { path = "../terser" }
+hex = "0.4"
+serde_json = "1"
+sha2 = "0.10"
