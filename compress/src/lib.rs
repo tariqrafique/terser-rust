@@ -86,6 +86,8 @@ struct Opts {
     unsafe_methods: UnsafeMethods,
     /// terser `module`: implies `toplevel` and an enclosing `"use strict"`.
     module: bool,
+    /// terser `arrows`: an object method that only returns becomes an arrow.
+    arrows: bool,
 }
 
 /// terser `unsafe_methods`: `false`, `true`, or a `RegExp`.
@@ -148,6 +150,7 @@ impl Opts {
             expression: false,
             unsafe_methods: UnsafeMethods::Off,
             module: false,
+            arrows: true,
         }
     }
 
@@ -192,6 +195,7 @@ impl Opts {
             expression: false,
             unsafe_methods: UnsafeMethods::Off,
             module: false,
+            arrows: false,
         }
     }
 
@@ -333,6 +337,9 @@ impl Opts {
         if let Some(v) = bool_key(obj, "module") {
             opts.module = v;
         }
+        if let Some(v) = bool_key(obj, "arrows") {
+            opts.arrows = v;
+        }
         if opts.module {
             opts.toplevel_vars = true;
             opts.toplevel_funcs = true;
@@ -368,6 +375,7 @@ impl Opts {
             || self.unsafe_math
             || self.expression
             || !matches!(self.unsafe_methods, UnsafeMethods::Off)
+            || self.arrows
     }
 }
 

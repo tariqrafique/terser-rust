@@ -20,6 +20,7 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         Data::Array { elements } => optimize_array(n, elements, cx),
         Data::Object { props } => optimize_object(n, props, cx),
         Data::Prop { method: None, .. } => optimize_keyval(n, cx),
+        Data::Prop { method: Some(ast::MethodKind::Method), .. } => optimize_concise_method(n, cx),
         // terser `def_optimize(AST_RegExp)` is `literals_in_boolean_context`.
         Data::RegExp { .. } => literals_in_boolean_context(n, cx),
         _ => None,
@@ -42,6 +43,62 @@ fn optimize_object(n: &N, props: &[N], cx: &Cx) -> Option<N> {
     }
     let props = inline_object_prop_spread(props)?;
     Some(atom(n, Data::Object { props }))
+}
+
+/// terser `def_optimize(AST_ConciseMethod)`: `p(){return x}` is `p:()=>x`.
+fn optimize_concise_method(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.arrows || !cx.parent().is_some_and(|p| matches!(p.data, Data::Object { .. })) {
+        return None;
+    }
+    let Data::Prop { key, value, static_, private, generator, async_, .. } = &n.data else { return None };
+    let Data::Func { args, body, async_: fn_async, generator: fn_gen, .. } = &value.data else { return None };
+    if *generator || *fn_gen || *private || *static_ {
+        return None;
+    }
+    if body.len() != 1 || !matches!(body[0].data, Data::Return { value: Some(_) }) {
+        return None;
+    }
+    if crate::eval::contains_this(value) || mentions_arguments_or_pinned(value) {
+        return None;
+    }
+    let arrow = atom(value, Data::Func {
+        kind: ast::FuncKind::Arrow,
+        name: None,
+        args: args.clone(),
+        body: body.clone(),
+        async_: *fn_async || *async_,
+        generator: false,
+    });
+    Some(atom(n, Data::Prop {
+        method: None,
+        key: key.clone(),
+        value: arrow,
+        static_: false,
+        private: false,
+        generator: false,
+        async_: false,
+    }))
+}
+
+/// `uses_arguments`, `pinned()` (direct `eval` or `with`), or `super` in a
+/// method body: none of them survive the move to an arrow.
+fn mentions_arguments_or_pinned(func: &N) -> bool {
+    fn rec(n: &N, top: bool) -> bool {
+        match &n.data {
+            Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "arguments" || name == "eval" => true,
+            Data::With { .. } | Data::Super => true,
+            Data::Func { kind, .. } if !top && !matches!(kind, ast::FuncKind::Arrow) => false,
+            _ => {
+                let mut hit = false;
+                let _ = ast::map_children(n, &mut |c| {
+                    hit = hit || rec(c, false);
+                    Rc::clone(c)
+                });
+                hit
+            }
+        }
+    }
+    rec(func, true)
 }
 
 /// terser `def_optimize(AST_ObjectKeyVal)`.
