@@ -600,6 +600,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
         fresh: RefCell::new(HashMap::new()),
+        injected: RefCell::new(HashMap::new()),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -691,6 +692,8 @@ struct Cx {
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<HashMap<usize, N>>,
+    /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
+    injected: RefCell<HashMap<usize, HashSet<String>>>,
 }
 
 impl Cx {

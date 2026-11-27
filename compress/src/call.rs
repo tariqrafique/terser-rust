@@ -331,6 +331,9 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         }
     }
     exprs.push(returned);
+    if !declared.is_empty() {
+        cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());
+    }
     if !decls.is_empty() {
         let var = atom(func, Data::Defs { kind: ast::DefKind::Var, defs: decls, await_: false });
         cx.pending_vars.borrow_mut().push((inj.stmt, var));
@@ -481,6 +484,7 @@ struct Inject {
     taken: HashSet<String>,
     /// Names the target scope already declares (`scope.variables`).
     scope_vars: HashSet<String>,
+    key: usize,
 }
 
 impl Inject {
@@ -555,6 +559,12 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         Data::Toplevel { body } | Data::StaticBlock { body } => hoisted_names(body, &mut scope_vars),
         _ => {}
     }
+    // Names earlier flattens added to this scope (`scope.variables`).
+    let key = cx.syms.as_ref().and_then(|t| t.scope_lookup(&(Rc::as_ptr(scope) as usize))).map(|s| s | (1 << 60)).unwrap_or(Rc::as_ptr(scope) as usize);
+    if let Some(names) = cx.injected.borrow().get(&key) {
+        taken.extend(names.iter().cloned());
+        scope_vars.extend(names.iter().cloned());
+    }
     taken.extend(scope_vars.iter().cloned());
     let atom_name = |n: &str| matches!(n, "Infinity" | "NaN" | "undefined");
     let mut injected: Vec<String> = Vec::new();
@@ -609,7 +619,7 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         }
     }
     let _ = func;
-    Some(Inject { stmt, in_loop, taken, scope_vars })
+    Some(Inject { stmt, in_loop, taken, scope_vars, key })
 }
 
 fn closure_reads(n: &N, names: &[String]) -> bool {
