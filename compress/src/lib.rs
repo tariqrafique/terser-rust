@@ -347,6 +347,9 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         locals: vec![HashSet::new()],
         consts: vec![HashMap::new()],
         syms: None,
+        squeezed: HashSet::new(),
+        optimized: HashSet::new(),
+        flag_keep: Vec::new(),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -389,6 +392,12 @@ struct Cx {
     locals: Vec<HashSet<String>>,
     consts: Vec<HashMap<String, N>>,
     syms: Option<syms::SymTable>,
+    /// terser `SQUEEZED` (`index.js` `Compressor.before`): `before` returns the node.
+    squeezed: HashSet<usize>,
+    /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
+    optimized: HashSet<usize>,
+    /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
+    flag_keep: Vec<N>,
 }
 
 impl Cx {
@@ -594,17 +603,60 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
     }
 }
 
+/// terser `lib/compress/index.js` `Compressor.before`.
+///
+/// Descend, descend again, then `optimize` (`def_optimize`). A node whose
+/// optimizer returned it unchanged is `SQUEEZED` and the second descend does
+/// not walk it. A replacement is `OPTIMIZED`, so the second descend still
+/// walks its children but does not run its optimizer again. That is why a
+/// switch that became `if (c) { stmt; }` is not then rewritten to `c && stmt`.
 fn transform(n: &N, cx: &mut Cx) -> N {
-    let entered = cx.enter(n);
     let ptr = Rc::as_ptr(n) as usize;
-    let mapped = map_children(n, cx);
-    let out = if let Some(rep) = optimize(&mapped, ptr, cx) {
+    if cx.squeezed.contains(&ptr) {
+        return Rc::clone(n);
+    }
+    let entered = cx.enter(n);
+    // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
+    // `before` still descends twice and sets `SQUEEZED`.
+    if cx.in_asm() {
+        let once = map_children(n, cx);
+        let out = map_children(&once, cx);
+        mark_squeezed(cx, &out);
+        cx.leave(entered);
+        return out;
+    }
+    let once = map_children(n, cx);
+    let twice = map_children(&once, cx);
+    // Statement joining (`tighten`) is part of the scope/block optimizer, so it
+    // runs once, after both descends. Running it inside `descend` let the second
+    // walk fold a switch-built `if` into `&&`.
+    let twice = after_descend(twice, cx);
+    let twice_ptr = Rc::as_ptr(&twice) as usize;
+    // `def_optimize`: debugger and directives are handled in `optimize`.
+    // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
+    let out = if cx.optimized.contains(&twice_ptr) {
+        Rc::clone(&twice)
+    } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
     } else {
-        eval::fold(&mapped, cx)
+        eval::fold(&twice, cx)
     };
+    mark_optimized(cx, &out);
+    if Rc::ptr_eq(&out, &twice) {
+        mark_squeezed(cx, &out);
+    }
     cx.leave(entered);
     out
+}
+
+fn mark_optimized(cx: &mut Cx, n: &N) {
+    cx.optimized.insert(Rc::as_ptr(n) as usize);
+    cx.flag_keep.push(Rc::clone(n));
+}
+
+fn mark_squeezed(cx: &mut Cx, n: &N) {
+    cx.squeezed.insert(Rc::as_ptr(n) as usize);
+    cx.flag_keep.push(Rc::clone(n));
 }
 
 fn transform_block(n: &N, cx: &mut Cx) -> N {
@@ -708,6 +760,71 @@ fn map_segs(segs: &[Seg], cx: &mut Cx) -> (Vec<Seg>, bool) {
         }
     }
     (out, changed)
+}
+
+fn same_stmts(a: &[N], b: &[N]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| Rc::ptr_eq(x, y))
+}
+
+/// Scope and block optimizers that terser runs inside `def_optimize`, after
+/// `Compressor.before` has descended twice: `join_vars`, sequences, `if_return`,
+/// trailing-return drop, and single-statement block eviction.
+fn after_descend(n: N, cx: &Cx) -> N {
+    match &n.data {
+        Data::Toplevel { body } => {
+            let next = tighten(body.clone(), cx);
+            if same_stmts(body, &next) {
+                n
+            } else {
+                finish(&n, Data::Toplevel { body: next }, true)
+            }
+        }
+        Data::StaticBlock { body } => {
+            let next = tighten(body.clone(), cx);
+            if same_stmts(body, &next) {
+                n
+            } else {
+                finish(&n, Data::StaticBlock { body: next }, true)
+            }
+        }
+        Data::Block { body } => {
+            let next = tighten(body.clone(), cx);
+            if !cx.keep_block && (next.is_empty() || eval::only_pure_decls(&next, cx)) {
+                return empty(&n);
+            }
+            if !cx.keep_block && next.len() == 1 && can_evict(&next[0]) {
+                return Rc::clone(&next[0]);
+            }
+            if same_stmts(body, &next) {
+                n
+            } else {
+                finish(&n, Data::Block { body: next }, true)
+            }
+        }
+        Data::Func { kind, name, args, body, async_, generator } => {
+            let mut next = tighten(body.clone(), cx);
+            if cx.opts.if_return {
+                next = eval::drop_trailing_return(next, cx);
+            }
+            if same_stmts(body, &next) {
+                n
+            } else {
+                finish(
+                    &n,
+                    Data::Func {
+                        kind: *kind,
+                        name: name.clone(),
+                        args: args.clone(),
+                        body: next,
+                        async_: *async_,
+                        generator: *generator,
+                    },
+                    true,
+                )
+            }
+        }
+        _ => n,
+    }
 }
 
 fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
@@ -1008,7 +1125,6 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
     match &n.data {
         Data::Toplevel { body } => {
             let (body, c) = map_list(body, cx);
-            let body = tighten(body, cx);
             finish(n, Data::Toplevel { body }, c)
         }
         Data::Simple { body } => {
@@ -1017,20 +1133,12 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::Simple { body: m }, c)
         }
         Data::StaticBlock { body } => {
-            let (body, _) = map_list(body, cx);
-            let body = tighten(body, cx);
-            finish(n, Data::StaticBlock { body }, true)
+            let (body, c) = map_list(body, cx);
+            finish(n, Data::StaticBlock { body }, c)
         }
         Data::Block { body } => {
-            let (body, _) = map_list(body, cx);
-            let body = tighten(body, cx);
-            if !cx.keep_block && (body.is_empty() || eval::only_pure_decls(&body, cx)) {
-                return empty(n);
-            }
-            if !cx.keep_block && body.len() == 1 && can_evict(&body[0]) {
-                return Rc::clone(&body[0]);
-            }
-            finish(n, Data::Block { body }, true)
+            let (body, c) = map_list(body, cx);
+            finish(n, Data::Block { body }, c)
         }
         Data::Labeled { label, body } => {
             let label_m = transform(label, cx);
@@ -1164,9 +1272,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let (name, c1) = map_opt(name, cx);
             let (args, c2) = map_list(args, cx);
             let (body, c3) = map_list(body, cx);
-            let body = tighten(body, cx);
-            let body = if cx.opts.if_return { eval::drop_trailing_return(body, cx) } else { body };
-            finish(n, Data::Func { kind: *kind, name, args, body, async_: *async_, generator: *generator }, c1 || c2 || c3 || true)
+            finish(n, Data::Func { kind: *kind, name, args, body, async_: *async_, generator: *generator }, c1 || c2 || c3)
         }
         Data::Class { stmt, name, extends, props } => {
             let (name, c1) = map_opt(name, cx);
