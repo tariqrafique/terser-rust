@@ -3,7 +3,7 @@
 //! Values follow JavaScript number and truthiness rules. A folded form is
 //! kept only when it is not longer than the original expression.
 
-use ast::{Data, Key, N, Node, Seg};
+use ast::{Data, FuncKind, Key, N, Node, Seg, SymKind};
 use std::rc::Rc;
 
 use crate::Cx;
@@ -60,7 +60,7 @@ pub fn fold(n: &N, cx: &Cx) -> N {
         }
     }
     if cx.opts.computed_props {
-        if let Some(rewritten) = fold_computed(n) {
+        if let Some(rewritten) = fold_computed(n, cx) {
             return rewritten;
         }
     }
@@ -82,8 +82,9 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = fold_binary(n, cx) {
         return rewritten;
     }
-    if cx.opts.properties {
-        if let Some(rewritten) = fold_property(n) {
+    // terser `lib/compress/index.js` `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)`.
+    if cx.opts.properties || cx.opts.evaluate {
+        if let Some(rewritten) = fold_prop_access(n, cx) {
             return rewritten;
         }
     }
@@ -319,10 +320,10 @@ fn fold_empty_switch(n: &N, cx: &Cx) -> Option<N> {
     }
 }
 
-fn fold_computed(n: &N) -> Option<N> {
+fn fold_computed(n: &N, cx: &Cx) -> Option<N> {
     match &n.data {
         Data::Prop { method, key, value, static_, private, generator, async_ } => {
-            let key = static_key(key)?;
+            let key = lift_key(key, cx)?;
             Some(atom(
                 n,
                 Data::Prop {
@@ -337,7 +338,7 @@ fn fold_computed(n: &N) -> Option<N> {
             ))
         }
         Data::Field { key, value, static_, private } => {
-            let key = static_key(key)?;
+            let key = lift_key(key, cx)?;
             Some(atom(
                 n,
                 Data::Field {
@@ -352,21 +353,24 @@ fn fold_computed(n: &N) -> Option<N> {
     }
 }
 
-fn static_key(key: &Key) -> Option<Key> {
+/// terser `lib/compress/index.js` `lift_key`.
+/// `["p"]:1` to `p:1`, `[42]:1` to `42:1`. `__proto__` and a class `constructor` stay computed.
+fn lift_key(key: &Key, cx: &Cx) -> Option<Key> {
     let Key::Computed(expr) = key else {
         return None;
     };
-    match &expr.data {
-        Data::Number { value, .. } if value.is_finite() => Some(Key::Static {
-            name: codegen::js_number(*value),
-            quote: None,
-        }),
-        Data::String { value, .. } if value != "__proto__" => Some(Key::Static {
-            name: value.clone(),
-            quote: None,
-        }),
-        _ => None,
+    let (name, quote) = match &expr.data {
+        Data::Number { value, .. } if value.is_finite() => (codegen::js_number(*value), None),
+        Data::String { value, quote, .. } => (value.clone(), Some(*quote)),
+        _ => return None,
+    };
+    if name == "__proto__" {
+        return None;
     }
+    if name == "constructor" && cx.parent().is_some_and(|p| matches!(p.data, Data::Class { .. })) {
+        return None;
+    }
+    Some(Key::Static { name, quote })
 }
 
 fn fold_value(n: &N, cx: &Cx) -> Option<N> {
@@ -2010,41 +2014,750 @@ fn equivalent(a: &N, b: &N) -> bool {
     }
 }
 
-fn fold_property(n: &N) -> Option<N> {
-    let Data::Sub { expr, prop, optional, .. } = &n.data else {
-        return None;
-    };
-    let Data::String { value, .. } = &prop.data else {
-        return None;
-    };
-    if is_basic_ident(value) && value.len() <= print_len(prop) + 1 {
-        return Some(atom(
-            n,
-            Data::Dot {
-                expr: Rc::clone(expr),
-                prop: value.clone(),
-                optional: *optional,
-                quote: None,
-                private: false,
-            },
-        ));
+/// terser `lib/compress/index.js` `def_optimize(AST_Dot)` and `def_optimize(AST_Sub)`.
+fn fold_prop_access(n: &N, cx: &Cx) -> Option<N> {
+    match &n.data {
+        Data::Sub { .. } => fold_sub(n, cx, 0),
+        Data::Dot { .. } => fold_dot(n, cx, 0),
+        _ => None,
     }
-    if let Ok(num_v) = value.parse::<f64>() {
-        if value == &codegen::js_number(num_v) && !num_v.is_nan() {
-            let as_num = num(n, num_v);
-            if print_len(&as_num) < print_len(prop) {
-                return Some(atom(
+}
+
+/// terser `lib/compress/index.js` `def_optimize(AST_Sub)`.
+fn fold_sub(n: &N, cx: &Cx, depth: u8) -> Option<N> {
+    if depth > 6 {
+        return None;
+    }
+    let Data::Sub { expr, prop, optional } = &n.data else {
+        return None;
+    };
+    let mut prop_node = Rc::clone(prop);
+    let mut evaluated = false;
+    let mut property = String::new();
+    if cx.opts.properties && cx.opts.evaluate {
+        if let Some(lit) = eval(prop) {
+            let key = normalize_prop_key(lit);
+            let constant = lit_node(prop, prop_key_lit(&key), cx);
+            prop_node = best_of_expr(prop, constant);
+            property = prop_key_string(&key);
+            evaluated = true;
+            if is_basic_ident(&property) && property.len() <= terser_size(&prop_node) + 1 {
+                let quote = match &prop_node.data {
+                    Data::String { quote, .. } => Some(*quote),
+                    _ => None,
+                };
+                let dot = atom(
                     n,
-                    Data::Sub {
+                    Data::Dot {
                         expr: Rc::clone(expr),
-                        prop: as_num,
+                        prop: property,
                         optional: *optional,
+                        quote,
+                        private: false,
                     },
-                ));
+                );
+                return Some(fold_dot(&dot, cx, depth + 1).unwrap_or(dot));
             }
         }
     }
+    if cx.in_lhs {
+        return changed_sub(n, expr, &prop_node, *optional, prop);
+    }
+    if evaluated && cx.opts.properties {
+        if let Some(flat) = flatten_object(expr, &property, n, cx) {
+            return Some(fold_sub(&flat, cx, depth + 1).unwrap_or(flat));
+        }
+    }
+    if let Some(extracted) = extract_array(n, expr, &prop_node, cx) {
+        return Some(extracted);
+    }
+    if cx.opts.evaluate && !*optional {
+        if let Some(folded) = eval_length_sub(n, expr, &prop_node, cx) {
+            return Some(folded);
+        }
+    }
+    changed_sub(n, expr, &prop_node, *optional, prop)
+}
+
+fn changed_sub(span: &N, expr: &N, prop: &N, optional: bool, orig_prop: &N) -> Option<N> {
+    if Rc::ptr_eq(prop, orig_prop) {
+        return None;
+    }
+    Some(atom(
+        span,
+        Data::Sub { expr: Rc::clone(expr), prop: Rc::clone(prop), optional },
+    ))
+}
+
+/// terser `lib/compress/index.js` `def_optimize(AST_Dot)`.
+fn fold_dot(n: &N, cx: &Cx, depth: u8) -> Option<N> {
+    if depth > 6 {
+        return None;
+    }
+    let Data::Dot { expr, prop, optional, private, .. } = &n.data else {
+        return None;
+    };
+    if cx.in_lhs || *private {
+        return None;
+    }
+    if cx.opts.properties && !skip_flatten(cx) {
+        if let Some(flat) = flatten_object(expr, prop, n, cx) {
+            return Some(fold_sub(&flat, cx, depth + 1).unwrap_or(flat));
+        }
+    }
+    // A chain `a.b.c` evaluates at the outer access. The middle read stays.
+    if expr.is_prop_access() && cx.parent().is_some_and(|p| p.is_prop_access()) {
+        return None;
+    }
+    if cx.opts.evaluate && !*optional && prop == "length" {
+        if let Some(folded) = eval_length(n, expr, cx) {
+            return Some(folded);
+        }
+    }
     None
+}
+
+/// terser `lib/compress/index.js` `AST_PropAccess.flatten_object`.
+fn flatten_object(expr: &N, key: &str, span: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.properties || key == "__proto__" {
+        return None;
+    }
+    let Data::Object { props } = &expr.data else {
+        return None;
+    };
+    if props.is_empty() || !props.iter().all(plain_keyval) {
+        return None;
+    }
+    let mut found = None;
+    for (i, prop) in props.iter().enumerate().rev() {
+        let Data::Prop { key: prop_key, .. } = &prop.data else {
+            return None;
+        };
+        let Key::Static { name, .. } = prop_key else {
+            return None;
+        };
+        if name == key {
+            found = Some(i);
+            break;
+        }
+    }
+    let i = found?;
+    let Data::Prop { value, .. } = &props[i].data else {
+        return None;
+    };
+    if !safe_to_flatten(value, cx) {
+        return None;
+    }
+    let elements = props
+        .iter()
+        .map(|prop| match &prop.data {
+            Data::Prop { value, .. } => Rc::clone(value),
+            _ => unreachable!(),
+        })
+        .collect();
+    Some(atom(
+        span,
+        Data::Sub {
+            expr: atom(expr, Data::Array { elements }),
+            prop: num(span, i as f64),
+            optional: false,
+        },
+    ))
+}
+
+fn plain_keyval(n: &N) -> bool {
+    matches!(n.data, Data::Prop { method: None, key: Key::Static { .. }, .. })
+}
+
+/// terser `lib/compress/index.js` `safe_to_flatten`.
+fn safe_to_flatten(value: &N, cx: &Cx) -> bool {
+    let resolved = if matches!(value.data, Data::Symbol { kind: SymKind::Ref, .. }) {
+        match fixed_of(value, cx) {
+            Some(v) => v,
+            None => return false,
+        }
+    } else {
+        value
+    };
+    if matches!(resolved.data, Data::Func { .. }) && contains_this(resolved) {
+        return cx.parent().is_some_and(|p| matches!(p.data, Data::Call { is_new: true, .. }));
+    }
+    true
+}
+
+fn fixed_of<'a>(n: &N, cx: &'a Cx) -> Option<&'a N> {
+    let table = cx.syms.as_ref()?;
+    let id = *table.node_def.get(&crate::syms::ptr(n))?;
+    table.defs.get(id)?.fixed.as_ref()
+}
+
+/// terser `lib/compress/inference.js` `contains_this`. Nested functions hide their own `this`.
+fn contains_this(root: &N) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::This => return true,
+            Data::Func { kind, .. } if *kind != FuncKind::Arrow => return false,
+            Data::Class { .. } => return false,
+            _ => {}
+        }
+        any_child(n, rec)
+    }
+    match &root.data {
+        Data::Func { body, .. } => body.iter().any(rec),
+        Data::Class { .. } => false,
+        _ => rec(root),
+    }
+}
+
+fn any_child(n: &N, mut f: impl FnMut(&N) -> bool) -> bool {
+    let mut hit = false;
+    let mut go = |c: &N| {
+        if !hit {
+            hit = f(c);
+        }
+    };
+    match &n.data {
+        Data::Toplevel { body } | Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => {
+            body.iter().for_each(&mut go);
+        }
+        Data::Simple { body }
+        | Data::Throw { value: body }
+        | Data::Spread { expr: body }
+        | Data::Chain { expr: body }
+        | Data::Await { expr: body }
+        | Data::Unary { expr: body, .. }
+        | Data::Dot { expr: body, .. }
+        | Data::Finally { body } => go(body),
+        Data::Return { value } | Data::Yield { expr: value, .. } => {
+            if let Some(v) = value {
+                go(v);
+            }
+        }
+        Data::Labeled { label, body } => {
+            go(label);
+            go(body);
+        }
+        Data::Do { body, cond } | Data::While { cond: body, body: cond } => {
+            go(body);
+            go(cond);
+        }
+        Data::For { init, cond, step, body } => {
+            if let Some(v) = init { go(v); }
+            if let Some(v) = cond { go(v); }
+            if let Some(v) = step { go(v); }
+            go(body);
+        }
+        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
+            go(init);
+            go(object);
+            go(body);
+        }
+        Data::With { expr, body } => {
+            go(expr);
+            go(body);
+        }
+        Data::Catch { arg, body } => {
+            if let Some(arg) = arg {
+                go(arg);
+            }
+            go(body);
+        }
+        Data::If { cond, body, alt } => {
+            go(cond);
+            go(body);
+            if let Some(a) = alt { go(a); }
+        }
+        Data::Switch { expr, body } => {
+            go(expr);
+            body.iter().for_each(&mut go);
+        }
+        Data::Case { expr, body } => {
+            go(expr);
+            body.iter().for_each(&mut go);
+        }
+        Data::Try { body, catch, finally } => {
+            go(body);
+            if let Some(v) = catch { go(v); }
+            if let Some(v) = finally { go(v); }
+        }
+        Data::Defs { defs, .. } => defs.iter().for_each(&mut go),
+        Data::VarDef { name, value } => {
+            go(name);
+            if let Some(v) = value { go(v); }
+        }
+        Data::Func { name, args, body, .. } => {
+            if let Some(name) = name { go(name); }
+            args.iter().for_each(&mut go);
+            body.iter().for_each(&mut go);
+        }
+        Data::Class { name, extends, props, .. } => {
+            if let Some(name) = name { go(name); }
+            if let Some(e) = extends { go(e); }
+            props.iter().for_each(&mut go);
+        }
+        Data::Array { elements } | Data::Seq { exprs: elements } | Data::DynImport { args: elements, .. } => {
+            elements.iter().for_each(&mut go);
+        }
+        Data::Object { props } => props.iter().for_each(&mut go),
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(e) = key { go(e); }
+            go(value);
+        }
+        Data::Field { key, value, .. } => {
+            if let Key::Computed(e) = key { go(e); }
+            if let Some(v) = value { go(v); }
+        }
+        Data::Sub { expr, prop, .. } => {
+            go(expr);
+            go(prop);
+        }
+        Data::Call { expr, args, .. } => {
+            go(expr);
+            args.iter().for_each(&mut go);
+        }
+        Data::Binary { left, right, .. }
+        | Data::Assign { left, right, .. }
+        | Data::DefaultAssign { left, right }
+        | Data::PrivateIn { key: left, value: right } => {
+            go(left);
+            go(right);
+        }
+        Data::Cond { cond, cons, alt } => {
+            go(cond);
+            go(cons);
+            go(alt);
+        }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let Seg::Expr(e) = seg { go(e); }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => {
+            go(tag);
+            go(template);
+        }
+        Data::Destructuring { names, .. } => names.iter().for_each(&mut go),
+        _ => {}
+    }
+    hit
+}
+
+/// terser `lib/compress/index.js` `def_optimize(AST_Sub)` array-index arm.
+fn extract_array(span: &N, expr: &N, prop: &N, cx: &Cx) -> Option<N> {
+    if !(cx.opts.properties && cx.opts.side_effects) {
+        return None;
+    }
+    let Data::Number { value, .. } = &prop.data else {
+        return None;
+    };
+    let index = array_index(*value)?;
+    let Data::Array { elements } = &expr.data else {
+        return None;
+    };
+    if index >= elements.len() {
+        return None;
+    }
+    let ret_value = &elements[index];
+    if matches!(ret_value.data, Data::Spread { .. }) || !safe_to_flatten(ret_value, cx) {
+        return None;
+    }
+    for (i, el) in elements.iter().enumerate() {
+        if i == index {
+            continue;
+        }
+        if matches!(el.data, Data::Spread { .. } | Data::Hole) {
+            return None;
+        }
+        if i > index && expr_has_side_effects(el, cx) {
+            return None;
+        }
+    }
+    let ret_node = if matches!(ret_value.data, Data::Hole) {
+        void0(ret_value)
+    } else {
+        Rc::clone(ret_value)
+    };
+    let mut values = Vec::new();
+    for el in elements.iter().take(index) {
+        if expr_has_side_effects(el, cx) {
+            values.push(Rc::clone(el));
+        }
+    }
+    values.push(ret_node);
+    Some(make_seq(span, values))
+}
+
+fn array_index(n: f64) -> Option<usize> {
+    if !n.is_finite() || n < 0.0 || n.fract() != 0.0 || n > usize::MAX as f64 {
+        return None;
+    }
+    let i = n as usize;
+    if i as f64 == n { Some(i) } else { None }
+}
+
+fn make_seq(span: &N, exprs: Vec<N>) -> N {
+    let mut flat = Vec::new();
+    for e in exprs {
+        if let Data::Seq { exprs } = &e.data {
+            flat.extend(exprs.iter().cloned());
+        } else {
+            flat.push(e);
+        }
+    }
+    sequence(span, flat)
+}
+
+/// terser `lib/compress/evaluate.js` `def_eval(AST_PropAccess)` for `.length`.
+fn eval_length(span: &N, expr: &N, cx: &Cx) -> Option<N> {
+    if let Some(Lit::Str(s)) = eval(expr) {
+        let len = js_str_len(&s, string_units(expr));
+        return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
+    }
+    let Data::Array { elements } = &expr.data else {
+        return None;
+    };
+    if elements.iter().any(|el| matches!(el.data, Data::Spread { .. }) || expr_has_side_effects(el, cx)) {
+        return None;
+    }
+    Some(prefer(span, lit_node(span, Lit::Num(elements.len() as f64), cx)))
+}
+
+fn eval_length_sub(span: &N, expr: &N, prop: &N, cx: &Cx) -> Option<N> {
+    let Data::String { value, .. } = &prop.data else {
+        return None;
+    };
+    if value != "length" {
+        return None;
+    }
+    eval_length(span, expr, cx)
+}
+
+fn string_units(n: &N) -> Option<&Vec<u16>> {
+    match &n.data {
+        Data::String { units, .. } => units.as_ref(),
+        _ => None,
+    }
+}
+
+fn js_str_len(value: &str, units: Option<&Vec<u16>>) -> f64 {
+    if let Some(units) = units {
+        return units.len() as f64;
+    }
+    value.chars().map(|c| if (c as u32) > 0xFFFF { 2 } else { 1 }).sum::<usize>() as f64
+}
+
+fn skip_flatten(cx: &Cx) -> bool {
+    cx.parent().is_some_and(|p| matches!(p.data, Data::Call { .. }) && has_noinline(p))
+}
+
+fn has_noinline(n: &N) -> bool {
+    n.start.as_ref().is_some_and(|t| {
+        t.comments_before.iter().any(|c| {
+            c.value.contains("@__NOINLINE__") || c.value.contains("#__NOINLINE__")
+        })
+    })
+}
+
+enum PropKey {
+    Str(String),
+    Num(f64),
+    Bool(bool),
+    Null,
+    Undef,
+}
+
+/// terser `lib/compress/index.js` `def_optimize(AST_Sub)` string-key rewrite.
+fn normalize_prop_key(lit: Lit) -> PropKey {
+    match lit {
+        Lit::Str(s) if s == "undefined" => PropKey::Undef,
+        Lit::Str(s) => {
+            if let Some(n) = canonical_number(&s) {
+                PropKey::Num(n)
+            } else {
+                PropKey::Str(s)
+            }
+        }
+        Lit::Num(n) => PropKey::Num(n),
+        Lit::Bool(b) => PropKey::Bool(b),
+        Lit::Null => PropKey::Null,
+        Lit::Undef => PropKey::Undef,
+    }
+}
+
+fn prop_key_lit(key: &PropKey) -> Lit {
+    match key {
+        PropKey::Str(s) => Lit::Str(s.clone()),
+        PropKey::Num(n) => Lit::Num(*n),
+        PropKey::Bool(b) => Lit::Bool(*b),
+        PropKey::Null => Lit::Null,
+        PropKey::Undef => Lit::Undef,
+    }
+}
+
+fn prop_key_string(key: &PropKey) -> String {
+    match key {
+        PropKey::Str(s) => s.clone(),
+        PropKey::Num(n) => js_num_tostring(*n),
+        PropKey::Bool(true) => "true".into(),
+        PropKey::Bool(false) => "false".into(),
+        PropKey::Null => "null".into(),
+        PropKey::Undef => "undefined".into(),
+    }
+}
+
+/// `parseFloat(key).toString() == key`.
+fn canonical_number(key: &str) -> Option<f64> {
+    if key.is_empty() {
+        return None;
+    }
+    let n: f64 = key.parse().ok()?;
+    if js_num_tostring(n) == key { Some(n) } else { None }
+}
+
+/// JavaScript `Number.prototype.toString`.
+fn js_num_tostring(n: f64) -> String {
+    if n.is_nan() {
+        return "NaN".into();
+    }
+    if n == 0.0 {
+        return "0".into();
+    }
+    if n.is_infinite() {
+        return if n.is_sign_negative() { "-Infinity".into() } else { "Infinity".into() };
+    }
+    let neg = n.is_sign_negative();
+    let mut buf = ryu::Buffer::new();
+    let body = reformat_ryu(buf.format_finite(n.abs()));
+    if neg { format!("-{body}") } else { body }
+}
+
+fn reformat_ryu(raw: &str) -> String {
+    let (mant, exp10) = match raw.split_once('e') {
+        Some((m, e)) => (m, e.parse::<i32>().unwrap_or(0)),
+        None => (raw, 0),
+    };
+    let mut digits = String::new();
+    let mut point = None;
+    for c in mant.chars() {
+        if c == '.' {
+            point = Some(digits.len());
+        } else if c.is_ascii_digit() {
+            digits.push(c);
+        }
+    }
+    if digits.is_empty() {
+        return "0".into();
+    }
+    let point = point.unwrap_or(digits.len());
+    let mut exp = exp10 - (digits.len() as i32 - point as i32);
+    while digits.len() > 1 && digits.ends_with('0') {
+        digits.pop();
+        exp += 1;
+    }
+    let leading = digits.chars().take_while(|c| *c == '0').count();
+    if leading > 0 {
+        if leading == digits.len() {
+            return "0".into();
+        }
+        digits = digits[leading..].to_string();
+    }
+    let k = digits.len() as i32;
+    let n = exp + k;
+    if k <= n && n <= 21 {
+        let mut out = digits;
+        for _ in 0..(n - k) {
+            out.push('0');
+        }
+        return out;
+    }
+    if n > 0 && n <= 21 {
+        let n = n as usize;
+        let mut out = String::new();
+        out.push_str(&digits[..n]);
+        out.push('.');
+        out.push_str(&digits[n..]);
+        return out;
+    }
+    if n > -6 && n <= 0 {
+        let mut out = String::from("0.");
+        for _ in 0..(-n) {
+            out.push('0');
+        }
+        out.push_str(&digits);
+        return out;
+    }
+    let exp_s = format_exp(n - 1);
+    if k == 1 {
+        format!("{digits}{exp_s}")
+    } else {
+        format!("{}.{}{exp_s}", &digits[..1], &digits[1..])
+    }
+}
+
+fn format_exp(exp: i32) -> String {
+    if exp >= 0 { format!("e+{exp}") } else { format!("e{exp}") }
+}
+
+fn best_of_expr(orig: &N, alt: N) -> N {
+    if terser_size(&alt) < terser_size(orig) { alt } else { Rc::clone(orig) }
+}
+
+/// terser `lib/size.js` `AST_Node.size` for a property key.
+fn terser_size(n: &N) -> usize {
+    let here = match &n.data {
+        Data::String { value, .. } => value.len() + 2,
+        Data::Number { value, .. } => number_size(*value),
+        Data::BigInt { value } => value.len(),
+        Data::Null => 4,
+        Data::True => 4,
+        Data::False => 5,
+        Data::Infinity => 8,
+        Data::This => 4,
+        Data::Hole => 0,
+        Data::Unary { op, .. } => match op.as_str() {
+            "typeof" => 7,
+            "void" => 5,
+            _ => op.len(),
+        },
+        Data::Binary { op, right, .. } => {
+            let mut s = if op == "in" { 4 } else { op.len() };
+            if matches!(op.as_str(), "+" | "-") {
+                if let Data::Unary { op: rop, .. } = &right.data {
+                    if rop == op {
+                        s += 1;
+                    }
+                }
+            }
+            s
+        }
+        Data::Symbol { name, .. } => if name == "arguments" { 9 } else { name.len() },
+        Data::Dot { prop, optional, private, .. } => {
+            prop.len() + if *private { if *optional { 3 } else { 2 } } else if *optional { 2 } else { 1 }
+        }
+        Data::Sub { optional, .. } => if *optional { 4 } else { 2 },
+        Data::Array { elements } => 2 + list_overhead(elements.len()),
+        Data::Seq { exprs } => list_overhead(exprs.len()),
+        Data::Cond { .. } => 3,
+        Data::Call { args, is_new, optional, .. } => {
+            (if *is_new { 6 } else { 2 }) + if *optional { 2 } else { 0 } + list_overhead(args.len())
+        }
+        _ => return print_len(n),
+    };
+    here + match &n.data {
+        Data::Unary { expr, .. } | Data::Dot { expr, .. } | Data::Await { expr } | Data::Spread { expr } | Data::Chain { expr } => {
+            terser_size(expr)
+        }
+        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => terser_size(left) + terser_size(right),
+        Data::Sub { expr, prop, .. } => terser_size(expr) + terser_size(prop),
+        Data::Cond { cond, cons, alt } => terser_size(cond) + terser_size(cons) + terser_size(alt),
+        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().map(terser_size).sum(),
+        Data::Call { expr, args, .. } => terser_size(expr) + args.iter().map(terser_size).sum::<usize>(),
+        _ => 0,
+    }
+}
+
+fn list_overhead(len: usize) -> usize {
+    len.saturating_sub(1)
+}
+
+fn number_size(value: f64) -> usize {
+    if value.is_nan() {
+        return 3;
+    }
+    if value == 0.0 {
+        return 1;
+    }
+    if value > 0.0 && value.is_finite() && value.fract() == 0.0 {
+        if value < 1e16 {
+            let mut x = value;
+            let mut d = 0usize;
+            while x >= 1.0 {
+                x /= 10.0;
+                d += 1;
+            }
+            return d.max(1);
+        }
+        return (value.log10() + 1e-9).floor() as usize + 1;
+    }
+    js_num_tostring(value).len()
+}
+
+/// terser `lib/compress/inference.js` `has_side_effects` for receivers and array elements.
+fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::True
+        | Data::False
+        | Data::Null
+        | Data::Infinity
+        | Data::BigInt { .. }
+        | Data::RegExp { .. }
+        | Data::This
+        | Data::Func { .. } => false,
+        Data::Hole | Data::Spread { .. } => true,
+        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(name, cx),
+        Data::Unary { op, expr, prefix: true } => {
+            matches!(op.as_str(), "delete" | "++" | "--") || expr_has_side_effects(expr, cx)
+        }
+        Data::Unary { .. } => true,
+        Data::Binary { op, left, right } => {
+            is_assign(op) || expr_has_side_effects(left, cx) || expr_has_side_effects(right, cx)
+        }
+        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(|e| expr_has_side_effects(e, cx)),
+        Data::Object { props } => props.iter().any(|p| match &p.data {
+            Data::Prop { key, value, method, .. } => {
+                method.is_some()
+                    || matches!(key, Key::Computed(e) if expr_has_side_effects(e, cx))
+                    || expr_has_side_effects(value, cx)
+            }
+            _ => true,
+        }),
+        Data::Cond { cond, cons, alt } => {
+            expr_has_side_effects(cond, cx) || expr_has_side_effects(cons, cx) || expr_has_side_effects(alt, cx)
+        }
+        Data::Dot { expr, optional, .. } => {
+            (!*optional && may_throw_on_access(expr, cx)) || expr_has_side_effects(expr, cx)
+        }
+        Data::Sub { expr, prop, optional } => {
+            (!*optional && may_throw_on_access(expr, cx))
+                || expr_has_side_effects(expr, cx)
+                || expr_has_side_effects(prop, cx)
+        }
+        _ => true,
+    }
+}
+
+fn symbol_read_pure(name: &str, cx: &Cx) -> bool {
+    if cx.in_with {
+        return false;
+    }
+    cx.shadowed(name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
+}
+
+/// terser `lib/compress/inference.js` `may_throw_on_access`.
+fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
+    if cx.opts.pure_getters == crate::PureGetters::Off {
+        return true;
+    }
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::True
+        | Data::False
+        | Data::BigInt { .. }
+        | Data::Infinity
+        | Data::RegExp { .. }
+        | Data::Array { .. }
+        | Data::Func { .. }
+        | Data::Class { .. } => false,
+        Data::Unary { op, .. } if op == "void" => true,
+        Data::Unary { .. } => false,
+        Data::Null => true,
+        Data::Object { props } => props.iter().any(|p| !plain_keyval(p)),
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| may_throw_on_access(e, cx)),
+        _ => true,
+    }
 }
 
 fn is_basic_ident(value: &str) -> bool {

@@ -8,4 +8,5 @@ publish.workspace = true
 ast = { path = "../ast" }
 codegen = { path = "../codegen" }
 scope = { path = "../scope" }
+ryu = "1"
 serde_json = "1"

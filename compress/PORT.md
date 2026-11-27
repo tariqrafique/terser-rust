@@ -18,8 +18,7 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `index.js` `def_optimize(AST_If)` | `eval.rs` `optimize_if` | negation length, `&&`/`||`, dead branch, exits, nested `if`, abort split. `size.js` `AST_Node.size`, `inference.js` `negate` / `aborts`, `tighten-body.js` `extract_from_unreachable_code` |
 | `index.js` `def_optimize(AST_Binary)` | `eval.rs` `fold_binary` | comparisons, `&&`/`||`/`??`, lhs swap, `===`→`==`. Not bitwise De Morgan or string concat |
 | `index.js` `def_optimize(AST_UnaryPrefix)` | `unary.rs` `optimize` | `!` `typeof` `void` `delete` `+` `-` `~`. Also `AST_Unary.lift_sequences`, `negate`, `bitwise_negate`, and the `drop_side_effect_free` that `void` calls. `++`/`--` are not this pass |
-
-Scores: default 1675/3013 after If+Binary on main. Unary numbers are filled in after the rebased compare.
+| `index.js` `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)` / `flatten_object` / `lift_key` | `eval.rs` `fold_prop_access` / `fold_computed` | static key to dot, `.length` of a string or side-effect-free array, object property read to the value. `pure_getters` gates `may_throw_on_access`. Class `constructor` and `__proto__` stay computed |
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
@@ -27,4 +26,4 @@ Stop: default 2260, fixture 1336, reduce_vars 261/261, collapse_vars 199/199, or
 
 A class expression name is bound inside the class, so it does not keep an outer `var` of the same name. A class field initializer is a use.
 
-Next: split `def_optimize` per node type (`AST_Call`, `AST_Conditional`, `AST_Dot`/`AST_Sub`).
+Next: split `def_optimize` per node type (`AST_Call`, `AST_Conditional`).

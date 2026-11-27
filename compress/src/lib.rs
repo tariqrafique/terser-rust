@@ -58,10 +58,22 @@ struct Opts {
     hoist_funs: bool,
     /// terser `top_retain` when it is a plain name. Other forms are not read yet.
     top_retain: Option<String>,
+    /// terser `lib/compress/index.js` `pure_getters`. `"strict"` by default.
+    pure_getters: PureGetters,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
     /// terser `unsafe_comps`. Off unless the fixture sets it.
     unsafe_comps: bool,
+}
+
+/// terser `lib/compress/index.js` `pure_getters`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PureGetters {
+    Off,
+    /// `true`: only null and undefined receivers throw.
+    On,
+    /// `"strict"`: receivers that might be nullish or a getter throw.
+    Strict,
 }
 
 impl Opts {
@@ -96,6 +108,7 @@ impl Opts {
             hoist_vars: false,
             hoist_funs: false,
             top_retain: None,
+            pure_getters: PureGetters::Strict,
             passes: 1,
             unsafe_comps: false,
         }
@@ -132,6 +145,7 @@ impl Opts {
             hoist_vars: false,
             hoist_funs: false,
             top_retain: None,
+            pure_getters: PureGetters::Off,
             passes: 1,
             unsafe_comps: false,
         }
@@ -242,6 +256,9 @@ impl Opts {
         if let Some(Value::String(name)) = obj.get("top_retain") {
             opts.top_retain = Some(name.clone());
         }
+        if let Some(v) = obj.get("pure_getters") {
+            opts.pure_getters = pure_getters_of(v);
+        }
         if let Some(v) = obj.get("inline") {
             opts.inline = match v {
                 Value::Bool(true) => 3,
@@ -343,6 +360,17 @@ fn bool_key(obj: &Map<String, Value>, key: &str) -> Option<bool> {
     obj.get(key).and_then(Value::as_bool)
 }
 
+/// terser `lib/compress/index.js` defaults: `pure_getters` is `false`, `"strict"`, or `true`.
+fn pure_getters_of(value: &Value) -> PureGetters {
+    match value {
+        Value::Bool(false) => PureGetters::Off,
+        Value::Bool(true) => PureGetters::On,
+        Value::String(s) if s.contains("strict") => PureGetters::Strict,
+        Value::String(_) => PureGetters::On,
+        _ => PureGetters::Off,
+    }
+}
+
 /// Run the passes that are switched on in `minify_opts.compress`.
 ///
 /// `None` for `compress` means terser's default, which turns compress on.
@@ -439,7 +467,7 @@ struct Cx {
     flag_keep: Vec<N>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
     stack: Vec<N>,
-    /// terser `TreeWalker.stack` for unary `in_boolean_context` and `in_32_bit_context`.
+    /// terser `TreeWalker.stack` for unary and property-access parents.
     parents: Vec<N>,
 }
 
@@ -549,6 +577,16 @@ impl Cx {
     fn drop_directive(&self, value: &str, ptr: usize) -> bool {
         let known = value == "use strict" || value == "use asm";
         !known || self.lookup(value) != Some(ptr)
+    }
+
+    /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
+    fn parent(&self) -> Option<&N> {
+        let len = self.parents.len();
+        if len >= 2 {
+            self.parents.get(len - 2)
+        } else {
+            None
+        }
     }
 }
 
