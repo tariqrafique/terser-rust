@@ -11,6 +11,7 @@ mod hoist;
 mod tighten;
 mod reduce_vars;
 mod syms;
+mod unary;
 
 use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
@@ -387,6 +388,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         optimized: HashSet::new(),
         flag_keep: Vec::new(),
         stack: Vec::new(),
+        parents: Vec::new(),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -437,6 +439,8 @@ struct Cx {
     flag_keep: Vec<N>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
     stack: Vec<N>,
+    /// terser `TreeWalker.stack` for unary `in_boolean_context` and `in_32_bit_context`.
+    parents: Vec<N>,
 }
 
 impl Cx {
@@ -662,6 +666,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     } else {
         n
     };
+    cx.parents.push(Rc::clone(n));
     let entered = cx.enter(n);
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.
@@ -670,6 +675,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         let out = map_children(&once, cx);
         mark_squeezed(cx, &out);
         cx.leave(entered);
+        cx.parents.pop();
         return out;
     }
     // The stack top is the once-rewritten node during the second descend so
@@ -717,6 +723,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     }
     cx.stack.pop();
     cx.leave(entered);
+    cx.parents.pop();
     out
 }
 
@@ -1609,14 +1616,15 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::Call { expr: expr_m, args, optional: *optional, is_new: *is_new }, c1 || c2)
         }
         Data::Unary { op, expr, prefix } => {
-            let update = matches!(op.as_str(), "++" | "--");
-            if update {
+            // `++`/`--` mark the operand. `delete` does not: only the direct
+            // child is an lhs, and `rewrite_global` reads that off the parent stack.
+            let write = matches!(op.as_str(), "++" | "--");
+            let prev_lhs = cx.in_lhs;
+            if write {
                 cx.in_lhs = true;
             }
             let m = if op == "!" { transform_bool(expr, cx) } else { transform(expr, cx) };
-            if update {
-                cx.in_lhs = false;
-            }
+            cx.in_lhs = prev_lhs;
             let c = !Rc::ptr_eq(&m, expr);
             finish(n, Data::Unary { op: op.clone(), expr: m, prefix: *prefix }, c)
         }
