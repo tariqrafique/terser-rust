@@ -17,7 +17,24 @@ use std::rc::Rc;
 
 pub fn drop_unused(root: &N, toplevel_vars: bool, toplevel_funcs: bool) -> N {
     let table = syms::bind(root);
-    scope(root, &table, toplevel_vars, toplevel_funcs)
+    let saved = NESTED.with(|d| d.replace(0));
+    let saved_root = ROOT.with(|r| r.replace(ptr(root)));
+    let out = scope(root, &table, toplevel_vars, toplevel_funcs);
+    NESTED.with(|d| d.set(saved));
+    ROOT.with(|r| r.set(saved_root));
+    out
+}
+
+thread_local! {
+    /// Depth of function scopes below the one `drop_unused` runs on.
+    /// drop-unused.js `if (scope !== self) return;`: nested scopes only have
+    /// their uses counted, their declarations are left for their own call.
+    static NESTED: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static ROOT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn nested() -> bool {
+    NESTED.with(|d| d.get() > 0)
 }
 
 fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
@@ -28,25 +45,35 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let original = body;
+            // The function `drop_unused` runs on is not nested; its body is not either.
+            let is_root = ROOT.with(|r| r.get()) == ptr(n);
+            let outer_nested = nested();
+            if !is_root {
+                NESTED.with(|d| d.set(d.get() + 1));
+            }
             let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
+            if !is_root {
+                NESTED.with(|d| d.set(d.get() - 1));
+            }
             // drop-unused.js: an `AST_Function` name nothing reads is removed
-            // (`keep_fnames` off).
+            // (`keep_fnames` off), when the function sits in this scope.
             let name = match (kind, name) {
-                (ast::FuncKind::Expr, Some(nm)) if def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
+                (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
                 _ => name.clone(),
             };
+            let body = if is_root { passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, true) } else { body };
             node(n, Data::Func {
                 kind: *kind,
                 name,
                 args: args.clone(),
-                body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, true),
+                body,
                 async_: *async_,
                 generator: *generator,
             })
         }
         Data::Block { body } => {
             let body: Vec<N> = body.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
-            let body = if let Some(&id) = table.node_scope.get(&ptr(n)) {
+            let body = if let (Some(&id), false) = (table.node_scope.get(&ptr(n)), nested()) {
                 let _ = id;
                 passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, drop_funcs)
             } else {

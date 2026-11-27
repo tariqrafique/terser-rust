@@ -8,6 +8,17 @@ use std::rc::Rc;
 
 use crate::syms::{self, SingleUse, SymTable};
 
+thread_local! {
+    /// Symbols `hoist_properties` made: (new name, original def, node).
+    /// terser `self.def_variable(new_var)` gives each name a definition.
+    static CREATED: std::cell::RefCell<Vec<(String, usize, N)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The symbols the last `hoist` made, for the caller to define.
+pub fn take_created() -> Vec<(String, usize, N)> {
+    CREATED.with(|c| std::mem::take(&mut *c.borrow_mut()))
+}
+
 pub fn hoist(n: &N, hoist_props: bool, hoist_funs: bool, hoist_vars: bool, toplevel_vars: bool, top_retain: Option<&str>, table: Option<&SymTable>) -> N {
     let n = if hoist_props {
         hoist_properties(n, toplevel_vars, top_retain, table)
@@ -313,6 +324,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
                                     let Data::Prop { key: Key::Static { name: key, .. }, value, .. } = &prop.data else { continue };
                                     let Some(fresh) = keys.get(key) else { continue };
                                     let sym = sym_node(prop, fresh, sym_kind(*kind));
+                                    CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&sym))));
                                     out.push(vardef(prop, &sym, Some(rewrite_props(value, table, plan))));
                                 }
                                 changed = true;
@@ -331,14 +343,20 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             finish(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
         }
         Data::Dot { expr, prop, .. } if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(prop)) => {
+            let id = table.lookup(&syms::ptr(expr)).unwrap();
             let fresh = expr_plan(table, expr, plan).unwrap().get(prop).unwrap();
-            sym_ref_named(n, fresh)
+            let r = sym_ref_named(n, fresh);
+            CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
+            r
         }
         Data::Sub { expr, prop, .. } => {
             if let Data::String { value, .. } = &prop.data {
                 if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(value)) {
+                    let id = table.lookup(&syms::ptr(expr)).unwrap();
                     let fresh = expr_plan(table, expr, plan).unwrap().get(value).unwrap();
-                    return sym_ref_named(n, fresh);
+                    let r = sym_ref_named(n, fresh);
+                    CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
+                    return r;
                 }
             }
             finish_map(n, |c| rewrite_props(c, table, plan))

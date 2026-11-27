@@ -600,6 +600,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
         fresh: RefCell::new(HashMap::new()),
+        late_squeezed: RefCell::new(HashMap::new()),
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
     };
@@ -695,6 +696,9 @@ struct Cx {
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<HashMap<usize, N>>,
+    /// Nodes rebuilt from a `SQUEEZED` node by an optimizer that only holds
+    /// `&Cx` (terser edits that node in place, so the flag stays).
+    late_squeezed: RefCell<HashMap<usize, N>>,
     /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
     injected: RefCell<HashMap<usize, HashSet<String>>>,
     /// terser `def.references.length` of an injected name: the parameter's
@@ -1036,13 +1040,19 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
     let orig_ptr = ptr;
-    if cx.squeezed.contains(&ptr) {
+    if cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr) {
         return Rc::clone(n);
     }
     // terser `Compressor.before`: hoist before descending. An enclosing `use asm` skips it.
     let hoisted;
     let n = if was_scope(&n.data) && !cx.in_asm() {
         hoisted = hoist::hoist(n, cx.opts.hoist_props, cx.opts.hoist_funs, cx.opts.hoist_vars, cx.opts.toplevel_vars, cx.opts.top_retain.as_deref(), cx.syms.as_ref());
+        let created = hoist::take_created();
+        if !created.is_empty() {
+            if let Some(table) = cx.syms.as_mut() {
+                table.define_hoisted(created);
+            }
+        }
         // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its
         // scopes and definitions.
         if !Rc::ptr_eq(&hoisted, n) {
@@ -1388,6 +1398,22 @@ fn is_sealed(cx: &Cx, n: &N) -> bool {
 fn mark_optimized(cx: &mut Cx, n: &N) {
     cx.optimized.insert(Rc::as_ptr(n) as usize);
     cx.flag_keep.push(Rc::clone(n));
+}
+
+/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag and scope.
+pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
+    if Rc::ptr_eq(from, to) {
+        return;
+    }
+    let p = Rc::as_ptr(from) as usize;
+    if cx.squeezed.contains(&p) || cx.late_squeezed.borrow().contains_key(&p) {
+        cx.late_squeezed.borrow_mut().insert(Rc::as_ptr(to) as usize, Rc::clone(to));
+    }
+    if let Some(table) = cx.syms.as_ref() {
+        if let Some(sc) = table.scope_lookup(&p) {
+            table.alias_scope.borrow_mut().insert(Rc::as_ptr(to) as usize, (sc, Rc::clone(to)));
+        }
+    }
 }
 
 fn mark_squeezed(cx: &mut Cx, n: &N) {

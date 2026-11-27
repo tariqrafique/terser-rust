@@ -196,6 +196,15 @@ pub(crate) fn pure_effects(n: &N) -> Option<Vec<N>> {
     Some(args.iter().filter(|a| !eval::is_pure(a)).cloned().collect())
 }
 
+/// terser `node.clone(true)`: new nodes that keep their definitions and scopes.
+fn fresh_copy(v: &N, cx: &Cx) -> N {
+    let copy = ast::deep_clone(v);
+    if let Some(table) = cx.syms.as_ref() {
+        table.alias_copy(v, &copy);
+    }
+    copy
+}
+
 fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: bool) -> Option<N> {
     let Data::Func { kind, name, args: params, body, async_, generator } = &func.data else {
         return None;
@@ -209,7 +218,9 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
             let constant = value.as_ref().map(is_constant_expr).unwrap_or(true);
             if constant && args.iter().all(|a| !matches!(a.data, Data::Spread { .. })) {
                 let mut exprs: Vec<N> = args.to_vec();
-                exprs.push(value.clone().unwrap_or_else(|| void0(n)));
+                // terser `returned.clone(true)`: a fresh copy without optimizer
+                // flags, so a returned lambda is compressed again.
+                exprs.push(value.as_ref().map(|v| fresh_copy(v, cx)).unwrap_or_else(|| void0(n)));
                 return Some(finish_seq(n, exprs, cx));
             }
             if params.len() == 1
@@ -343,7 +354,13 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         let var = atom(func, Data::Defs { kind: ast::DefKind::Var, defs: decls, await_: false });
         cx.pending_vars.borrow_mut().push((inj.stmt, var));
     }
-    Some(finish_seq(n, exprs, cx))
+    let out = finish_seq(n, exprs, cx);
+    // terser `make_sequence(self, ...).optimize(compressor)`: a lone lambda
+    // (the returned `stat.value.clone(true)`) gets its `tighten_body` now.
+    if matches!(out.data, Data::Func { .. }) {
+        cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&out) as usize, Rc::clone(&out));
+    }
+    Some(out)
 }
 
 /// terser `inline.js` `is_recursive_ref`: the reference sits inside the

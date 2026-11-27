@@ -639,6 +639,58 @@ pub fn ptr(n: &N) -> usize {
 /// terser mutates those nodes in place; `fixed()` then sees the optimized tree.
 impl SymTable {
     /// The definition a symbol node refers to, through copies.
+    /// terser `hoist_properties` `def_variable(new_var)`: a new name in the
+    /// scope of the object it came from. `fixed` stays unset until the next
+    /// `reduce_vars`, so the value is not inlined in this pass.
+    pub fn define_hoisted(&mut self, created: Vec<(String, usize, N)>) {
+        let mut ids: HashMap<String, usize> = HashMap::new();
+        for (name, orig, node) in created {
+            let id = *ids.entry(name.clone()).or_insert_with(|| {
+                let o = &self.defs[orig];
+                let def = SymbolDef {
+                    name: name.clone(),
+                    global: o.global,
+                    undeclared: false,
+                    funarg: false,
+                    is_const: o.is_const,
+                    is_defun: false,
+                    pinned: o.pinned,
+                    fn_scope: o.fn_scope,
+                    scope: o.scope,
+                    block_scoped: o.block_scoped,
+                    init: None,
+                    fixed: None,
+                    fixed_null: false,
+                    var_decl: o.var_decl,
+                    exported: false,
+                    suppress_fixed: Cell::new(false),
+                    assignments: 0,
+                    escaped: 0,
+                    direct_access: false,
+                    recursive_refs: 0,
+                    references: Vec::new(),
+                    single_use: SingleUse::No,
+                    replaced: Cell::new(0),
+                    orig_count: 0,
+                };
+                let scope = def.scope;
+                self.defs.push(def);
+                let id = self.defs.len() - 1;
+                self.scope_defs.entry(scope).or_default().push(id);
+                id
+            });
+            let p = ptr(&node);
+            if matches!(node.data, Data::Symbol { kind: SymKind::Ref, .. }) {
+                self.defs[id].references.push(p);
+            } else {
+                self.defs[id].orig_count += 1;
+            }
+            self.node_def.insert(p, id);
+            // Keep the node alive so its address stays unique.
+            self.alias.borrow_mut().insert(p, (id, node));
+        }
+    }
+
     pub fn lookup(&self, p: &usize) -> Option<usize> {
         if let Some(id) = self.node_def.get(p) {
             return Some(*id);

@@ -1757,7 +1757,17 @@ fn expr_value(n: &N) -> N {
         ),
         Data::Class { stmt: true, name, extends, props } => span_node(
             n,
-            Data::Class { stmt: false, name: name.clone(), extends: extends.clone(), props: props.clone() },
+            Data::Class {
+                stmt: false,
+                // A new `AST_SymbolClass` node, so a rebind does not move the
+                // declaration's name into the expression's scope.
+                name: name.as_ref().map(|nm| match &nm.data {
+                    Data::Symbol { name, quote, .. } => span_node(nm, Data::Symbol { name: name.clone(), kind: SymKind::Class, quote: *quote }),
+                    _ => Rc::clone(nm),
+                }),
+                extends: extends.clone(),
+                props: props.clone(),
+            },
         ),
         _ => Rc::clone(n),
     }

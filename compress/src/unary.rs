@@ -686,6 +686,7 @@ fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
     if !is_new && func_expr_unreferenced(expr, cx) {
         let rewritten = crate::eval::process_expression(expr, false, Some(cx));
         if !Rc::ptr_eq(&rewritten, expr) {
+            crate::keep_squeezed(cx, expr, &rewritten);
             let Data::Call { args, optional, is_new, .. } = &n.data else {
                 return Some(Rc::clone(n));
             };
