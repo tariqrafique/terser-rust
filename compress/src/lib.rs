@@ -589,6 +589,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
+        scope_cache: RefCell::new(HashMap::new()),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -669,9 +670,24 @@ struct Cx {
     /// terser `flatten_fn` splices `var` declarations into the scope body after
     /// the statement holding the inlined call. Keyed by that statement's pointer.
     pending_vars: RefCell<Vec<(usize, N)>>,
+    /// Name sets computed from an ancestor scope node while it is on the stack
+    /// (its bindings, its free references). The node is kept so its address
+    /// cannot be reused.
+    scope_cache: RefCell<HashMap<(usize, u8), (N, std::rc::Rc<HashSet<String>>)>>,
 }
 
 impl Cx {
+    /// Cached `f(node)` for an ancestor scope node. `kind` separates the sets.
+    pub(crate) fn cached_names(&self, node: &N, kind: u8, f: impl FnOnce(&N) -> HashSet<String>) -> std::rc::Rc<HashSet<String>> {
+        let key = (Rc::as_ptr(node) as usize, kind);
+        if let Some((_, set)) = self.scope_cache.borrow().get(&key) {
+            return std::rc::Rc::clone(set);
+        }
+        let set = std::rc::Rc::new(f(node));
+        self.scope_cache.borrow_mut().insert(key, (Rc::clone(node), std::rc::Rc::clone(&set)));
+        set
+    }
+
     fn shadowed(&self, name: &str) -> bool {
         self.locals.iter().any(|set| set.contains(name))
     }

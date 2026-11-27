@@ -436,6 +436,7 @@ struct Cand {
 fn collapse_statements(mut stmts: Vec<N>, env: &Env<'_>) -> (Vec<N>, bool) {
     let block_names = block_scoped_names(&stmts);
     let escaped = escaped_names(&stmts);
+    let mut counts = Counts::new(&stmts);
     let mut changed = false;
     let mut guard = 0;
     let mut index = stmts.len();
@@ -445,8 +446,9 @@ fn collapse_statements(mut stmts: Vec<N>, env: &Env<'_>) -> (Vec<N>, bool) {
         let mut candidates = extract_candidates(&stmts[index], env, &block_names);
         let mut restarted = false;
         while let Some(cand) = candidates.pop() {
-            if let Some(next) = apply_candidate(&stmts, index, &cand, env, &escaped) {
+            if let Some(next) = apply_candidate(&stmts, index, &cand, env, &escaped, &counts) {
                 stmts = next;
+                counts = Counts::new(&stmts);
                 changed = true;
                 guard += 1;
                 index = stmts.len();
@@ -653,14 +655,15 @@ fn apply_candidate(
     cand: &Cand,
     env: &Env<'_>,
     escaped: &HashSet<String>,
+    counts: &Counts,
 ) -> Option<Vec<N>> {
     // terser `get_lhs`: no references, nothing to fold.
-    let (reads, writes, hidden) = count_refs(stmts, &cand.name);
+    let (reads, writes, hidden) = counts.refs.get(&cand.name).copied().unwrap_or((0, 0, 0));
     let total = reads + writes + hidden;
     if total == 0 {
         return None;
     }
-    let declared = count_decls(stmts, &cand.name);
+    let declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
     let exposed = cand.kind == Kind::Var && !env.in_fn && !env.toplevel_vars;
     // terser `mangleable_var` — only when `referenced > 1` and this is the single declaration.
     let mangleable = cand.kind == Kind::Var
@@ -1823,6 +1826,55 @@ fn is_mangleable(value: &N, cand_name: &str, env: &Env<'_>) -> bool {
 }
 
 /// `(reads, writes, hidden)`. Writes are `a = …` / `a++` / `delete a`. Hidden refs sit in nested functions.
+/// `count_refs` and `count_decls` for every name, computed once per version
+/// of the statement list.
+struct Counts {
+    refs: HashMap<String, (usize, usize, usize)>,
+    decls: HashMap<String, usize>,
+}
+
+impl Counts {
+    fn new(stmts: &[N]) -> Self {
+        fn refs_rec(n: &N, parent: Option<&N>, hidden: bool, out: &mut HashMap<String, (usize, usize, usize)>) {
+            if let Data::Func { body, .. } = &n.data {
+                for s in body {
+                    refs_rec(s, None, true, out);
+                }
+                return;
+            }
+            if let Some(name) = ref_name(n) {
+                let e = out.entry(name.to_string()).or_insert((0, 0, 0));
+                if hidden {
+                    e.2 += 1;
+                } else if is_write(n, parent) {
+                    e.1 += 1;
+                } else {
+                    e.0 += 1;
+                }
+            }
+            each_child(&n.data, |c| refs_rec(c, Some(n), hidden, out));
+        }
+        fn decls_rec(n: &N, out: &mut HashMap<String, usize>) {
+            match &n.data {
+                Data::Func { .. } | Data::Class { .. } => {}
+                Data::VarDef { name: sym, .. } if sym_name(sym).is_some() => {
+                    *out.entry(sym_name(sym).unwrap().to_string()).or_insert(0) += 1;
+                    each_child(&n.data, |c| decls_rec(c, out));
+                }
+                other => each_child(other, |c| decls_rec(c, out)),
+            }
+        }
+        let mut refs = HashMap::new();
+        let mut decls = HashMap::new();
+        for s in stmts {
+            refs_rec(s, None, false, &mut refs);
+            decls_rec(s, &mut decls);
+        }
+        Counts { refs, decls }
+    }
+}
+
+#[allow(dead_code)]
 fn count_refs(stmts: &[N], name: &str) -> (usize, usize, usize) {
     fn rec(
         n: &N,
@@ -1859,6 +1911,7 @@ fn count_refs(stmts: &[N], name: &str) -> (usize, usize, usize) {
     (reads, writes, hid)
 }
 
+#[allow(dead_code)]
 fn count_decls(stmts: &[N], name: &str) -> usize {
     fn rec(n: &N, name: &str) -> usize {
         match &n.data {

@@ -534,7 +534,12 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
     for frame in &cx.locals {
         taken.extend(frame.iter().cloned());
     }
-    free_refs(scope, &mut taken);
+    let free = cx.cached_names(scope, 1, |sc| {
+        let mut set = HashSet::new();
+        free_refs(sc, &mut set);
+        set
+    });
+    taken.extend(free.iter().cloned());
     let mut scope_vars: HashSet<String> = HashSet::new();
     match &scope.data {
         Data::Func { args, body, .. } => {

@@ -78,11 +78,15 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
     let mut declared = locals.clone();
     let len = cx.parents.len();
     for p in &cx.parents[..len.saturating_sub(1)] {
-        match &p.data {
-            Data::Func { args, body, .. } => declared.extend(crate::tighten::scope_bindings(args, body)),
-            Data::Toplevel { body } => declared.extend(crate::tighten::scope_bindings(&[], body)),
-            _ => {}
-        }
+        let names = match &p.data {
+            Data::Func { .. } | Data::Toplevel { .. } => cx.cached_names(p, 0, |p| match &p.data {
+                Data::Func { args, body, .. } => crate::tighten::scope_bindings(args, body),
+                Data::Toplevel { body } => crate::tighten::scope_bindings(&[], body),
+                _ => Default::default(),
+            }),
+            _ => continue,
+        };
+        declared.extend(names.iter().cloned());
     }
     Some((locals, declared, in_fn))
 }
