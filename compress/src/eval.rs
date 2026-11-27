@@ -65,7 +65,7 @@ pub fn fold(n: &N, cx: &Cx) -> N {
         }
     }
     if cx.opts.conditionals {
-        if let Some(rewritten) = fold_cond(n) {
+        if let Some(rewritten) = fold_cond(n, cx) {
             return rewritten;
         }
     }
@@ -377,6 +377,11 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
             return None;
         }
     }
+    // A conditional returns the chosen branch (`def_optimize(AST_Conditional)`),
+    // which is already `!0` / `!1` when `booleans` rewrote `true` / `false`.
+    if matches!(n.data, Data::Cond { .. }) {
+        return None;
+    }
     let lit = eval(n)?;
     if let Lit::Str(s) = &lit {
         if s.len() + 2 > print_len(n) {
@@ -387,15 +392,17 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     Some(prefer(n, folded))
 }
 
-fn fold_cond(n: &N) -> Option<N> {
-    let Data::Cond { cond, cons, alt } = &n.data else {
-        return None;
-    };
-    let lit = eval(cond)?;
-    if !is_pure(cond) {
+/// terser `lib/compress/index.js` `def_optimize(AST_Conditional)`.
+fn fold_cond(n: &N, cx: &Cx) -> Option<N> {
+    crate::conditional::optimize(n, cx)
+}
+
+pub(crate) fn known_truth(n: &N) -> Option<bool> {
+    let lit = eval(n)?;
+    if !is_pure(n) {
         return None;
     }
-    Some(Rc::clone(if lit.truthy() { cons } else { alt }))
+    Some(lit.truthy())
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_If)`.
@@ -3016,7 +3023,9 @@ fn trim_sequence(n: &N, cx: &Cx) -> Option<N> {
         return Some(num(n, 0.0));
     }
     if kept.len() == 1 {
-        return Some(kept.pop().unwrap());
+        // terser `def_optimize(AST_Sequence)`: a single remaining expression
+        // is `maintain_this_binding`'d, so `(0, a.b)()` stays a sequence.
+        return Some(crate::conditional::maintain_this_binding(cx, kept.pop().unwrap()));
     }
     Some(Rc::new(Node {
         start: n.start.clone(),
