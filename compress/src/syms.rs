@@ -122,7 +122,14 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             let dest = if matches!(kind, DefKind::Var) { fn_scope } else { scope };
             for def in defs {
                 let Data::VarDef { name, value } = &def.data else { continue };
-                let Some(sym_name) = sym(name) else { continue };
+                let Some(sym_name) = sym(name) else {
+                    // Destructuring pattern: the initializer is still a use.
+                    walk(name, scope, scopes, table);
+                    if let Some(value) = value {
+                        walk(value, scope, scopes, table);
+                    }
+                    continue;
+                };
                 let sk = match kind {
                     DefKind::Const => SymKind::Const,
                     DefKind::Let => SymKind::Let,
@@ -337,10 +344,14 @@ fn walk_children(data: &Data, scope: usize, scopes: &mut Vec<Scope>, table: &mut
         | Data::Return { value: Some(expr) }
         | Data::Throw { value: expr }
         | Data::Simple { body: expr }
-        | Data::Dot { expr, .. }
+        |         Data::Dot { expr, .. }
         | Data::Await { expr }
         | Data::Spread { expr }
         | Data::Chain { expr } => walk(expr, scope, scopes, table),
+        Data::Sub { expr, prop, .. } => {
+            walk(expr, scope, scopes, table);
+            walk(prop, scope, scopes, table);
+        }
         Data::Seq { exprs } | Data::Array { elements: exprs } => {
             for e in exprs {
                 walk(e, scope, scopes, table);
@@ -391,6 +402,22 @@ fn walk_children(data: &Data, scope: usize, scopes: &mut Vec<Scope>, table: &mut
             }
             if let Some(finally) = finally {
                 walk(finally, scope, scopes, table);
+            }
+        }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let ast::Seg::Expr(expr) = seg {
+                    walk(expr, scope, scopes, table);
+                }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => {
+            walk(tag, scope, scopes, table);
+            walk(template, scope, scopes, table);
+        }
+        Data::Destructuring { names, .. } => {
+            for name in names {
+                walk(name, scope, scopes, table);
             }
         }
         Data::Object { props } => {

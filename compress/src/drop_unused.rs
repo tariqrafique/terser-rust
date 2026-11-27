@@ -1,298 +1,358 @@
-//! Port of terser `lib/compress/drop-unused.js` `AST_Scope.drop_unused`.
+//! Port of terser `lib/compress/drop-unused.js`.
 //!
-//! Three passes, matching that function:
-//! 1. `scan_ref_scoped` records names that are read. `assign_as_unused`
-//!    (`=` with a symbol on the left, or a write-only update) is not a read.
-//! 2. Values of names that are read are not dropped.
-//! 3. An unread declaration with a pure initializer is removed. A write-only
-//!    `name = expr` becomes `expr`, or `0` when that value is discarded and pure.
+//! `drop_unused` is three walks over one scope:
+//! 1. `scan_ref_scoped` fills `in_use_ids`. `assign_as_unused` (`=` of a symbol)
+//!    is not a use. A definition's value is walked here only when it has side effects.
+//! 2. Initializers of names that are in use are walked, so `var a = b` keeps `b` when `a` is read.
+//! 3. The `tt` transformer drops declarations that are not in use, and a write-only
+//!    `name = expr` becomes `expr` (or is removed when the value is discarded and pure).
+//!
+//! `fixed_ids` records an initializer that is still the only write. A later `=` is
+//! not that node, so it can be replaced only when the name was not written again.
 
-use ast::{Data, FuncKind, N, Node, Seg, SymKind};
-use std::collections::HashSet;
+use ast::{Data, DefKind, Key, N, Node, Seg, SymKind};
+use crate::syms::{self, SymTable};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub fn drop_unused(root: &N, toplevel_vars: bool, toplevel_funcs: bool) -> N {
-    walk(root, true, toplevel_vars, toplevel_funcs)
+    let table = syms::bind(root);
+    scope(root, &table, toplevel_vars, toplevel_funcs)
 }
 
-fn walk(n: &N, in_fn: bool, toplevel_vars: bool, toplevel_funcs: bool) -> N {
+fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
     match &n.data {
-        Data::Toplevel { body } => node(n, Data::Toplevel {
-            body: drop_list(body, toplevel_vars, toplevel_funcs, false),
-        }),
-        Data::Func { kind, name, args, body, async_, generator } => node(n, Data::Func {
-            kind: *kind,
-            name: name.clone(),
-            args: args.clone(),
-            body: drop_list(body, true, true, true),
-            async_: *async_,
-            generator: *generator,
-        }),
-        Data::Block { body } => node(n, Data::Block { body: body.iter().map(|s| walk(s, in_fn, toplevel_vars, toplevel_funcs)).collect() }),
-        other => map_walk(n, other, in_fn, toplevel_vars, toplevel_funcs),
+        Data::Toplevel { body } => {
+            let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
+            node(n, Data::Toplevel { body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
+        }
+        Data::Func { kind, name, args, body, async_, generator } => {
+            let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
+            node(n, Data::Func {
+                kind: *kind,
+                name: name.clone(),
+                args: args.clone(),
+                body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, true),
+                async_: *async_,
+                generator: *generator,
+            })
+        }
+        Data::Block { body } => {
+            let body: Vec<N> = body.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
+            let body = if let Some(&id) = table.node_scope.get(&ptr(n)) {
+                let _ = id;
+                passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, drop_funcs)
+            } else {
+                body
+            };
+            node(n, Data::Block { body })
+        }
+        other => map_scope(n, other, table, drop_vars, drop_funcs),
     }
 }
 
-/// terser `drop-unused.js` passes 1–3 on one statement list.
-fn drop_list(stmts: &[N], drop_vars: bool, drop_funcs: bool, in_fn: bool) -> Vec<N> {
-    let stmts: Vec<N> = stmts.iter().map(|s| walk(s, in_fn, drop_vars, drop_funcs)).collect();
-    // `with` pins the scope: `drop_unused` returns immediately.
-    if contains_with(&stmts) {
-        return stmts;
+struct Use {
+    in_use: HashSet<usize>,
+    /// def id → initializer nodes (`initializations` in drop-unused.js).
+    inits: HashMap<usize, Vec<N>>,
+    /// def id → the vardef that is still the fixed value (`fixed_ids`).
+    fixed: HashSet<usize>,
+    wrote: HashSet<usize>,
+}
+
+/// Passes 1–3 of `AST_Scope.drop_unused`.
+fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool) -> Vec<N> {
+    // `self.pinned()`: `with` keeps every name.
+    if contains_with(stmts) {
+        return stmts.to_vec();
     }
-    let read = read_names(&stmts);
-    // Only names declared in this list. An assignment to an outer binding
-    // is that outer scope's decision (`self.variables.get(name) === def`).
-    let declared = declared_names(&stmts);
+    let mut u = Use { in_use: HashSet::new(), inits: HashMap::new(), fixed: HashSet::new(), wrote: HashSet::new() };
+    for stmt in stmts {
+        scan_ref_scoped(stmt, table, &mut u, true);
+    }
+    // Pass 2: walk initializers of names that are in use.
+    let inits: Vec<(usize, N)> = u.inits.iter().flat_map(|(id, vs)| vs.iter().map(|v| (*id, Rc::clone(v)))).collect();
+    for (id, init) in &inits {
+        if u.in_use.contains(id) {
+            scan_ref_scoped(init, table, &mut u, false);
+        }
+    }
     let mut out = Vec::new();
-    for stmt in &stmts {
-        rewrite_stmt(stmt, &read, &declared, drop_vars, drop_funcs, &mut out);
+    for stmt in stmts {
+        rewrite_stmt(stmt, table, &u, scope_id, drop_vars, drop_funcs, &mut out);
     }
     out
 }
 
-fn declared_names(stmts: &[N]) -> HashSet<String> {
-    let mut names = HashSet::new();
-    for stmt in stmts {
-        match &stmt.data {
-            Data::Defs { defs, .. } => {
-                for def in defs {
-                    if let Data::VarDef { name, .. } = &def.data {
-                        if let Some(sym) = sym_name(name) {
-                            names.insert(sym.to_string());
+/// `scan_ref_scoped` in drop-unused.js. `record_inits` is pass 1; pass 2 only marks refs.
+fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
+    if let Some(id) = assign_as_unused(n).and_then(|sym| def_id(table, sym)) {
+        u.wrote.insert(id);
+        u.fixed.remove(&id);
+        if let Data::Assign { right, .. } = &n.data {
+            scan_ref_scoped(right, table, u, record_inits);
+        }
+        return;
+    }
+    match &n.data {
+        Data::Defs { defs, .. } if record_inits => {
+            for def in defs {
+                let Data::VarDef { name, value } = &def.data else { continue };
+                if let Some(id) = def_id(table, name) {
+                    if let Some(value) = value {
+                        u.inits.entry(id).or_default().push(Rc::clone(value));
+                        if !u.wrote.contains(&id) {
+                            u.fixed.insert(id);
+                        }
+                        // Pass 1 walks the value only when it has side effects.
+                        if has_side_effects(value) {
+                            scan_ref_scoped(value, table, u, record_inits);
                         }
                     }
-                }
-            }
-            Data::Func { kind: FuncKind::Decl, name: Some(name), .. } => {
-                if let Some(sym) = sym_name(name) {
-                    names.insert(sym.to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    names
-}
-
-fn rewrite_stmt(n: &N, read: &HashSet<String>, declared: &HashSet<String>, drop_vars: bool, drop_funcs: bool, out: &mut Vec<N>) {
-    match &n.data {
-        Data::Defs { kind, defs, await_ } => {
-            if matches!(kind, ast::DefKind::Using) {
-                out.push(Rc::clone(n));
-                return;
-            }
-            let mut kept = Vec::new();
-            for def in defs {
-                let Data::VarDef { name, value } = &def.data else {
-                    kept.push(Rc::clone(def));
-                    continue;
-                };
-                let sym = sym_name(name);
-                let unused_name = sym.is_some_and(|s| declared.contains(s) && !read.contains(s));
-                if !drop_vars || !unused_name {
-                    kept.push(Rc::clone(def));
-                    continue;
-                }
-                // Unread initializer that runs code is kept as a statement.
-                if let Some(value) = value {
-                    if has_side_effects(value) {
-                        out.push(simple(n, Rc::clone(value)));
+                } else {
+                    // `def.name instanceof AST_Destructuring`: walk the pattern and the value.
+                    scan_ref_scoped(name, table, u, record_inits);
+                    if let Some(value) = value {
+                        scan_ref_scoped(value, table, u, record_inits);
                     }
                 }
             }
-            if !kept.is_empty() {
-                out.push(node(n, Data::Defs { kind: *kind, defs: kept, await_: *await_ }));
+        }
+        Data::Symbol { kind: SymKind::Ref, .. } => {
+            if let Some(&id) = table.node_def.get(&ptr(n)) {
+                u.in_use.insert(id);
             }
         }
-        Data::Func { kind: FuncKind::Decl, name: Some(name), .. } if drop_funcs && sym_name(name).is_some_and(|s| !read.contains(s)) => {}
-        _ => {
-            if !drop_vars {
-                out.push(Rc::clone(n));
-            } else if let Some(rhs) = write_only(n, read, declared) {
-                let rhs = rewrite_expr(&rhs, read, declared);
-                // A pure write in a statement list is skipped. An impure one stays.
-                if has_side_effects(&rhs) {
-                    out.push(simple(n, rhs));
-                }
-            } else {
-                out.push(rewrite_expr(n, read, declared));
-            }
+        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
+            mark_names(init, table, u);
+            scan_ref_scoped(object, table, u, record_inits);
+            scan_ref_scoped(body, table, u, record_inits);
         }
+        _ => descend(n, |c| scan_ref_scoped(c, table, u, record_inits)),
     }
 }
 
-/// terser `drop-unused.js` `assign_as_unused` plus the pass-3 replacement.
-fn rewrite_expr(n: &N, read: &HashSet<String>, declared: &HashSet<String>) -> N {
-    let go = |c: &N| rewrite_expr(c, read, declared);
-    let data = match &n.data {
-        Data::Assign { op, left, right, logical } if !*logical && op == "=" && ref_name(left).is_some_and(|s| declared.contains(s) && !read.contains(s)) => {
-            return go(right);
+/// `assign_as_unused`: `=` of a symbol, not a logical assignment.
+fn assign_as_unused(n: &N) -> Option<&N> {
+    match &n.data {
+        Data::Assign { op, left, logical, .. } if !*logical && op == "=" && is_ref(left) => Some(left),
+        Data::Simple { body } => assign_as_unused(body),
+        _ => None,
+    }
+}
+
+fn owned(table: &SymTable, n: &N, scope_id: Option<usize>) -> Option<usize> {
+    let id = def_id(table, n)?;
+    if scope_id.is_some_and(|s| table.defs[id].scope != s) {
+        return None;
+    }
+    Some(id)
+}
+
+fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool, out: &mut Vec<N>) {
+    if let Data::Defs { kind, defs, await_ } = &n.data {
+        if matches!(kind, DefKind::Using) {
+            out.push(Rc::clone(n));
+            return;
         }
-        Data::Simple { body } => Data::Simple { body: go(body) },
-        Data::Return { value } => Data::Return { value: value.as_ref().map(|v| go(v)) },
-        Data::Throw { value } => Data::Throw { value: go(value) },
-        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
-        Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left), right: go(right) },
-        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: Rc::clone(left), right: go(right), logical: *logical },
+        let mut kept = Vec::new();
+        for def in defs {
+            let Data::VarDef { name, value } = &def.data else {
+                kept.push(Rc::clone(def));
+                continue;
+            };
+            let id = owned(table, name, scope_id);
+            let unused = drop_vars && id.is_some_and(|id| !u.in_use.contains(&id));
+            if !unused {
+                kept.push(Rc::clone(def));
+                continue;
+            }
+            if let Some(value) = value {
+                if has_side_effects(value) {
+                    out.push(simple(n, Rc::clone(value)));
+                }
+            }
+        }
+        if !kept.is_empty() {
+            out.push(node(n, Data::Defs { kind: *kind, defs: kept, await_: *await_ }));
+        }
+        return;
+    }
+    if drop_funcs {
+        if let Data::Func { name: Some(name), .. } = &n.data {
+            if owned(table, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
+                return;
+            }
+        }
+    }
+    if let Some(stmt) = rewrite_expr(n, table, u, scope_id, drop_vars, true) {
+        out.push(stmt);
+    }
+}
+
+/// Pass 3 `tt` for `assign_as_unused`. `discarded` is `!is_used_in_expression`.
+fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: bool, discarded: bool) -> Option<N> {
+    if drop_vars {
+        if let Data::Assign { op, left, right, logical } = &n.data {
+            if !*logical && op == "=" {
+                // Only this scope's bindings (`self.variables.get(name) === def`).
+                if let Some(id) = owned(table, left, scope_id) {
+                    if !u.in_use.contains(&id) {
+                        let rhs = rewrite_expr(right, table, u, scope_id, drop_vars, false)?;
+                        if !has_side_effects(&rhs) && discarded {
+                            return None;
+                        }
+                        return Some(rhs);
+                    }
+                }
+            }
+        }
+    }
+    let go = |c: &N, discarded: bool| rewrite_expr(c, table, u, scope_id, drop_vars, discarded).unwrap_or_else(|| num0(c));
+    let data = match &n.data {
+        Data::Simple { body } => {
+            let body = rewrite_expr(body, table, u, scope_id, drop_vars, true)?;
+            Data::Simple { body }
+        }
+        Data::Return { value } => Data::Return { value: value.as_ref().and_then(|v| rewrite_expr(v, table, u, scope_id, drop_vars, false)) },
+        Data::Throw { value } => Data::Throw { value: go(value, false) },
+        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr, false), prefix: *prefix },
+        Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left, false), right: go(right, false) },
+        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: Rc::clone(left), right: go(right, false), logical: *logical },
         Data::Seq { exprs } => {
-            let exprs: Vec<N> = exprs.iter().map(go).collect();
+            let last = exprs.len().saturating_sub(1);
+            let exprs: Vec<N> = exprs.iter().enumerate().filter_map(|(i, e)| rewrite_expr(e, table, u, scope_id, drop_vars, i != last)).collect();
             if exprs.len() == 1 {
-                return exprs.into_iter().next().unwrap();
+                return Some(exprs.into_iter().next().unwrap());
             }
             Data::Seq { exprs }
         }
-        Data::Call { expr, args, optional, is_new } => Data::Call { expr: go(expr), args: args.iter().map(go).collect(), optional: *optional, is_new: *is_new },
-        Data::If { cond, body, alt } => Data::If { cond: go(cond), body: go(body), alt: alt.as_ref().map(|a| go(a)) },
-        Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond), cons: go(cons), alt: go(alt) },
-        Data::For { init, cond, step, body } => Data::For {
-            init: init.as_ref().map(|v| go(v)),
-            cond: cond.as_ref().map(|v| go(v)),
-            step: step.as_ref().map(|v| go(v)),
-            body: go(body),
+        Data::Call { expr, args, optional, is_new } => Data::Call {
+            expr: go(expr, false),
+            args: args.iter().map(|a| go(a, false)).collect(),
+            optional: *optional,
+            is_new: *is_new,
         },
-        Data::While { cond, body } => Data::While { cond: go(cond), body: go(body) },
-        Data::Do { body, cond } => Data::Do { body: go(body), cond: go(cond) },
-        Data::Block { body } => Data::Block { body: body.iter().map(go).collect() },
-        _ => return Rc::clone(n),
+        Data::Dot { expr, prop, optional, quote, private } => Data::Dot {
+            expr: go(expr, false), prop: prop.clone(), optional: *optional, quote: *quote, private: *private,
+        },
+        Data::Sub { expr, prop, optional } => Data::Sub { expr: go(expr, false), prop: go(prop, false), optional: *optional },
+        Data::Object { props } => Data::Object { props: props.iter().map(|p| go(p, false)).collect() },
+        Data::Prop { method, key, value, static_, private, generator, async_ } => Data::Prop {
+            method: *method,
+            key: match key {
+                Key::Computed(e) => Key::Computed(go(e, false)),
+                other => other.clone(),
+            },
+            value: go(value, false),
+            static_: *static_,
+            private: *private,
+            generator: *generator,
+            async_: *async_,
+        },
+        Data::Array { elements } => Data::Array { elements: elements.iter().map(|e| go(e, false)).collect() },
+        Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond, false), cons: go(cons, false), alt: go(alt, false) },
+        Data::If { cond, body, alt } => Data::If { cond: go(cond, false), body: go(body, false), alt: alt.as_ref().map(|a| go(a, false)) },
+        Data::Template { segments } => Data::Template {
+            segments: segments.iter().map(|seg| match seg {
+                Seg::Expr(e) => Seg::Expr(go(e, false)),
+                other => other.clone(),
+            }).collect(),
+        },
+        _ => return Some(Rc::clone(n)),
     };
-    node(n, data)
+    Some(node(n, data))
 }
 
-/// A discarded `name = expr` whose name is unread. `expr` is the value to keep.
-fn write_only(n: &N, read: &HashSet<String>, declared: &HashSet<String>) -> Option<N> {
-    let Data::Simple { body } = &n.data else { return None };
-    let Data::Assign { op, left, right, logical } = &body.data else { return None };
-    if *logical || op != "=" {
-        return None;
-    }
-    if ref_name(left).is_some_and(|s| declared.contains(s) && !read.contains(s)) {
-        Some(Rc::clone(right))
-    } else {
-        None
-    }
-}
-
-/// terser `scan_ref_scoped`: a symbol is read unless it is only the left of `=`.
-fn read_names(stmts: &[N]) -> HashSet<String> {
-    let mut read = HashSet::new();
-    for stmt in stmts {
-        scan(stmt, &mut read);
-    }
-    read
-}
-
-fn scan(n: &N, read: &mut HashSet<String>) {
+fn descend(n: &N, mut f: impl FnMut(&N)) {
+    let one = |c: &N, f: &mut dyn FnMut(&N)| f(c);
     match &n.data {
-        Data::Assign { op, left, right, logical } if !*logical && op == "=" => {
-            if ref_name(left).is_none() {
-                scan(left, read);
-            }
-            scan(right, read);
-        }
-        Data::Symbol { name, .. } => {
-            read.insert(name.clone());
-        }
-        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
-            // The loop target is a write, but the binding has to stay.
-            if let Some(name) = ref_name(init).or_else(|| sym_name(init)) {
-                read.insert(name.to_string());
-            }
-            scan(init, read);
-            scan(object, read);
-            scan(body, read);
-        }
-        other => scan_children(other, read),
-    }
-}
-
-fn scan_children(data: &Data, read: &mut HashSet<String>) {
-    match data {
-        Data::Func { body, .. } => body.iter().for_each(|s| scan(s, read)),
-        Data::Block { body } | Data::Switch { body, .. } | Data::Default { body } | Data::Case { body, .. } => body.iter().for_each(|s| scan(s, read)),
-        Data::Defs { defs, .. } => defs.iter().for_each(|d| scan(d, read)),
-        Data::Destructuring { names, .. } => names.iter().for_each(|n| scan(n, read)),
-        Data::Prop { value, .. } => scan(value, read),
-        Data::Template { segments } => {
-            for seg in segments {
-                if let Seg::Expr(expr) = seg {
-                    scan(expr, read);
-                }
-            }
-        }
-        Data::TaggedTemplate { tag, template } => {
-            scan(tag, read);
-            scan(template, read);
-        }
-        Data::VarDef { value, .. } => {
-            if let Some(value) = value {
-                scan(value, read);
-            }
-        }
+        Data::Simple { body } | Data::Return { value: Some(body) } | Data::Throw { value: body }
+        | Data::Unary { expr: body, .. } | Data::Dot { expr: body, .. } | Data::Await { expr: body }
+        | Data::Spread { expr: body } | Data::Chain { expr: body } => one(body, &mut f),
+        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } | Data::DefaultAssign { left, right }
+        | Data::PrivateIn { key: left, value: right } => { f(left); f(right); }
         Data::Call { expr, args, .. } => {
-            scan(expr, read);
-            args.iter().for_each(|a| scan(a, read));
+            f(expr);
+            args.iter().for_each(|a| f(a));
         }
-        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => {
-            scan(left, read);
-            scan(right, read);
+        Data::DynImport { args, .. } => args.iter().for_each(|a| f(a)),
+        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().for_each(|e| f(e)),
+        Data::Object { props } => props.iter().for_each(|p| f(p)),
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(e) = key { f(e); }
+            f(value);
         }
-        Data::Unary { expr, .. } | Data::Return { value: Some(expr) } | Data::Simple { body: expr } | Data::Throw { value: expr } | Data::Dot { expr, .. } | Data::Await { expr } | Data::Spread { expr } | Data::Chain { expr } => scan(expr, read),
-        Data::Sub { expr, prop, .. } => {
-            scan(expr, read);
-            scan(prop, read);
+        Data::Field { key, value, .. } => {
+            if let Key::Computed(e) = key { f(e); }
+            if let Some(value) = value { f(value); }
         }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().for_each(|e| scan(e, read)),
+        Data::Class { extends, props, .. } => {
+            if let Some(extends) = extends { f(extends); }
+            props.iter().for_each(|p| f(p));
+        }
         Data::If { cond, body, alt } => {
-            scan(cond, read);
-            scan(body, read);
-            if let Some(alt) = alt { scan(alt, read); }
+            f(cond); f(body);
+            if let Some(alt) = alt { f(alt); }
         }
-        Data::Cond { cond, cons, alt } => {
-            scan(cond, read);
-            scan(cons, read);
-            scan(alt, read);
-        }
+        Data::Cond { cond, cons, alt } => { f(cond); f(cons); f(alt); }
         Data::For { init, cond, step, body } => {
-            if let Some(init) = init { scan(init, read); }
-            if let Some(cond) = cond { scan(cond, read); }
-            if let Some(step) = step { scan(step, read); }
-            scan(body, read);
+            if let Some(v) = init { f(v); }
+            if let Some(v) = cond { f(v); }
+            if let Some(v) = step { f(v); }
+            f(body);
         }
-        Data::While { cond, body } | Data::Do { body, cond } => {
-            scan(cond, read);
-            scan(body, read);
-        }
+        Data::While { cond, body } | Data::Do { body, cond } => { f(cond); f(body); }
+        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => { f(init); f(object); f(body); }
+        Data::Switch { expr, body } => { f(expr); body.iter().for_each(|s| f(s)); }
+        Data::Case { expr, body } => { f(expr); body.iter().for_each(|s| f(s)); }
+        Data::Block { body } | Data::Func { body, .. } | Data::StaticBlock { body } | Data::Default { body } => body.iter().for_each(|s| f(s)),
         Data::Try { body, catch, finally } => {
-            scan(body, read);
-            if let Some(c) = catch { scan(c, read); }
-            if let Some(f) = finally { scan(f, read); }
+            f(body);
+            if let Some(c) = catch { f(c); }
+            if let Some(fnode) = finally { f(fnode); }
         }
         Data::Catch { arg, body } => {
-            if let Some(arg) = arg { scan(arg, read); }
-            scan(body, read);
+            if let Some(arg) = arg { f(arg); }
+            f(body);
         }
-        Data::Class { extends, props, name, .. } => {
-            if let Some(name) = name.as_ref().and_then(sym_name) {
-                read.insert(name.to_string());
+        Data::Labeled { body, .. } | Data::Finally { body } | Data::With { body, .. } => f(body),
+        Data::Defs { defs, .. } => defs.iter().for_each(|d| f(d)),
+        Data::VarDef { value, .. } => { if let Some(v) = value { f(v); } }
+        Data::Destructuring { names, .. } => names.iter().for_each(|d| f(d)),
+        Data::Sub { expr, prop, .. } => { f(expr); f(prop); }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let Seg::Expr(e) = seg { f(e); }
             }
-            if let Some(extends) = extends { scan(extends, read); }
-            props.iter().for_each(|p| scan(p, read));
         }
-        Data::Prop { value, .. } | Data::Field { value: Some(value), .. } => scan(value, read),
+        Data::TaggedTemplate { tag, template } => { f(tag); f(template); }
+        Data::Export { value, definition, .. } => {
+            if let Some(v) = value { f(v); }
+            if let Some(d) = definition { f(d); }
+        }
         _ => {}
     }
+}
+
+fn mark_names(n: &N, table: &SymTable, u: &mut Use) {
+    if let Some(id) = def_id(table, n) {
+        u.in_use.insert(id);
+    }
+    descend(n, |c| mark_names(c, table, u));
 }
 
 fn contains_with(stmts: &[N]) -> bool {
     fn rec(n: &N) -> bool {
         match &n.data {
             Data::With { .. } => true,
-            Data::Func { body, .. } | Data::Block { body } => body.iter().any(rec),
-            Data::If { cond, body, alt } => rec(cond) || rec(body) || alt.as_ref().is_some_and(|a| rec(a)),
-            Data::Call { expr, args, .. } => rec(expr) || args.iter().any(rec),
-            Data::Return { value: Some(v) } | Data::Simple { body: v } | Data::Throw { value: v } => rec(v),
-            _ => false,
+            // A nested `with` sets `uses_with` on the enclosing scope, so `pinned()` is true.
+            Data::Func { body, .. } => body.iter().any(rec),
+            _ => {
+                let mut hit = false;
+                descend(n, |c| hit |= rec(c));
+                hit
+            }
         }
     }
     stmts.iter().any(rec)
@@ -303,60 +363,55 @@ fn has_side_effects(n: &N) -> bool {
         Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null | Data::This => false,
         Data::Symbol { kind: SymKind::Ref, .. } => false,
         Data::Unary { op, expr, .. } if matches!(op.as_str(), "!" | "~" | "+" | "-" | "void" | "typeof") => has_side_effects(expr),
-        Data::Binary { left, right, op } if !matches!(op.as_str(), "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=" | ">>>=") => {
-            has_side_effects(left) || has_side_effects(right)
-        }
+        Data::Binary { left, right, op } if !op.ends_with('=') => has_side_effects(left) || has_side_effects(right),
         Data::Func { .. } | Data::Array { .. } | Data::Object { .. } => false,
         _ => true,
     }
 }
 
-fn ref_name(n: &N) -> Option<&str> {
-    match &n.data {
-        Data::Symbol { name, kind: SymKind::Ref, .. } => Some(name),
-        _ => None,
-    }
+fn def_id(table: &SymTable, n: &N) -> Option<usize> {
+    table.node_def.get(&ptr(n)).copied()
 }
 
-fn sym_name(n: &N) -> Option<&str> {
-    match &n.data {
-        Data::Symbol { name, .. } => Some(name),
-        _ => None,
-    }
+fn is_ref(n: &N) -> bool {
+    matches!(n.data, Data::Symbol { kind: SymKind::Ref, .. })
+}
+
+fn num0(orig: &N) -> N {
+    node(orig, Data::Number { value: 0.0, raw: "0".into() })
 }
 
 fn simple(orig: &N, body: N) -> N {
     node(orig, Data::Simple { body })
 }
 
+fn ptr(n: &N) -> usize {
+    Rc::as_ptr(n) as usize
+}
+
 fn node(orig: &N, data: Data) -> N {
     Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
 }
 
-fn map_walk(n: &N, data: &Data, in_fn: bool, toplevel_vars: bool, toplevel_funcs: bool) -> N {
-    let go = |c: &N| walk(c, in_fn, toplevel_vars, toplevel_funcs);
+fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
+    let go = |c: &N| scope(c, table, drop_vars, drop_funcs);
     let rebuilt = match data {
         Data::Simple { body } => Data::Simple { body: go(body) },
         Data::Return { value } => Data::Return { value: value.as_ref().map(go) },
         Data::Throw { value } => Data::Throw { value: go(value) },
-        Data::Call { expr, args, optional, is_new } => Data::Call { expr: go(expr), args: args.iter().map(go).collect(), optional: *optional, is_new: *is_new },
+        Data::If { cond, body, alt } => Data::If { cond: go(cond), body: go(body), alt: alt.as_ref().map(go) },
         Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left), right: go(right) },
         Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond), cons: go(cons), alt: go(alt) },
-        Data::For { init, cond, step, body } => Data::For { init: init.as_ref().map(go), cond: cond.as_ref().map(go), step: step.as_ref().map(go), body: go(body) },
-        Data::While { cond, body } => Data::While { cond: go(cond), body: go(body) },
-        Data::Do { body, cond } => Data::Do { body: go(body), cond: go(cond) },
-        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
-        Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(go).collect() },
-        Data::If { cond, body, alt } => Data::If { cond: go(cond), body: go(body), alt: alt.as_ref().map(go) },
-        Data::Class { stmt, name, extends, props } => Data::Class { stmt: *stmt, name: name.clone(), extends: extends.as_ref().map(go), props: props.iter().map(go).collect() },
+        Data::Call { expr, args, optional, is_new } => Data::Call { expr: go(expr), args: args.iter().map(go).collect(), optional: *optional, is_new: *is_new },
+        Data::Class { stmt, name, extends, props } => Data::Class {
+            stmt: *stmt, name: name.clone(), extends: extends.as_ref().map(go), props: props.iter().map(go).collect(),
+        },
+        Data::Object { props } => Data::Object { props: props.iter().map(go).collect() },
         Data::Prop { method, key, value, static_, private, generator, async_ } => Data::Prop {
             method: *method,
             key: key.clone(),
             value: go(value),
-            static_: *static_,
-            private: *private,
-            generator: *generator,
-            async_: *async_,
+            static_: *static_, private: *private, generator: *generator, async_: *async_,
         },
         _ => return Rc::clone(n),
     };
