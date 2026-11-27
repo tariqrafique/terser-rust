@@ -59,6 +59,10 @@ pub fn fold(n: &N, cx: &Cx) -> N {
             }
         }
     }
+    // terser `def_optimize(AST_Array)` / `def_optimize(AST_Object)` / `def_optimize(AST_ObjectKeyVal)`.
+    if let Some(rewritten) = crate::object::optimize(n, cx) {
+        return rewritten;
+    }
     if cx.opts.computed_props {
         if let Some(rewritten) = fold_computed(n, cx) {
             return rewritten;
@@ -353,7 +357,7 @@ fn fold_computed(n: &N, cx: &Cx) -> Option<N> {
 
 /// terser `lib/compress/index.js` `lift_key`.
 /// `["p"]:1` to `p:1`, `[42]:1` to `42:1`. `__proto__` and a class `constructor` stay computed.
-fn lift_key(key: &Key, cx: &Cx) -> Option<Key> {
+pub(crate) fn lift_key(key: &Key, cx: &Cx) -> Option<Key> {
     let Key::Computed(expr) = key else {
         return None;
     };
@@ -2197,7 +2201,7 @@ fn fixed_of<'a>(n: &N, cx: &'a Cx) -> Option<&'a N> {
 }
 
 /// terser `lib/compress/inference.js` `contains_this`. Nested functions hide their own `this`.
-fn contains_this(root: &N) -> bool {
+pub(crate) fn contains_this(root: &N) -> bool {
     fn rec(n: &N) -> bool {
         match &n.data {
             Data::This => return true,

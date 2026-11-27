@@ -10,6 +10,7 @@ mod conditional;
 mod drop_unused;
 mod eval;
 mod hoist;
+mod object;
 mod tighten;
 mod reduce_vars;
 mod syms;
@@ -71,6 +72,16 @@ struct Opts {
     unsafe_comps: bool,
     /// terser `ecma`. `5` unless set. Values from 6 through 2014 become `year + 2009`.
     ecma: i32,
+    /// terser `unsafe_methods`. Off unless set. A regexp only rewrites matching keys.
+    unsafe_methods: UnsafeMethods,
+}
+
+/// terser `unsafe_methods`: `false`, `true`, or a `RegExp`.
+#[derive(Clone, Debug)]
+enum UnsafeMethods {
+    Off,
+    All,
+    Pattern { source: String, flags: String },
 }
 
 /// terser `lib/compress/index.js` `pure_getters`.
@@ -121,6 +132,7 @@ impl Opts {
             passes: 1,
             unsafe_comps: false,
             ecma: 5,
+            unsafe_methods: UnsafeMethods::Off,
         }
     }
 
@@ -161,6 +173,7 @@ impl Opts {
             passes: 1,
             unsafe_comps: false,
             ecma: 5,
+            unsafe_methods: UnsafeMethods::Off,
         }
     }
 
@@ -290,6 +303,9 @@ impl Opts {
             let n = v as i32;
             opts.ecma = if n > 5 && n < 2015 { n + 2009 } else { n };
         }
+        if let Some(v) = obj.get("unsafe_methods") {
+            opts.unsafe_methods = unsafe_methods_of(v);
+        }
         opts
     }
 
@@ -319,6 +335,20 @@ impl Opts {
             || self.unused
             || self.unsafe_opt
             || self.unsafe_math
+            || !matches!(self.unsafe_methods, UnsafeMethods::Off)
+    }
+}
+
+fn unsafe_methods_of(value: &Value) -> UnsafeMethods {
+    match value {
+        Value::Bool(true) => UnsafeMethods::All,
+        Value::Bool(false) => UnsafeMethods::Off,
+        Value::Object(obj) if obj.get("__terser_type").and_then(Value::as_str) == Some("RegExp") => {
+            let source = obj.get("source").and_then(Value::as_str).unwrap_or("").to_string();
+            let flags = obj.get("flags").and_then(Value::as_str).unwrap_or("").to_string();
+            UnsafeMethods::Pattern { source, flags }
+        }
+        _ => UnsafeMethods::Off,
     }
 }
 
