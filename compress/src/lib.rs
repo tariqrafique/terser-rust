@@ -7,6 +7,8 @@
 
 mod collapse;
 mod eval;
+mod reduce_vars;
+mod syms;
 
 use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
@@ -44,6 +46,10 @@ struct Opts {
     reduce_vars: bool,
     collapse_vars: bool,
     unused: bool,
+    toplevel_vars: bool,
+    toplevel_funcs: bool,
+    /// terser `lib/compress/index.js` `compress()` `passes`.
+    passes: u32,
 }
 
 impl Opts {
@@ -72,6 +78,9 @@ impl Opts {
             reduce_vars: true,
             collapse_vars: true,
             unused: true,
+            toplevel_vars: false,
+            toplevel_funcs: false,
+            passes: 1,
         }
     }
 
@@ -100,6 +109,9 @@ impl Opts {
             reduce_vars: false,
             collapse_vars: false,
             unused: false,
+            toplevel_vars: false,
+            toplevel_funcs: false,
+            passes: 1,
         }
     }
 
@@ -174,6 +186,24 @@ impl Opts {
         }
         if let Some(v) = bool_key(obj, "unused") {
             opts.unused = v;
+        }
+        if let Some(v) = obj.get("toplevel") {
+            match v {
+                Value::Bool(on) => {
+                    opts.toplevel_vars = *on;
+                    opts.toplevel_funcs = *on;
+                }
+                Value::String(s) => {
+                    opts.toplevel_vars = s.contains("vars");
+                    opts.toplevel_funcs = s.contains("funcs");
+                }
+                _ => {}
+            }
+        }
+        if let Some(v) = obj.get("passes") {
+            if let Some(n) = v.as_u64() {
+                opts.passes = n.max(1) as u32;
+            }
         }
         if let Some(v) = obj.get("inline") {
             opts.inline = match v {
@@ -288,8 +318,22 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if !opts.any() {
         return Rc::clone(root);
     }
+    // terser `lib/compress/index.js` `Compressor.compress`: repeat `passes` times.
+    let passes = opts.passes.max(1);
+    let mut tree = Rc::clone(root);
+    for _ in 0..passes {
+        tree = compress_pass(&tree, opts.clone());
+    }
+    tree
+}
+
+fn compress_pass(root: &N, opts: Opts) -> N {
     let collapse_vars = opts.collapse_vars;
+    let reduce_vars_on = opts.reduce_vars;
     let unused = opts.unused;
+    let toplevel_vars = opts.toplevel_vars;
+    let toplevel_funcs = opts.toplevel_funcs;
+    let evaluate = opts.evaluate;
     let mut cx = Cx {
         opts,
         frames: vec![HashMap::new()],
@@ -298,10 +342,26 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         keep_block: false,
         in_with: false,
         in_for_init: false,
+        in_lhs: false,
         locals: vec![HashSet::new()],
         consts: vec![HashMap::new()],
+        syms: None,
     };
+    if reduce_vars_on {
+        let mut table = syms::bind(root);
+        reduce_vars::analyze(
+            &mut table,
+            root,
+            &reduce_vars::Env { unused, evaluate, toplevel_vars, toplevel_funcs },
+        );
+        cx.syms = Some(table);
+    }
     let out = transform(root, &mut cx);
+    let out = if let Some(table) = &cx.syms {
+        syms::drop_replaced(&out, table, unused)
+    } else {
+        out
+    };
     if collapse_vars {
         collapse::collapse(&out, unused)
     } else {
@@ -317,8 +377,12 @@ struct Cx {
     keep_block: bool,
     in_with: bool,
     in_for_init: bool,
+    /// Symbol is the target of an assignment, update, or for-in/of.
+    /// terser `Compressor.is_lhs` / `inference.js` `is_lhs`.
+    in_lhs: bool,
     locals: Vec<HashSet<String>>,
     consts: Vec<HashMap<String, N>>,
+    syms: Option<syms::SymTable>,
 }
 
 impl Cx {
@@ -998,7 +1062,9 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         Data::ForIn { init, object, body } => {
             let prev = cx.in_for_init;
             cx.in_for_init = true;
+            cx.in_lhs = true;
             let init_m = transform(init, cx);
+            cx.in_lhs = false;
             cx.in_for_init = prev;
             let object_m = transform(object, cx);
             let pushed = push_loop_bindings(Some(&init_m), cx);
@@ -1012,7 +1078,9 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         Data::ForOf { init, object, body, await_ } => {
             let prev = cx.in_for_init;
             cx.in_for_init = true;
+            cx.in_lhs = true;
             let init_m = transform(init, cx);
+            cx.in_lhs = false;
             cx.in_for_init = prev;
             let object_m = transform(object, cx);
             let pushed = push_loop_bindings(Some(&init_m), cx);
@@ -1214,7 +1282,14 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::Call { expr: expr_m, args, optional: *optional, is_new: *is_new }, c1 || c2)
         }
         Data::Unary { op, expr, prefix } => {
+            let update = matches!(op.as_str(), "++" | "--");
+            if update {
+                cx.in_lhs = true;
+            }
             let m = if op == "!" { transform_bool(expr, cx) } else { transform(expr, cx) };
+            if update {
+                cx.in_lhs = false;
+            }
             let c = !Rc::ptr_eq(&m, expr);
             finish(n, Data::Unary { op: op.clone(), expr: m, prefix: *prefix }, c)
         }
@@ -1238,7 +1313,9 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::Binary { op: op.clone(), left: left_m, right: right_m }, c)
         }
         Data::Assign { op, left, right, logical } => {
+            cx.in_lhs = true;
             let left_m = transform(left, cx);
+            cx.in_lhs = false;
             let right_m = transform(right, cx);
             let c = !Rc::ptr_eq(&left_m, left) || !Rc::ptr_eq(&right_m, right);
             finish(n, Data::Assign { op: op.clone(), left: left_m, right: right_m, logical: *logical }, c)

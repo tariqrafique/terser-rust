@@ -129,7 +129,21 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &n.data else {
         return None;
     };
-    if cx.opts.reduce_vars {
+    if cx.opts.reduce_vars && !cx.in_lhs {
+        if let Some(table) = &cx.syms {
+            if let Some(value) = crate::reduce_vars::inline_ref(
+                n,
+                table,
+                &crate::reduce_vars::Env {
+                    unused: cx.opts.unused,
+                    evaluate: cx.opts.evaluate,
+                    toplevel_vars: cx.opts.toplevel_vars,
+                    toplevel_funcs: cx.opts.toplevel_funcs,
+                },
+            ) {
+                return Some(value);
+            }
+        }
         if let Some(value) = cx.const_value(name) {
             return Some(Rc::clone(value));
         }
@@ -1236,7 +1250,8 @@ fn eval(n: &N) -> Option<Lit> {
             match op.as_str() {
                 "!" => Some(Lit::Bool(!inner.truthy())),
                 "void" => Some(Lit::Undef),
-                "typeof" => Some(Lit::Str(type_of(&inner))),
+                // terser keeps `typeof 42` instead of folding it to `"number"`.
+                "typeof" => None,
                 "~" => Some(Lit::Num((!to_int32(inner.num()?)) as f64)),
                 "-" => Some(neg(inner.num()?)),
                 "+" => Some(Lit::Num(inner.num()?)),
@@ -1308,17 +1323,6 @@ fn neg(n: f64) -> Lit {
     } else {
         Lit::Num(-n)
     }
-}
-
-fn type_of(lit: &Lit) -> String {
-    match lit {
-        Lit::Num(_) => "number",
-        Lit::Str(_) => "string",
-        Lit::Bool(_) => "boolean",
-        Lit::Undef => "undefined",
-        Lit::Null => "object",
-    }
-    .into()
 }
 
 fn eval_bin(op: &str, l: Lit, r: Lit) -> Option<Lit> {
