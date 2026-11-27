@@ -314,6 +314,20 @@ fn optimize_template(n: &N, cx: &Cx) -> Option<N> {
             ));
         }
     }
+    // `foo${bar}` => "foo" + bar, `${bar}baz` => bar + "baz".
+    if out.len() == 3 {
+        if let (Seg::Cooked { value: head, units: hu, .. }, Seg::Expr(mid), Seg::Cooked { value: tail, units: tu, .. }) = (&out[0], &out[1], &out[2]) {
+            if is_string(mid) || is_number_or_bigint(mid) || is_nullish_node(mid, cx) || cx.opts.unsafe_opt {
+                let string = |v: &String, u: &Option<Vec<u16>>| atom(n, Data::String { value: v.clone(), quote: '"', units: u.clone() });
+                if tail.is_empty() {
+                    return Some(binary(n, "+", string(head, hu), Rc::clone(mid)));
+                }
+                if head.is_empty() {
+                    return Some(binary(n, "+", Rc::clone(mid), string(tail, tu)));
+                }
+            }
+        }
+    }
     if out.len() == segments.len() && out.iter().zip(segments).all(|(a, b)| seg_eq(a, b)) {
         return None;
     }
@@ -2018,17 +2032,24 @@ pub(crate) fn is_number(n: &N) -> bool {
     }
 }
 
+/// terser `inference.js` `is_number_or_bigint`.
 fn is_number_or_bigint(n: &N) -> bool {
+    const NUMERIC: &[&str] = &["-", "*", "/", "%", "&", "|", "^", "<<", ">>"];
     match &n.data {
         Data::Number { .. } | Data::BigInt { .. } => true,
-        Data::Unary { op, prefix: true, .. } => matches!(op.as_str(), "+" | "-" | "~"),
+        Data::Unary { op, .. } => matches!(op.as_str(), "+" | "-" | "~" | "++" | "--"),
         Data::Binary { op, left, right } => {
             if op == "+" {
                 is_number_or_bigint(left) && is_number_or_bigint(right)
             } else {
-                matches!(op.as_str(), "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>")
+                NUMERIC.contains(&op.as_str())
             }
         }
+        Data::Assign { op, right, .. } => {
+            NUMERIC.contains(&op.trim_end_matches('=')) && op != "=" || op == "=" && is_number_or_bigint(right)
+        }
+        Data::Seq { exprs } => exprs.last().is_some_and(is_number_or_bigint),
+        Data::Cond { cons, alt, .. } => is_number_or_bigint(cons) && is_number_or_bigint(alt),
         _ => false,
     }
 }
