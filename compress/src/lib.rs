@@ -1125,6 +1125,20 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // `drop_unused` and descends once more. `use asm` skips `drop_unused`.
     // Flags are copied onto the rebuilt tree: terser mutates in place, so a
     // node that was already optimized stays squeezed and is not folded again.
+    // terser `.optimize(compressor)` on a node an optimizer just made (an
+    // inlined lambda copy, a switch-built block): its `tighten_body` runs now,
+    // on its children as they are.
+    if cx.pre_tighten.borrow_mut().remove(&(Rc::as_ptr(&out) as usize)).is_some() {
+        cx.parents.push(Rc::clone(&out));
+        let entered = cx.enter(&out);
+        let tightened = after_descend(Rc::clone(&out), &out, cx);
+        cx.leave(entered);
+        cx.parents.pop();
+        if !Rc::ptr_eq(&tightened, &out) {
+            alias_scope_node(cx, &out, &tightened);
+            out = tightened;
+        }
+    }
     let same = Rc::ptr_eq(&out, &twice);
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
         // Nodes built by this optimize (a switch turned into `if`, then a comma
