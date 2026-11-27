@@ -332,8 +332,9 @@ impl Out {
                 if *kind == FuncKind::Arrow {
                     self.print_arrow(node);
                 } else {
-                    let nokeyword = *kind == FuncKind::Accessor
-                        || self.parent(0).is_some_and(|p| matches!(p.data, Data::Prop { method: Some(_), .. }));
+                    // Methods pass `nokeyword` into `print_func` directly. Nested
+                    // declarations inside a method still need the keyword.
+                    let nokeyword = *kind == FuncKind::Accessor;
                     self.print_func(*async_, *generator, name.as_ref(), args, body, nokeyword);
                 }
             }
@@ -1089,16 +1090,18 @@ impl Out {
             Some(units) => encode_units(units, Some('`')),
             None => encode_string(s, Some('`')),
         };
-        let inner = encoded.trim_start_matches('`').trim_end_matches('`').replace("${", "\\${");
+        let inner = if encoded.starts_with('`') && encoded.ends_with('`') && encoded.len() >= 2 {
+            encoded[1..encoded.len() - 1].replace("${", "\\${")
+        } else {
+            encoded.replace("${", "\\${")
+        };
         self.print(&inner);
     }
 
     fn print_regexp(&mut self, node: &N, source: &str, flags: &str) {
         let source = regexp_source_fix(source);
         let flags = sort_flags(flags);
-        let mut source = source.replace("</script", "</\\script").replace("</SCRIPT", "</\\SCRIPT");
-        // case-insensitive </script with whitespace is rare; handle the common form via the helper
-        source = slash_script(&source);
+        let source = slash_script(&source);
         if source.trim_start().to_ascii_lowercase().starts_with("script") && self.last.ends_with('<') {
             self.print(" ");
         }
@@ -1678,6 +1681,10 @@ fn contains_in(node: &N) -> bool {
         Data::Cond { cond, cons, alt } => contains_in(cond) || contains_in(cons) || contains_in(alt),
         Data::Unary { expr, .. } | Data::Await { expr } | Data::Spread { expr } | Data::Chain { expr } => contains_in(expr),
         Data::Yield { expr, .. } => expr.as_ref().is_some_and(|e| contains_in(e)),
+        Data::Return { value } => value.as_ref().is_some_and(|e| contains_in(e)),
+        Data::Simple { body } | Data::Throw { value: body } => contains_in(body),
+        Data::Return { value } => value.as_ref().is_some_and(|e| contains_in(e)),
+        Data::Throw { value } => contains_in(value),
         Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(contains_in),
         Data::Object { props } => props.iter().any(contains_in),
         Data::Call { expr, args, .. } => contains_in(expr) || args.iter().any(contains_in),
@@ -1729,6 +1736,7 @@ fn needs_parens(out: &Out, node: &N) -> bool {
                 | Data::Spread { .. }
                 | Data::Yield { .. }
                 | Data::Export { .. }
+                | Data::Field { .. }
         ) || matches!(&p.data, Data::Dot { expr, .. } | Data::Sub { expr, .. } if !Rc::ptr_eq(expr, node).then_some(false).unwrap_or(true) && !is_prop_property(p, node))
             || matches!(&p.data, Data::ForOf { object, .. } if Rc::ptr_eq(object, node)),
         Data::Binary { op, .. } => binary_needs_parens(p, node, op),
@@ -1784,6 +1792,15 @@ fn needs_parens(out: &Out, node: &N) -> bool {
             match &p.data {
                 Data::Call { expr: pexpr, is_new: true, .. } if Rc::ptr_eq(pexpr, node) => true,
                 Data::Export { is_default: true, .. } if matches!(expr.data, Data::Func { .. }) => true,
+                Data::Dot { expr: pexpr, .. } | Data::Sub { expr: pexpr, .. }
+                    if Rc::ptr_eq(pexpr, node)
+                        && matches!(expr.data, Data::Func { kind: FuncKind::Expr, .. })
+                        && out.parent(1).is_some_and(|p1| {
+                            matches!(&p1.data, Data::Assign { left, .. } if Rc::ptr_eq(left, p))
+                        }) =>
+                {
+                    true
+                }
                 _ => false,
             }
         }
@@ -2062,6 +2079,19 @@ fn make_num(num: f64) -> String {
                 candidates.push(format!("{head}e{zeros}"));
             }
         }
+    } else if let Some(rest) = strv.strip_prefix(|c: char| c.is_ascii_digit()) {
+        // `^(\d)\.(\d+)e(-?\d+)$` after `e+` has already been rewritten to `e`.
+        if rest.starts_with('.') {
+            if let Some((frac, exp)) = rest[1..].split_once('e') {
+                if !frac.is_empty() && frac.chars().all(|c| c.is_ascii_digit()) {
+                    if let Ok(e) = exp.parse::<i32>() {
+                        let shift = e - frac.len() as i32;
+                        let lead = &strv[..1];
+                        candidates.push(format!("{lead}{frac}e{shift}"));
+                    }
+                }
+            }
+        }
     }
     best_of(candidates)
 }
@@ -2242,27 +2272,31 @@ fn match_script_close(rest: &str) -> Option<usize> {
 }
 
 fn slash_script(source: &str) -> String {
-    let mut out = String::new();
     let lower = source.to_ascii_lowercase();
-    let mut i = 0;
+    let mut out = String::new();
     let b = source.as_bytes();
+    let mut i = 0;
     while i < b.len() {
         if b[i] == b'<' {
             let rest = &lower[i..];
-            if rest.starts_with('<') {
-                let mut j = 1;
-                let rb = rest.as_bytes();
+            let rb = rest.as_bytes();
+            let mut j = 1;
+            while j < rb.len() && rb[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if j < rb.len() && rb[j] == b'/' {
+                let slash = j;
+                j += 1;
                 while j < rb.len() && rb[j].is_ascii_whitespace() {
                     j += 1;
                 }
-                if rest[j..].to_ascii_lowercase().starts_with("/script") || (j + 7 <= rest.len() && rest[j..].starts_with("/script")) {
-                    // copy "<" + whitespace + "\\/" + "script"
-                    out.push('<');
-                    out.push_str(&source[i + 1..i + j]);
+                if rest[j..].starts_with("script") {
+                    out.push_str(&source[i..i + slash]);
                     out.push('\\');
                     out.push('/');
-                    out.push_str(&source[i + j + 1..i + j + 1 + "script".len()]);
-                    i = i + j + 1 + "script".len();
+                    let end = i + j + "script".len();
+                    out.push_str(&source[i + slash + 1..end]);
+                    i = end;
                     continue;
                 }
             }

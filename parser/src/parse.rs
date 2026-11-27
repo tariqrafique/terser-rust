@@ -28,6 +28,7 @@ struct Parser {
     in_directives: bool,
     in_loop: i32,
     in_class: bool,
+    arrows_ok: bool,
     labels: Vec<LabelFrame>,
 }
 
@@ -78,6 +79,7 @@ impl Parser {
             in_directives: true,
             in_loop: 0,
             in_class: false,
+            arrows_ok: true,
             labels: Vec::new(),
         }
     }
@@ -788,8 +790,11 @@ impl Parser {
     }
 
     fn await_using(&mut self, no_in: bool) -> Result<N, ParseError> {
+        // Caller already consumed `await`. The declaration starts there.
+        let start = self.prev.unwrap_or(self.token);
         self.bump()?;
-        self.var_decl(DefKind::Using, no_in, true)
+        let defs = self.vardefs(no_in, DefKind::Using, SymKind::Using)?;
+        Ok(self.mk(Data::Defs { kind: DefKind::Using, defs, await_: true }, start, self.prev.unwrap_or(start)))
     }
 
     fn vardefs(&mut self, no_in: bool, kind: DefKind, sym: SymKind) -> Result<Vec<N>, ParseError> {
@@ -1171,6 +1176,8 @@ impl Parser {
     }
 
     fn expression(&mut self, commas: bool, no_in: bool) -> Result<N, ParseError> {
+        let saved = self.arrows_ok;
+        self.arrows_ok = true;
         let start = self.token;
         let mut exprs = vec![self.maybe_assign(no_in)?];
         if commas {
@@ -1179,11 +1186,13 @@ impl Parser {
                 exprs.push(self.maybe_assign(no_in)?);
             }
         }
-        if exprs.len() == 1 {
-            Ok(exprs.pop().unwrap())
+        let node = if exprs.len() == 1 {
+            exprs.pop().unwrap()
         } else {
-            Ok(self.mk(Data::Seq { exprs }, start, self.prev.unwrap_or(start)))
-        }
+            self.mk(Data::Seq { exprs }, start, self.prev.unwrap_or(start))
+        };
+        self.arrows_ok = saved;
+        Ok(node)
     }
 
     fn maybe_assign(&mut self, no_in: bool) -> Result<N, ParseError> {
@@ -1217,7 +1226,7 @@ impl Parser {
 
     fn maybe_conditional(&mut self, no_in: bool) -> Result<N, ParseError> {
         let start = self.token;
-        let expr = self.expr_ops(no_in, 0)?;
+        let expr = self.expr_ops(no_in, 0, true)?;
         if self.is("operator", Some("?")) {
             self.bump()?;
             let cons = self.expression(false, false)?;
@@ -1228,7 +1237,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn expr_ops(&mut self, no_in: bool, min_prec: i32) -> Result<N, ParseError> {
+    fn expr_ops(&mut self, no_in: bool, min_prec: i32, allow_arrows: bool) -> Result<N, ParseError> {
         if !no_in && min_prec < prec("in") && self.is("privatename", None) {
             if !self.in_class {
                 return Err(self.croak("Private field must be used in an enclosing class"));
@@ -1237,11 +1246,11 @@ impl Parser {
             let key = self.mk(Data::Symbol { name: self.sval(), kind: SymKind::Private, quote: None }, start, start);
             self.bump()?;
             self.expect("operator", "in")?;
-            let value = self.expr_ops(no_in, prec("in"))?;
+            let value = self.expr_ops(no_in, prec("in"), false)?;
             let node = self.mk(Data::PrivateIn { key, value }, start, self.prev.unwrap_or(start));
             return self.expr_op(node, 0, no_in);
         }
-        let left = self.maybe_unary()?;
+        let left = self.maybe_unary(allow_arrows)?;
         self.expr_op(left, min_prec, no_in)
     }
 
@@ -1273,7 +1282,10 @@ impl Parser {
                 }
             }
             self.bump()?;
-            let right = self.expr_ops(no_in, p)?;
+            let saved = self.arrows_ok;
+            self.arrows_ok = false;
+            let right = self.expr_ops(no_in, p, false)?;
+            self.arrows_ok = saved;
             let start = left.start.as_ref().map(|t| t.pos as usize).unwrap_or(0);
             let _ = start;
             let end = self.prev.unwrap_or(self.token);
@@ -1288,11 +1300,19 @@ impl Parser {
         self.tz.tokens.iter().position(|t| t.pos == pos)
     }
 
-    fn maybe_unary(&mut self) -> Result<N, ParseError> {
+    fn maybe_unary(&mut self, allow_arrows: bool) -> Result<N, ParseError> {
+        let saved_arrows = self.arrows_ok;
+        self.arrows_ok = allow_arrows;
+        let result = self.maybe_unary_inner();
+        self.arrows_ok = saved_arrows;
+        result
+    }
+
+    fn maybe_unary_inner(&mut self) -> Result<N, ParseError> {
         if self.is("name", Some("await")) && self.can_await() {
             let start = self.token;
             self.bump()?;
-            let expr = self.maybe_unary()?;
+            let expr = self.maybe_unary(false)?;
             return Ok(self.mk(Data::Await { expr }, start, self.prev.unwrap_or(start)));
         }
         if self.is("operator", None) && is_unary_prefix(&self.sval()) {
@@ -1300,7 +1320,7 @@ impl Parser {
             let op = self.sval();
             self.bump()?;
             self.handle_regexp()?;
-            let expr = self.maybe_unary()?;
+            let expr = self.maybe_unary(false)?;
             if matches!(op.as_str(), "++" | "--") && !is_assignable(&expr) {
                 return Err(self.at(format!("Invalid use of {op} operator"), start));
             }
@@ -1320,7 +1340,7 @@ impl Parser {
             return Ok(self.mk(Data::Unary { op, expr, prefix: true }, start, self.prev.unwrap_or(start)));
         }
         let start = self.token;
-        let mut val = self.expr_atom()?;
+        let mut val = self.expr_atom(self.arrows_ok)?;
         while self.is("operator", None) && is_unary_postfix(&self.sval()) && !self.tz.has_newline_before(self.token) {
             if matches!(val.data, Data::Func { kind: FuncKind::Arrow, .. }) {
                 return Err(self.unexpected(self.token));
@@ -1336,9 +1356,9 @@ impl Parser {
         Ok(val)
     }
 
-    fn expr_atom(&mut self) -> Result<N, ParseError> {
+    fn expr_atom(&mut self, allow_arrows: bool) -> Result<N, ParseError> {
         if self.is("operator", Some("new")) {
-            return self.new_expr();
+            return self.new_expr(true);
         }
         if self.is("name", Some("import")) {
             return self.import_expr();
@@ -1356,8 +1376,8 @@ impl Parser {
             match self.sval().as_str() {
                 "(" => {
                     let paren = self.token;
-                    let exprs = self.params_or_seq(true, async_node.is_none())?;
-                    if self.is("arrow", Some("=>")) {
+                    let exprs = self.params_or_seq(self.arrows_ok, async_node.is_none())?;
+                    if self.arrows_ok && self.is("arrow", Some("=>")) {
                         let args = self.to_fun_args_list(exprs)?;
                         return self.arrow(start, args, async_node.is_some());
                     }
@@ -1390,7 +1410,7 @@ impl Parser {
         }
         if self.is("name", None) {
             let pk = self.peek_tok()?;
-            if self.tz.ty(pk) == "arrow" {
+            if self.arrows_ok && self.tz.ty(pk) == "arrow" {
                 let name = self.sval();
                 let param = self.mk(Data::Symbol { name, kind: SymKind::Funarg, quote: None }, start, start);
                 self.bump()?;
@@ -1467,7 +1487,7 @@ impl Parser {
         Ok(self.mk(node, start, start))
     }
 
-    fn new_expr(&mut self) -> Result<N, ParseError> {
+    fn new_expr(&mut self, allow_calls: bool) -> Result<N, ParseError> {
         let start = self.token;
         self.expect("operator", "new")?;
         if self.is("punc", Some(".")) {
@@ -1484,7 +1504,7 @@ impl Parser {
             Vec::new()
         };
         let node = self.mk(Data::Call { expr, args, optional: false, is_new: true }, start, self.prev.unwrap_or(start));
-        self.subscripts(node, true)
+        self.subscripts(node, allow_calls)
     }
 
     fn expr_atom_no_call(&mut self) -> Result<N, ParseError> {
@@ -1497,7 +1517,7 @@ impl Parser {
 
     fn expr_atom_limited(&mut self) -> Result<N, ParseError> {
         if self.is("operator", Some("new")) {
-            return self.new_expr();
+            return self.new_expr(false);
         }
         let start = self.token;
         if self.is("punc", Some("(")) {
@@ -1532,15 +1552,9 @@ impl Parser {
         Err(self.unexpected(self.token))
     }
 
-    fn subscripts_limited(&mut self, mut expr: N) -> Result<N, ParseError> {
-        loop {
-            if self.is("punc", Some(".")) || self.is("punc", Some("[")) || self.is("punc", Some("?.")) {
-                expr = self.one_subscript(expr, false)?;
-            } else {
-                break;
-            }
-        }
-        Ok(expr)
+    fn subscripts_limited(&mut self, expr: N) -> Result<N, ParseError> {
+        // `new`'s callee includes member access and tagged templates, not calls.
+        self.subscripts_chain(expr, false, false)
     }
 
     fn subscripts(&mut self, expr: N, allow_calls: bool) -> Result<N, ParseError> {
@@ -1762,7 +1776,7 @@ impl Parser {
         let mut async_ = false;
         let mut generator = false;
         let mut accessor: Option<String> = None;
-        if is_class && self.sval() == "static" {
+        if is_class && self.is("name", Some("static")) {
             let pk = self.peek_tok()?;
             let next_is_method_end = self.is_at(pk, "punc", Some("("))
                 || self.is_at(pk, "punc", Some(","))
@@ -1824,13 +1838,24 @@ impl Parser {
             let name = self.sval();
             self.bump()?;
             Key::Static { name, quote: None }
-        } else if self.is("name", None) || self.is("privatename", None) || self.is("string", None) || self.is("keyword", None) || self.is("atom", None) || self.is("num", None) || self.is("big_int", None) {
+        } else if self.is("name", None)
+            || self.is("privatename", None)
+            || self.is("string", None)
+            || self.is("keyword", None)
+            || self.is("atom", None)
+            || self.is("num", None)
+            || self.is("big_int", None)
+            || (self.is("operator", None) && matches!(self.sval().as_str(), "delete" | "in" | "instanceof" | "new" | "typeof" | "void"))
+        {
             let name = if self.is("num", None) {
-                self.tz.num_val(self.token).map(|n| js_key(n)).unwrap_or_else(|| self.sval())
+                self.tz.num_val(self.token).map(crate::token::js_num_to_string).unwrap_or_else(|| self.sval())
             } else {
                 self.sval()
             };
             self.bump()?;
+            if private && (self.is("keyword", Some("function")) || self.is("punc", Some("{"))) {
+                return Err(self.unexpected(self.token));
+            }
             if private || self.tz.ty(key_tok) == "privatename" {
                 Key::Private(name)
             } else {
@@ -1896,6 +1921,7 @@ impl Parser {
                     self.prev.unwrap_or(start),
                 )));
             }
+            return Err(self.unexpected(self.token));
         }
         // Not a method. Rewind is hard; signal the caller by returning None only when we didn't consume.
         // We already consumed the key. Build a keyval and let the caller not double-read.
@@ -1956,7 +1982,7 @@ impl Parser {
         }
         let quote = self.tz.quote(self.token);
         let name = if self.is("num", None) {
-            self.tz.num_val(self.token).map(js_key).unwrap_or_else(|| self.sval())
+            self.tz.num_val(self.token).map(crate::token::js_num_to_string).unwrap_or_else(|| self.sval())
         } else {
             self.sval()
         };
@@ -2350,7 +2376,9 @@ impl Parser {
     fn export_statement(&mut self) -> Result<N, ParseError> {
         let start = self.token;
         if self.is("name", Some("type")) || self.is("name", Some("interface")) {
-            return Err(self.unexpected(self.token));
+            // experimental_typescript is off: do not consume the type token.
+            // The following statement reports the real syntax error.
+            return Ok(self.mk(Data::Empty, start, self.prev.unwrap_or(start)));
         }
         let mut is_default = false;
         if self.is("keyword", Some("default")) {
