@@ -48,13 +48,33 @@ pub fn fold(n: &N, cx: &Cx) -> N {
             return rewritten;
         }
     }
-    if cx.opts.dead_code {
+    if cx.opts.dead_code && cx.opts.conditionals {
         if let Some(rewritten) = fold_if(n) {
+            return rewritten;
+        }
+    }
+    if cx.opts.conditionals {
+        if let Some(rewritten) = fold_if_shape(n, cx) {
             return rewritten;
         }
     }
     if cx.opts.evaluate {
         if let Some(rewritten) = fold_and_or(n) {
+            return rewritten;
+        }
+    }
+    if cx.opts.properties {
+        if let Some(rewritten) = fold_property(n) {
+            return rewritten;
+        }
+    }
+    if cx.opts.loops {
+        if let Some(rewritten) = fold_while(n) {
+            return rewritten;
+        }
+    }
+    if cx.opts.negate_iife {
+        if let Some(rewritten) = negate_iife(n) {
             return rewritten;
         }
     }
@@ -127,6 +147,119 @@ fn fold_cond(n: &N) -> Option<N> {
     Some(Rc::clone(if lit.truthy() { cons } else { alt }))
 }
 
+fn fold_if_shape(n: &N, cx: &Cx) -> Option<N> {
+    let Data::If { cond, body, alt } = &n.data else {
+        return None;
+    };
+    let body_kind = stmt_kind(body);
+    let alt_kind = match alt {
+        None => StmtClass::Empty,
+        Some(a) => stmt_kind(a),
+    };
+    match (body_kind, alt_kind) {
+        (StmtClass::Empty, StmtClass::Empty) => Some(simple(n, Rc::clone(cond))),
+        (StmtClass::Expr(expr), StmtClass::Empty) => {
+            Some(simple(n, binary(n, "&&", Rc::clone(cond), expr)))
+        }
+        (StmtClass::Empty, StmtClass::Expr(expr)) => {
+            Some(simple(n, binary(n, "||", Rc::clone(cond), expr)))
+        }
+        (StmtClass::Expr(cons), StmtClass::Expr(alt_expr)) => Some(simple(
+            n,
+            factor_conditional(n, Rc::clone(cond), cons, alt_expr, cx),
+        )),
+        _ => None,
+    }
+}
+
+enum StmtClass {
+    Empty,
+    Expr(N),
+    Other,
+}
+
+fn stmt_kind(n: &N) -> StmtClass {
+    match &n.data {
+        Data::Empty => StmtClass::Empty,
+        Data::Block { body } if body.iter().all(|s| matches!(s.data, Data::Empty)) => StmtClass::Empty,
+        Data::Block { body } if body.len() == 1 => stmt_kind(&body[0]),
+        Data::Simple { body } => StmtClass::Expr(Rc::clone(body)),
+        _ => StmtClass::Other,
+    }
+}
+
+fn factor_conditional(span: &N, cond: N, cons: N, alt: N, cx: &Cx) -> N {
+    if let (Data::Call { expr: left, args: left_args, optional, is_new }, Data::Call { expr: right, args: right_args, .. }) =
+        (&cons.data, &alt.data)
+    {
+        if !*is_new
+            && left_args.len() == right_args.len()
+            && !left_args.is_empty()
+            && callee_ok(left, cx)
+            && same_node(left, right)
+        {
+            let mut diff = None;
+            let mut mismatches = 0;
+            for (i, (a, b)) in left_args.iter().zip(right_args.iter()).enumerate() {
+                if !same_node(a, b) {
+                    mismatches += 1;
+                    diff = Some(i);
+                }
+            }
+            if mismatches == 1 {
+                let i = diff.unwrap();
+                let mut args = left_args.clone();
+                args[i] = atom(
+                    span,
+                    Data::Cond {
+                        cond,
+                        cons: Rc::clone(&left_args[i]),
+                        alt: Rc::clone(&right_args[i]),
+                    },
+                );
+                return atom(
+                    span,
+                    Data::Call {
+                        expr: Rc::clone(left),
+                        args,
+                        optional: *optional,
+                        is_new: *is_new,
+                    },
+                );
+            }
+        }
+    }
+    atom(span, Data::Cond { cond, cons, alt })
+}
+
+fn callee_ok(expr: &N, cx: &Cx) -> bool {
+    match &expr.data {
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        _ => false,
+    }
+}
+
+fn same_node(a: &N, b: &N) -> bool {
+    match (&a.data, &b.data) {
+        (Data::Symbol { name: x, .. }, Data::Symbol { name: y, .. }) => x == y,
+        (Data::Number { value: x, .. }, Data::Number { value: y, .. }) => x == y,
+        (Data::String { value: x, .. }, Data::String { value: y, .. }) => x == y,
+        (Data::True, Data::True) | (Data::False, Data::False) | (Data::Null, Data::Null) => true,
+        _ => Rc::ptr_eq(a, b),
+    }
+}
+
+fn simple(span: &N, body: N) -> N {
+    atom(span, Data::Simple { body })
+}
+
+fn binary(span: &N, op: &str, left: N, right: N) -> N {
+    atom(
+        span,
+        Data::Binary { op: op.into(), left, right },
+    )
+}
+
 fn fold_if(n: &N) -> Option<N> {
     let Data::If { cond, body, alt } = &n.data else {
         return None;
@@ -184,6 +317,88 @@ fn fold_and_or(n: &N) -> Option<N> {
             }
         }
         _ => None,
+    }
+}
+
+fn fold_property(n: &N) -> Option<N> {
+    let Data::Sub { expr, prop, optional, .. } = &n.data else {
+        return None;
+    };
+    let Data::String { value, .. } = &prop.data else {
+        return None;
+    };
+    if is_basic_ident(value) && value.len() <= print_len(prop) + 1 {
+        return Some(atom(
+            n,
+            Data::Dot {
+                expr: Rc::clone(expr),
+                prop: value.clone(),
+                optional: *optional,
+                quote: None,
+                private: false,
+            },
+        ));
+    }
+    if let Ok(num_v) = value.parse::<f64>() {
+        if value == &codegen::js_number(num_v) && !num_v.is_nan() {
+            let as_num = num(n, num_v);
+            if print_len(&as_num) < print_len(prop) {
+                return Some(atom(
+                    n,
+                    Data::Sub {
+                        expr: Rc::clone(expr),
+                        prop: as_num,
+                        optional: *optional,
+                    },
+                ));
+            }
+        }
+    }
+    None
+}
+
+fn is_basic_ident(value: &str) -> bool {
+    let mut chars = value.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+fn fold_while(n: &N) -> Option<N> {
+    let Data::While { cond, body } = &n.data else {
+        return None;
+    };
+    Some(atom(
+        n,
+        Data::For {
+            init: None,
+            cond: Some(Rc::clone(cond)),
+            step: None,
+            body: Rc::clone(body),
+        },
+    ))
+}
+
+fn negate_iife(n: &N) -> Option<N> {
+    let Data::Simple { body } = &n.data else {
+        return None;
+    };
+    if !is_iife_call(body) {
+        return None;
+    }
+    Some(simple(n, unary(n, "!", Rc::clone(body))))
+}
+
+fn is_iife_call(n: &N) -> bool {
+    let Data::Call { expr, is_new: false, .. } = &n.data else {
+        return false;
+    };
+    match &expr.data {
+        Data::Func { kind: ast::FuncKind::Expr, .. } => true,
+        Data::Call { .. } => is_iife_call(expr),
+        _ => false,
     }
 }
 

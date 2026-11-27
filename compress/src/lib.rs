@@ -28,6 +28,11 @@ struct Opts {
     conditionals: bool,
     dead_code: bool,
     ie8: bool,
+    sequences_limit: i32,
+    join_vars: bool,
+    negate_iife: bool,
+    properties: bool,
+    loops: bool,
 }
 
 impl Opts {
@@ -41,6 +46,11 @@ impl Opts {
             conditionals: true,
             dead_code: true,
             ie8: false,
+            sequences_limit: 800,
+            join_vars: true,
+            negate_iife: true,
+            properties: true,
+            loops: true,
         }
     }
 
@@ -54,6 +64,11 @@ impl Opts {
             conditionals: false,
             dead_code: false,
             ie8: false,
+            sequences_limit: 0,
+            join_vars: false,
+            negate_iife: false,
+            properties: false,
+            loops: false,
         }
     }
 
@@ -87,6 +102,21 @@ impl Opts {
         if let Some(v) = bool_key(obj, "ie8") {
             opts.ie8 = v;
         }
+        if let Some(v) = obj.get("sequences") {
+            opts.sequences_limit = sequences_limit(v);
+        }
+        if let Some(v) = bool_key(obj, "join_vars") {
+            opts.join_vars = v;
+        }
+        if let Some(v) = bool_key(obj, "negate_iife") {
+            opts.negate_iife = v;
+        }
+        if let Some(v) = bool_key(obj, "properties") {
+            opts.properties = v;
+        }
+        if let Some(v) = bool_key(obj, "loops") {
+            opts.loops = v;
+        }
         opts
     }
 
@@ -98,6 +128,23 @@ impl Opts {
             || self.booleans
             || self.conditionals
             || self.dead_code
+            || self.sequences_limit > 0
+            || self.join_vars
+            || self.negate_iife
+            || self.properties
+            || self.loops
+    }
+}
+
+fn sequences_limit(value: &Value) -> i32 {
+    match value {
+        Value::Bool(true) => 800,
+        Value::Bool(false) => 0,
+        Value::Number(n) => {
+            let n = n.as_i64().unwrap_or(0);
+            if n == 1 { 800 } else { n as i32 }
+        }
+        _ => 0,
     }
 }
 
@@ -123,6 +170,7 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         frames: vec![HashMap::new()],
         in_bool: false,
         eq_cmp: false,
+        keep_block: false,
         locals: vec![HashSet::new()],
     };
     transform(root, &mut cx)
@@ -133,6 +181,7 @@ struct Cx {
     frames: Vec<HashMap<String, usize>>,
     in_bool: bool,
     eq_cmp: bool,
+    keep_block: bool,
     locals: Vec<HashSet<String>>,
 }
 
@@ -333,6 +382,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     out
 }
 
+fn transform_block(n: &N, cx: &mut Cx) -> N {
+    let old = cx.keep_block;
+    cx.keep_block = true;
+    let out = transform(n, cx);
+    cx.keep_block = old;
+    out
+}
+
 fn transform_bool(n: &N, cx: &mut Cx) -> N {
     let old = cx.in_bool;
     cx.in_bool = true;
@@ -428,10 +485,211 @@ fn map_segs(segs: &[Seg], cx: &mut Cx) -> (Vec<Seg>, bool) {
     (out, changed)
 }
 
+fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
+    let stmts = if cx.opts.join_vars { join_vars(stmts) } else { stmts };
+    let stmts = if cx.opts.sequences_limit > 0 {
+        sequence_into_next(sequence_statements(stmts, cx.opts.sequences_limit))
+    } else {
+        stmts
+    };
+    stmts
+}
+
+fn join_vars(stmts: Vec<N>) -> Vec<N> {
+    let mut out: Vec<N> = Vec::new();
+    for stat in stmts {
+        let merged = if let Data::Defs { kind, defs, await_ } = &stat.data {
+            if let Some(prev) = out.last_mut() {
+                let same = matches!(&prev.data, Data::Defs { kind: pk, await_: pa, .. } if pk == kind && pa == await_);
+                if same {
+                    let prev = Rc::make_mut(prev);
+                    if let Data::Defs { defs: prev_defs, .. } = &mut prev.data {
+                        prev_defs.extend(defs.iter().cloned());
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if !merged {
+            out.push(stat);
+        }
+    }
+    out
+}
+
+fn sequence_statements(stmts: Vec<N>, limit: i32) -> Vec<N> {
+    let mut out = Vec::new();
+    let mut seq: Vec<N> = Vec::new();
+    let flush = |out: &mut Vec<N>, seq: &mut Vec<N>| {
+        if seq.is_empty() {
+            return;
+        }
+        let exprs = std::mem::take(seq);
+        let body = if exprs.len() == 1 {
+            exprs.into_iter().next().unwrap()
+        } else {
+            let span = exprs[0].clone();
+            Rc::new(Node {
+                start: span.start.clone(),
+                end: span.end.clone(),
+                data: Data::Seq { exprs },
+            })
+        };
+        out.push(Rc::new(Node {
+            start: body.start.clone(),
+            end: body.end.clone(),
+            data: Data::Simple { body },
+        }));
+    };
+    for stat in stmts {
+        match &stat.data {
+            Data::Empty => {}
+            Data::Simple { body } => {
+                if seq.len() as i32 >= limit {
+                    flush(&mut out, &mut seq);
+                }
+                if !seq.is_empty() && eval::is_pure(body) {
+                    continue;
+                }
+                if let Data::Seq { exprs } = &body.data {
+                    seq.extend(exprs.iter().cloned());
+                } else {
+                    seq.push(Rc::clone(body));
+                }
+            }
+            Data::Defs { defs, .. } if defs.iter().all(|d| matches!(d.data, Data::VarDef { value: None, .. })) => {
+                out.push(stat);
+            }
+            Data::Func { kind: ast::FuncKind::Decl, .. } => out.push(stat),
+            _ => {
+                flush(&mut out, &mut seq);
+                out.push(stat);
+            }
+        }
+    }
+    flush(&mut out, &mut seq);
+    out
+}
+
+fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
+    let mut out = Vec::new();
+    let mut prev: Option<N> = None;
+    for stat in stmts {
+        if let Some(prev_stmt) = prev.take() {
+            let Data::Simple { body: left } = &prev_stmt.data else {
+                out.push(prev_stmt);
+                out.push(stat);
+                continue;
+            };
+            let left = Rc::clone(left);
+            if let Data::If { cond, body, alt } = &stat.data {
+                let cond = comma(left, Rc::clone(cond));
+                out.push(Rc::new(Node {
+                    start: stat.start.clone(),
+                    end: stat.end.clone(),
+                    data: Data::If { cond, body: Rc::clone(body), alt: alt.clone() },
+                }));
+                continue;
+            }
+            if let Data::Return { value } = &stat.data {
+                let right = value.clone().unwrap_or_else(|| eval_void(&stat));
+                out.push(Rc::new(Node {
+                    start: stat.start.clone(),
+                    end: stat.end.clone(),
+                    data: Data::Return { value: Some(comma(left, right)) },
+                }));
+                continue;
+            }
+            if let Data::Switch { expr, body } = &stat.data {
+                out.push(Rc::new(Node {
+                    start: stat.start.clone(),
+                    end: stat.end.clone(),
+                    data: Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() },
+                }));
+                continue;
+            }
+            if let Data::For { init, cond, step, body } = &stat.data {
+                if !init.as_ref().is_some_and(|i| matches!(i.data, Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, .. })) {
+                    let init = Some(match init {
+                        Some(init) => comma(left, Rc::clone(init)),
+                        None => left,
+                    });
+                    out.push(Rc::new(Node {
+                        start: stat.start.clone(),
+                        end: stat.end.clone(),
+                        data: Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
+                    }));
+                    continue;
+                }
+            }
+            out.push(prev_stmt);
+        }
+        if matches!(stat.data, Data::Simple { .. }) {
+            prev = Some(stat);
+        } else {
+            out.push(stat);
+        }
+    }
+    if let Some(prev) = prev {
+        out.push(prev);
+    }
+    out
+}
+
+fn comma(left: N, right: N) -> N {
+    let mut exprs = match &left.data {
+        Data::Seq { exprs } => exprs.clone(),
+        _ => vec![Rc::clone(&left)],
+    };
+    match &right.data {
+        Data::Seq { exprs: more } => exprs.extend(more.iter().cloned()),
+        _ => exprs.push(right),
+    }
+    Rc::new(Node {
+        start: left.start.clone(),
+        end: left.end.clone(),
+        data: Data::Seq { exprs },
+    })
+}
+
+fn can_evict(n: &N) -> bool {
+    !matches!(
+        n.data,
+        Data::Class { stmt: true, .. }
+            | Data::Func { kind: ast::FuncKind::Decl, .. }
+            | Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, .. }
+            | Data::Import { .. }
+            | Data::Export { .. }
+    )
+}
+
+fn eval_void(span: &N) -> N {
+    Rc::new(Node {
+        start: span.start.clone(),
+        end: span.end.clone(),
+        data: Data::Unary {
+            op: "void".into(),
+            expr: Rc::new(Node {
+                start: span.start.clone(),
+                end: span.end.clone(),
+                data: Data::Number { value: 0.0, raw: String::new() },
+            }),
+            prefix: true,
+        },
+    })
+}
+
 fn map_children(n: &N, cx: &mut Cx) -> N {
     match &n.data {
         Data::Toplevel { body } => {
             let (body, c) = map_list(body, cx);
+            let body = tighten(body, cx);
             finish(n, Data::Toplevel { body }, c)
         }
         Data::Simple { body } => {
@@ -439,13 +697,21 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let c = !Rc::ptr_eq(&m, body);
             finish(n, Data::Simple { body: m }, c)
         }
-        Data::Block { body } | Data::StaticBlock { body } => {
-            let (body, c) = map_list(body, cx);
-            let data = match &n.data {
-                Data::StaticBlock { .. } => Data::StaticBlock { body },
-                _ => Data::Block { body },
-            };
-            finish(n, data, c)
+        Data::StaticBlock { body } => {
+            let (body, _) = map_list(body, cx);
+            let body = tighten(body, cx);
+            finish(n, Data::StaticBlock { body }, true)
+        }
+        Data::Block { body } => {
+            let (body, _) = map_list(body, cx);
+            let body = tighten(body, cx);
+            if !cx.keep_block && body.is_empty() {
+                return empty(n);
+            }
+            if !cx.keep_block && body.len() == 1 && can_evict(&body[0]) {
+                return Rc::clone(&body[0]);
+            }
+            finish(n, Data::Block { body }, true)
         }
         Data::Labeled { label, body } => {
             let label_m = transform(label, cx);
@@ -517,7 +783,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::Default { body }, c)
         }
         Data::Try { body, catch, finally } => {
-            let body_m = transform(body, cx);
+            let body_m = transform_block(body, cx);
             let (catch, c2) = map_opt(catch, cx);
             let (finally, c3) = map_opt(finally, cx);
             let c = !Rc::ptr_eq(&body_m, body) || c2 || c3;
@@ -525,12 +791,12 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Catch { arg, body } => {
             let (arg, c1) = map_opt(arg, cx);
-            let body_m = transform(body, cx);
+            let body_m = transform_block(body, cx);
             let c2 = !Rc::ptr_eq(&body_m, body);
             finish(n, Data::Catch { arg, body: body_m }, c1 || c2)
         }
         Data::Finally { body } => {
-            let m = transform(body, cx);
+            let m = transform_block(body, cx);
             let c = !Rc::ptr_eq(&m, body);
             finish(n, Data::Finally { body: m }, c)
         }
@@ -548,7 +814,8 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let (name, c1) = map_opt(name, cx);
             let (args, c2) = map_list(args, cx);
             let (body, c3) = map_list(body, cx);
-            finish(n, Data::Func { kind: *kind, name, args, body, async_: *async_, generator: *generator }, c1 || c2 || c3)
+            let body = tighten(body, cx);
+            finish(n, Data::Func { kind: *kind, name, args, body, async_: *async_, generator: *generator }, c1 || c2 || c3 || true)
         }
         Data::Class { stmt, name, extends, props } => {
             let (name, c1) = map_opt(name, cx);
