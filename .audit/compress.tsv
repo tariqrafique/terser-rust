@@ -1,3 +1,4 @@
 ts	phase	decision	why	evidence	result
 2026-11-27T06:43:53Z	start	compress phase, linker fallback already on main	fixture and default were 0 because minify returned an error for every compress option	board 2674fc09675c-bfff18bd4652 fixture 0/2671 default 0/3013	open
 2026-11-27T06:43:53Z	compress	wire compress then print, and drop debugger plus redundant directives	those two options are the first optimizers and their fixtures do not need the later passes	compress/src/lib.rs	fixture debugger and directives cases match
+2026-11-27T06:45:46Z	compress	recorded the measured boards after the lockfile commit	the earlier row only said the debugger fixtures matched, not the full counts	board 158ed08d0045-bfff18bd4652 fixture 958/2671 default 726/3013 roundtrip 3013/3013 mangle 3013/3013	verified
