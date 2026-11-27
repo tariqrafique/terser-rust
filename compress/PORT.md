@@ -48,4 +48,6 @@ Assign board `81aabec8be8d-848142da17ac`: default 1798/3013 → 1810/3013, 12 ne
 
 Object board `916f95ba3b34-848142da17ac`: default 1810/3013 → 1825/3013, 15 newly passing, 0 newly failing, lwc 174/339.
 
+Loops board `41202a3b48a2-848142da17ac`: default 1825/3013 → 1896/3013, 71 newly passing, 0 newly failing, lwc 174/339 → 177/339.
+
 Next: side-effect folds still in the shared chain (`fold_bool`, `fold_value`, `drop_statement`, `unwrap_void_statement`, `negate_iife`).
