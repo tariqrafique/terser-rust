@@ -7,3 +7,4 @@ publish.workspace = true
 [dependencies]
 ast = { path = "../ast" }
 scope = { path = "../scope" }
+serde_json = "1"

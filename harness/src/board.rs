@@ -157,7 +157,7 @@ pub fn run(args: Args) -> Result<(), String> {
                 continue;
             }
             if skip_abort.contains(&case.id)
-                && (set_name == "roundtrip" || set_name == "mangle" || set_name == "default")
+                && (set_name == "roundtrip" || set_name == "mangle" || set_name == "default" || set_name == "fixture")
             {
                 continue;
             }
@@ -275,7 +275,7 @@ pub fn run(args: Args) -> Result<(), String> {
     if !skip_abort.is_empty()
         && (args.corpora.is_empty() || args.corpora.iter().any(|c| c == "compress"))
         && (args.sets.is_empty()
-            || args.sets.iter().any(|s| s == "roundtrip" || s == "mangle" || s == "default"))
+            || args.sets.iter().any(|s| s == "roundtrip" || s == "mangle" || s == "default" || s == "fixture"))
         && args.case_id.is_none()
     {
         let mut ids: Vec<_> = skip_abort

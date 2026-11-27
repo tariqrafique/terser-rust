@@ -1,8 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! Public minify API. The implementation is intentionally a stub until the
-//! parser, scope analysis, compressor, and codegen land. The harness compares
-//! this function's output, byte for byte, with terser 5.51.4.
+//! Public minify API. The harness compares this function's output, byte for
+//! byte, with terser 5.51.4.
 
 use serde_json::Value;
 
@@ -93,36 +92,25 @@ impl std::fmt::Display for MinifyError {
 impl std::error::Error for MinifyError {}
 
 /// Minify `src` with `opts`.
-///
-/// This returns `Err` until the port can emit code. The error is not a
-/// substitute for a terser parse error: the harness compares error text
-/// byte for byte as well, so a blanket error does not count as a pass.
 pub fn minify(src: &str, opts: &Options) -> Result<Output, MinifyError> {
-    if is_roundtrip(opts) || is_mangle(opts) {
-        let ast = parser::parse(src).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
-        let code = if is_mangle(opts) {
-            let (map, privates) = scope::mangle_map(&ast).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
-            codegen::print_mangled(&ast, map, privates)
-        } else {
-            codegen::print(&ast)
-        };
-        return Ok(Output { code });
+    let ast = parser::parse(src).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
+    let ast = compress::compress(&ast, opts.as_value());
+    let code = if mangle_on(opts) {
+        let (map, privates) = scope::mangle_map(&ast).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
+        codegen::print_mangled(&ast, map, privates)
+    } else {
+        codegen::print(&ast)
+    };
+    Ok(Output { code })
+}
+
+/// Missing `mangle` is terser's default, which turns mangling on.
+/// `false` leaves names alone. An object is a mangler config.
+fn mangle_on(opts: &Options) -> bool {
+    match opts.as_value().get("mangle") {
+        Some(Value::Bool(false)) => false,
+        _ => true,
     }
-    let _ = src;
-    compress::touch();
-    Err(MinifyError::new("minify is not implemented"))
-}
-
-fn is_roundtrip(opts: &Options) -> bool {
-    let value = opts.as_value();
-    value.get("compress").and_then(|v| v.as_bool()) == Some(false)
-        && value.get("mangle").and_then(|v| v.as_bool()) == Some(false)
-}
-
-fn is_mangle(opts: &Options) -> bool {
-    let value = opts.as_value();
-    value.get("compress").and_then(|v| v.as_bool()) == Some(false)
-        && value.get("mangle").and_then(|v| v.as_bool()) == Some(true)
 }
 
 #[cfg(test)]
@@ -130,8 +118,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stub_returns_err() {
-        let err = minify("var a = 1;", &Options::default()).unwrap_err();
-        assert_eq!(err.to_string(), "minify is not implemented");
+    fn default_keeps_a_toplevel_binding() {
+        let out = minify("var a = 1;", &Options::default()).unwrap();
+        assert_eq!(out.code, "var a=1;");
     }
 }
