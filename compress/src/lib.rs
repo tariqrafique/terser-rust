@@ -209,6 +209,32 @@ fn sequences_limit(value: &Value) -> i32 {
     }
 }
 
+fn push_loop_bindings(init: Option<&N>, cx: &mut Cx) -> bool {
+    let Some(init) = init else {
+        return false;
+    };
+    let Data::Defs { defs, .. } = &init.data else {
+        return false;
+    };
+    let mut names = HashSet::new();
+    for def in defs {
+        if let Data::VarDef { name, .. } = &def.data {
+            collect_binding(name, &mut names);
+        }
+    }
+    if names.is_empty() {
+        return false;
+    }
+    cx.locals.push(names);
+    cx.consts.push(HashMap::new());
+    true
+}
+
+fn pop_loop_bindings(cx: &mut Cx) {
+    cx.locals.pop();
+    cx.consts.pop();
+}
+
 fn bind_short_consts(defs: &[N], cx: &mut Cx) {
     let Some(frame) = cx.consts.last_mut() else {
         return;
@@ -937,9 +963,13 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             cx.in_for_init = true;
             let (init, c1) = map_opt(init, cx);
             cx.in_for_init = prev;
+            let pushed = push_loop_bindings(init.as_ref(), cx);
             let (cond, c2) = map_opt_bool(cond, cx);
             let (step, c3) = map_opt(step, cx);
             let body_m = transform(body, cx);
+            if pushed {
+                pop_loop_bindings(cx);
+            }
             let c = c1 || c2 || c3 || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::For { init, cond, step, body: body_m }, c)
         }
@@ -949,7 +979,11 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let init_m = transform(init, cx);
             cx.in_for_init = prev;
             let object_m = transform(object, cx);
+            let pushed = push_loop_bindings(Some(&init_m), cx);
             let body_m = transform(body, cx);
+            if pushed {
+                pop_loop_bindings(cx);
+            }
             let c = !Rc::ptr_eq(&init_m, init) || !Rc::ptr_eq(&object_m, object) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::ForIn { init: init_m, object: object_m, body: body_m }, c)
         }
@@ -959,7 +993,11 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let init_m = transform(init, cx);
             cx.in_for_init = prev;
             let object_m = transform(object, cx);
+            let pushed = push_loop_bindings(Some(&init_m), cx);
             let body_m = transform(body, cx);
+            if pushed {
+                pop_loop_bindings(cx);
+            }
             let c = !Rc::ptr_eq(&init_m, init) || !Rc::ptr_eq(&object_m, object) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::ForOf { init: init_m, object: object_m, body: body_m, await_: *await_ }, c)
         }
