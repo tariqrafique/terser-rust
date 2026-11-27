@@ -1820,6 +1820,10 @@ impl Parser {
             let expr = self.expression(false, false)?;
             self.expect_punc("]")?;
             Key::Computed(expr)
+        } else if self.is("operator", None) && self.sval().chars().all(|c| c.is_ascii_alphabetic()) {
+            let name = self.sval();
+            self.bump()?;
+            Key::Static { name, quote: None }
         } else if self.is("name", None) || self.is("privatename", None) || self.is("string", None) || self.is("keyword", None) || self.is("atom", None) || self.is("num", None) || self.is("big_int", None) {
             let name = if self.is("num", None) {
                 self.tz.num_val(self.token).map(|n| js_key(n)).unwrap_or_else(|| self.sval())
@@ -1870,7 +1874,17 @@ impl Parser {
             } else {
                 None
             };
-            if value.is_some() || self.is("punc", Some(";")) || self.is("punc", Some("}")) || self.is("name", None) || self.is("string", None) {
+            if value.is_some()
+                || self.is("punc", Some(";"))
+                || self.is("punc", Some("}"))
+                || self.is("punc", Some("["))
+                || self.is("name", None)
+                || self.is("privatename", None)
+                || self.is("string", None)
+                || self.is("num", None)
+                || self.is("big_int", None)
+                || self.is("operator", Some("*"))
+            {
                 if self.is("punc", Some(";")) {
                     // semicolon printed by the field printer; consume it so the class loop progresses
                     self.bump()?;
@@ -1927,6 +1941,18 @@ impl Parser {
     fn property_key(&mut self) -> Result<(Option<String>, Option<char>), ParseError> {
         if self.is("punc", Some("[")) {
             return Ok((None, None));
+        }
+        let word_op = self.is("operator", None) && self.sval().chars().all(|c| c.is_ascii_alphabetic());
+        let ok = self.is("name", None)
+            || self.is("privatename", None)
+            || self.is("string", None)
+            || self.is("keyword", None)
+            || self.is("atom", None)
+            || self.is("num", None)
+            || self.is("big_int", None)
+            || word_op;
+        if !ok {
+            return Err(self.unexpected(self.token));
         }
         let quote = self.tz.quote(self.token);
         let name = if self.is("num", None) {
@@ -2303,6 +2329,12 @@ impl Parser {
             self.bump()?;
             return Ok(self.mk(Data::Symbol { name, kind, quote }, start, start));
         }
+        if self.is("operator", None) && self.sval().chars().all(|c| c.is_ascii_alphabetic()) {
+            let start = self.token;
+            let name = self.sval();
+            self.bump()?;
+            return Ok(self.mk(Data::Symbol { name, kind, quote: None }, start, start));
+        }
         if self.is("keyword", None) || self.is("name", None) {
             if self.is("keyword", None) {
                 let start = self.token;
@@ -2456,12 +2488,16 @@ fn js_key(n: f64) -> String {
     if n == 0.0 {
         return "0".into();
     }
-    let s = format!("{n}");
+    let mut buf = ryu::Buffer::new();
+    let mut s = buf.format_finite(n).to_string();
+    if let Some(head) = s.strip_suffix(".0") {
+        if !head.contains('.') && !head.contains('e') && !head.is_empty() {
+            s = head.to_string();
+        }
+    }
     if let Some(i) = s.find('e') {
         if s.as_bytes().get(i + 1) != Some(&b'+') && s.as_bytes().get(i + 1) != Some(&b'-') {
-            let mut t = s;
-            t.insert(i + 1, '+');
-            return t;
+            s.insert(i + 1, '+');
         }
     }
     s

@@ -40,17 +40,47 @@ pub struct Output {
     pub code: String,
 }
 
-/// Failure from [`minify`]. The stub always returns this.
+/// Failure from [`minify`].
+///
+/// `name`, `line`, and `col` are set for parse errors so the board can match
+/// the oracle's canonical error text. Other failures use name `error`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MinifyError {
+    name: String,
     message: String,
+    line: Option<i64>,
+    col: Option<i64>,
 }
 
 impl MinifyError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
+            name: "error".into(),
             message: message.into(),
+            line: None,
+            col: None,
         }
+    }
+
+    pub fn syntax(message: impl Into<String>, line: u32, col: u32) -> Self {
+        Self {
+            name: "SyntaxError".into(),
+            message: message.into(),
+            line: Some(line as i64),
+            col: Some(col as i64),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn line(&self) -> Option<i64> {
+        self.line
+    }
+
+    pub fn col(&self) -> Option<i64> {
+        self.col
     }
 }
 
@@ -68,12 +98,21 @@ impl std::error::Error for MinifyError {}
 /// substitute for a terser parse error: the harness compares error text
 /// byte for byte as well, so a blanket error does not count as a pass.
 pub fn minify(src: &str, opts: &Options) -> Result<Output, MinifyError> {
-    let _ = (src, opts);
-    // Keep the pipeline crates linked so the workspace graph stays real.
-    parser::touch();
+    if is_roundtrip(opts) {
+        let ast = parser::parse(src).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
+        return Ok(Output {
+            code: codegen::print(&ast),
+        });
+    }
+    let _ = src;
     compress::touch();
-    codegen::touch();
     Err(MinifyError::new("minify is not implemented"))
+}
+
+fn is_roundtrip(opts: &Options) -> bool {
+    let value = opts.as_value();
+    value.get("compress").and_then(|v| v.as_bool()) == Some(false)
+        && value.get("mangle").and_then(|v| v.as_bool()) == Some(false)
 }
 
 #[cfg(test)]

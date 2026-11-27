@@ -289,7 +289,7 @@ pub fn run(args: Args) -> Result<(), String> {
         ids.sort();
         println!();
         println!(
-            "excluded abort (not scored, pending approval): {}",
+            "excluded abort (not scored, approved skip): {}",
             ids.len()
         );
         for id in ids {
@@ -384,7 +384,7 @@ fn evaluate(job: &Job, timeout: Duration, full: bool) -> Outcome {
     let options = job.options.clone();
     let result = eval_with_timeout(timeout, move || match minify(&input, &options) {
         Ok(output) => output.code.into_bytes(),
-        Err(error) => canonical_error("error", &error.to_string(), None, None),
+        Err(error) => canonical_error(error.name(), &error.to_string(), error.line(), error.col()),
     });
     let (actual, fail) = match result {
         Ok(bytes) => (bytes, None),

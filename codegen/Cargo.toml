@@ -6,3 +6,5 @@ publish.workspace = true
 
 [dependencies]
 ast = { path = "../ast" }
+ryu = "1"
+unicode-ident = "1"
