@@ -3188,8 +3188,24 @@ fn eval(n: &N) -> Option<Lit> {
             let c = eval(cond)?;
             if c.truthy() { eval(cons) } else { eval(alt) }
         }
+        // terser `evaluate.js` `AST_PropAccess`: `.length` of an evaluated array or string.
+        Data::Dot { expr, prop, optional: false, private: false, .. } if prop == "length" => match &expr.data {
+            Data::String { value, .. } => Some(Lit::Num(utf16_len(value) as f64)),
+            Data::Array { elements } => {
+                for e in elements {
+                    eval(e)?;
+                }
+                Some(Lit::Num(elements.len() as f64))
+            }
+            _ => None,
+        },
         _ => None,
     }
+}
+
+/// terser `AST_Node.evaluate` for a `reduce_vars` fixed value.
+pub(crate) fn eval_lit(n: &N) -> Option<Lit> {
+    eval(n)
 }
 
 impl Lit {

@@ -230,7 +230,13 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
             if !uses_are_props(root, table, id, &keys) { continue }
             let mut mapped = HashMap::new();
             let base = &d.name;
-            for key in &keys {
+            // terser names the new variables in property order.
+            let ordered: Vec<String> = props.iter().filter_map(|p| match &p.data {
+                Data::Prop { key: Key::Static { name, .. }, .. } => Some(name.clone()),
+                _ => None,
+            }).collect();
+            for key in &ordered {
+                if mapped.contains_key(key) { continue }
                 let fresh = fresh_name(&sanitize(&format!("{base}_{key}")), used);
                 used.insert(fresh.clone());
                 mapped.insert(key.clone(), fresh);

@@ -71,10 +71,21 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
         scan_ref_scoped(stmt, table, &mut u, true);
     }
     // Pass 2: walk initializers of names that are in use.
-    let inits: Vec<(usize, N)> = u.inits.iter().flat_map(|(id, vs)| vs.iter().map(|v| (*id, Rc::clone(v)))).collect();
-    for (id, init) in &inits {
-        if u.in_use.contains(id) {
-            scan_ref_scoped(init, table, &mut u, false);
+    // terser `in_use_ids.forEach` also visits ids added during the walk, so
+    // this runs until no new name is marked.
+    let mut done: HashSet<usize> = HashSet::new();
+    loop {
+        let mut ready: Vec<usize> = u.in_use.iter().copied().filter(|id| !done.contains(id) && u.inits.contains_key(id)).collect();
+        if ready.is_empty() {
+            break;
+        }
+        ready.sort_unstable();
+        for id in ready {
+            done.insert(id);
+            let inits = u.inits.get(&id).cloned().unwrap_or_default();
+            for init in &inits {
+                scan_ref_scoped(init, table, &mut u, false);
+            }
         }
     }
     // A non-strict function that reads `arguments` uses every parameter.

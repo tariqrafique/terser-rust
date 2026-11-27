@@ -28,6 +28,8 @@ struct Tw<'a> {
     /// `var` initialized here does not dominate later reads.
     conditional_var: u32,
     loop_ids: HashMap<usize, u32>,
+    /// terser `defs_to_safe_ids`: the `safe_ids` frame a `fixed === null` def was marked in.
+    null_safe: HashMap<usize, usize>,
     /// Node stack. The last entry is the node being walked. `mark_escaped` reads parents off it.
     parents: Vec<N>,
 }
@@ -42,6 +44,7 @@ pub fn analyze(table: &mut SymTable, root: &N, env: &Env) {
         in_try: 0,
         conditional_var: 0,
         loop_ids: HashMap::new(),
+        null_safe: HashMap::new(),
         parents: Vec::new(),
     };
     walk(root, &mut tw);
@@ -113,7 +116,8 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         def.replaced.set(def.replaced.get().saturating_add(1));
         return Some(expr_value(&fixed));
     }
-    if !is_constant_expr(&fixed) {
+    let evaluated = if is_constant_expr(&fixed) { None } else { crate::eval::eval_lit(&fixed) };
+    if !is_constant_expr(&fixed) && evaluated.is_none() {
         return None;
     }
     // Multiple reads of an evaluable constant, kept when it is not longer
@@ -130,7 +134,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     let (replace, replace_len) = if is_literal(&fixed) {
         let len = fixed_len;
         (Rc::clone(&fixed), len)
-    } else if let Some(num) = eval_num(&fixed) {
+    } else if let Some(crate::eval::Lit::Num(num)) = evaluated.or_else(|| eval_num(&fixed).map(crate::eval::Lit::Num)) {
         let node = span_node(&fixed, Data::Number { value: num, raw: String::new() });
         let len = codegen::print(&node).len();
         (node, len)
@@ -302,13 +306,13 @@ fn walk(n: &N, tw: &mut Tw) {
                 || (block && (tw.in_loop != 0 || tw.in_try != 0))
                 || (!block && tw.conditional_var != 0);
             if special {
-                        tw.table.defs[id].fixed = None;
+                        tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                         walk(value, tw);
                         tw.parents.pop();
                         return;
                     }
                     if safe_to_assign(tw, id) {
-                        tw.table.defs[id].fixed = Some(Rc::clone(value));
+                        tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(Rc::clone(value));
                         tw.loop_ids.insert(id, tw.in_loop);
                         mark(tw, id, false);
                         walk(value, tw);
@@ -316,7 +320,7 @@ fn walk(n: &N, tw: &mut Tw) {
                         tw.parents.pop();
                         return;
                     } else {
-                        tw.table.defs[id].fixed = None;
+                        tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                     }
                 }
                 walk(value, tw);
@@ -341,7 +345,7 @@ fn walk(n: &N, tw: &mut Tw) {
                     && safe_to_assign(tw, id);
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
                 if safe {
-                    tw.table.defs[id].fixed = Some(Rc::clone(right));
+                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(Rc::clone(right));
                     tw.table.defs[id].references.push(syms::ptr(left));
                     mark(tw, id, false);
                     walk(right, tw);
@@ -351,7 +355,7 @@ fn walk(n: &N, tw: &mut Tw) {
                     done = true;
                 } else {
                     // The left-hand reference is modified, which clears `fixed`.
-                    tw.table.defs[id].fixed = None;
+                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                 }
             }
             if !done {
@@ -369,7 +373,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 // `++` on a `const` drops `fixed`. The read stays the name (`reassign_const`).
                 if tw.table.defs[id].is_const {
                     tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
-                    tw.table.defs[id].fixed = None;
+                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                     walk(expr, tw);
                     tw.parents.pop();
                     return;
@@ -388,14 +392,14 @@ fn walk(n: &N, tw: &mut Tw) {
                                 right: span_node(n, Data::Number { value: 1.0, raw: "1".into() }),
                             },
                         );
-                        tw.table.defs[id].fixed = Some(value);
+                        tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(value);
                         mark(tw, id, true);
                         true
                     } else {
                         false
                     }
                 } else {
-                    tw.table.defs[id].fixed = None;
+                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                     false
                 }
             } else {
@@ -414,7 +418,7 @@ fn walk(n: &N, tw: &mut Tw) {
         Data::Symbol { kind: SymKind::Catch, .. } => {
             // terser `reduce-vars.js` `AST_SymbolCatch`: a catch binding is not fixed.
             if let Some(id) = def_of(tw, n) {
-                tw.table.defs[id].fixed = None;
+                tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
             }
         }
         other => walk_children(other, tw),
@@ -535,10 +539,20 @@ fn reset_def(tw: &mut Tw, id: usize) {
     if d.pinned || (d.name == "arguments" && (d.is_defun || d.funarg)) {
         d.fixed = None;
     } else if d.is_const || !exposed {
-        d.fixed = d.init.clone();
+        // terser scope.js defines a `var` with `init` null, so it resets to
+        // `fixed === null` and `AST_VarDef` assigns the initializer.
+        if d.var_decl && !d.is_defun {
+            d.fixed = None;
+            d.fixed_null = true;
+        } else {
+            d.fixed = d.init.clone();
+            d.fixed_null = false;
+        }
+        return;
     } else {
         d.fixed = None;
     }
+    d.fixed_null = false;
 }
 
 /// terser `reduce-vars.js` `reset_variables`.
@@ -549,7 +563,10 @@ fn reset_variables(tw: &mut Tw, scope: usize) {
             continue;
         }
         reset_def(tw, id);
-        if tw.table.defs[id].fixed.is_some() {
+        if tw.table.defs[id].fixed_null {
+            tw.null_safe.insert(id, tw.safe.len() - 1);
+            mark(tw, id, true);
+        } else if tw.table.defs[id].fixed.is_some() {
             tw.loop_ids.insert(id, tw.in_loop);
             mark(tw, id, true);
         }
@@ -595,15 +612,36 @@ fn safe_flag(tw: &Tw, id: usize) -> Option<bool> {
 }
 
 /// terser `reduce-vars.js` `safe_to_read`.
-fn safe_to_read(tw: &Tw, id: usize) -> bool {
+fn safe_to_read(tw: &mut Tw, id: usize) -> bool {
     if matches!(tw.table.defs[id].single_use, SingleUse::Modified) {
         return false;
     }
-    matches!(safe_flag(tw, id), Some(true))
+    if !matches!(safe_flag(tw, id), Some(true)) {
+        return false;
+    }
+    // terser: a safe read of `fixed == null` fixes the value to `void 0`.
+    let d = &mut tw.table.defs[id];
+    if d.fixed_null {
+        if d.funarg || d.name == "arguments" {
+            return false;
+        }
+        let zero = Rc::new(Node { start: None, end: None, data: Data::Number { value: 0.0, raw: "0".into() } });
+        d.fixed = Some(Rc::new(Node { start: None, end: None, data: Data::Unary { op: "void".into(), expr: zero, prefix: true } }));
+        d.fixed_null = false;
+    }
+    true
 }
 
 /// terser `reduce-vars.js` `safe_to_assign`.
-fn safe_to_assign(tw: &Tw, id: usize) -> bool {
+fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
+    if tw.table.defs[id].fixed_null {
+        if let Some(frame) = tw.null_safe.remove(&id) {
+            if let Some(f) = tw.safe.get_mut(frame) {
+                f.insert(id, false);
+            }
+            return true;
+        }
+    }
     // terser `reduce-vars.js` `safe_to_assign`: a function or class name is not a fixed write target.
     // `const` is rejected by the caller that would overwrite `fixed`.
     // `safe_to_assign` itself still accepts the initializer (`AST_VarDef`).
@@ -622,6 +660,7 @@ fn safe_to_assign(tw: &Tw, id: usize) -> bool {
     if !safe_to_read(tw, id) {
         return false;
     }
+    let d = &tw.table.defs[id];
     if d.fixed.is_none() {
         return false;
     }
@@ -644,8 +683,8 @@ fn ref_once(tw: &Tw, id: usize) -> bool {
 fn on_ref(tw: &mut Tw, id: usize, node: &N) {
     tw.table.defs[id].references.push(syms::ptr(node));
     let mut fixed_value = None;
-    if tw.table.defs[id].fixed.is_none() || !safe_to_read(tw, id) {
-        tw.table.defs[id].fixed = None;
+    if (tw.table.defs[id].fixed.is_none() && !tw.table.defs[id].fixed_null) || !safe_to_read(tw, id) {
+        tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
         tw.table.defs[id].single_use = SingleUse::No;
     } else if let Some(fixed) = tw.table.defs[id].fixed.clone() {
         fixed_value = Some(Rc::clone(&fixed));
@@ -667,7 +706,7 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
             if matches!(tw.table.defs[id].single_use, SingleUse::Yes) {
                 tw.table.defs[id].single_use = SingleUse::Modified;
             } else {
-                tw.table.defs[id].fixed = None;
+                tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
             }
         }
     }
@@ -905,7 +944,7 @@ fn suppress(n: &N, tw: &mut Tw) {
     match &n.data {
         Data::Symbol { .. } => {
             if let Some(id) = def_of(tw, n) {
-                tw.table.defs[id].fixed = None;
+                tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                 if matches!(n.data, Data::Symbol { kind: SymKind::Ref, .. }) {
                     tw.table.defs[id].references.push(syms::ptr(n));
                 }
@@ -955,7 +994,7 @@ fn clear_use_before_init(stmts: &[N], tw: &mut Tw) {
         if let Some(ids) = reads.get(&fname) {
             for id in ids {
                 if init_at.get(id).is_some_and(|init| at < *init) {
-                    tw.table.defs[*id].fixed = None;
+                    tw.table.defs[*id].fixed_null = false; tw.table.defs[*id].fixed = None;
                 }
             }
         }
@@ -1101,11 +1140,11 @@ fn bind_iife_params(tw: &mut Tw, func: &N) {
             continue;
         }
         if tw.table.defs[id].fixed.is_some() {
-            tw.table.defs[id].fixed = None;
+            tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
             continue;
         }
         let value = call_args.get(i).cloned().unwrap_or_else(|| void0(func));
-        tw.table.defs[id].fixed = Some(value);
+        tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(value);
         tw.loop_ids.insert(id, tw.in_loop);
         mark(tw, id, true);
     }

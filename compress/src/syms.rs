@@ -33,6 +33,10 @@ pub struct SymbolDef {
     pub init: Option<N>,
     /// `None` means `fixed === false`. A node means that node is the fixed value.
     pub fixed: Option<N>,
+    /// terser `fixed === null`: a `var` with no initializer, reset and not yet read or written.
+    pub fixed_null: bool,
+    /// The first declaration is a `var` (`orig[0] instanceof AST_SymbolVar`).
+    pub var_decl: bool,
     /// terser `def_optimize(AST_Assign)` sets `fixed = false` while the walk continues.
     pub suppress_fixed: Cell<bool>,
     pub assignments: u32,
@@ -369,6 +373,8 @@ fn define(
         block_scoped: matches!(kind, SymKind::Let | SymKind::Const | SymKind::Catch),
         init,
         fixed: None,
+        fixed_null: false,
+        var_decl: kind == SymKind::Var,
         suppress_fixed: Cell::new(false),
         assignments: 0,
         escaped: 0,
