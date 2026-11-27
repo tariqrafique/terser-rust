@@ -1247,6 +1247,9 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
     if let Some(next) = unsafe_comp_reverse(&cur, cx) {
         cur = next;
     }
+    if let Some(next) = drop_empty_string(&cur) {
+        return Some(next);
+    }
     if cx.opts.evaluate {
         if let Some(next) = eval_logical(&cur, cx) {
             return Some(next);
@@ -1265,6 +1268,28 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
         cur = next;
     }
     if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
+}
+
+/// terser `def_optimize(AST_Binary)` `if (self.operator == "+")`: an empty
+/// string next to a string operand adds nothing.
+fn drop_empty_string(n: &N) -> Option<N> {
+    let Data::Binary { op, left, right } = &n.data else { return None };
+    if op != "+" {
+        return None;
+    }
+    let empty = |x: &N| matches!(&x.data, Data::String { value, .. } if value.is_empty());
+    if empty(right) && is_string(left) {
+        return Some(Rc::clone(left));
+    }
+    if empty(left) && is_string(right) {
+        return Some(Rc::clone(right));
+    }
+    if let Data::Binary { op: lop, left: ll, right: lr } = &left.data {
+        if lop == "+" && empty(ll) && is_string(right) {
+            return Some(binary(n, "+", Rc::clone(lr), Rc::clone(right)));
+        }
+    }
+    None
 }
 
 /// `"a" + "b"` as terser's `binary.optimize` would fold it, or `None`.
