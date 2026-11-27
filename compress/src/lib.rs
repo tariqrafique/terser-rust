@@ -7,6 +7,7 @@
 
 mod drop_unused;
 mod eval;
+mod hoist;
 mod tighten;
 mod reduce_vars;
 mod syms;
@@ -49,6 +50,13 @@ struct Opts {
     unused: bool,
     toplevel_vars: bool,
     toplevel_funcs: bool,
+    /// terser `hoist_props`, on by default.
+    hoist_props: bool,
+    /// terser `hoist_vars` / `hoist_funs`, off unless the fixture sets them.
+    hoist_vars: bool,
+    hoist_funs: bool,
+    /// terser `top_retain` when it is a plain name. Other forms are not read yet.
+    top_retain: Option<String>,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
 }
@@ -81,6 +89,10 @@ impl Opts {
             unused: true,
             toplevel_vars: false,
             toplevel_funcs: false,
+            hoist_props: true,
+            hoist_vars: false,
+            hoist_funs: false,
+            top_retain: None,
             passes: 1,
         }
     }
@@ -112,6 +124,10 @@ impl Opts {
             unused: false,
             toplevel_vars: false,
             toplevel_funcs: false,
+            hoist_props: false,
+            hoist_vars: false,
+            hoist_funs: false,
+            top_retain: None,
             passes: 1,
         }
     }
@@ -205,6 +221,18 @@ impl Opts {
             if let Some(n) = v.as_u64() {
                 opts.passes = n.max(1) as u32;
             }
+        }
+        if let Some(v) = bool_key(obj, "hoist_props") {
+            opts.hoist_props = v;
+        }
+        if let Some(v) = bool_key(obj, "hoist_vars") {
+            opts.hoist_vars = v;
+        }
+        if let Some(v) = bool_key(obj, "hoist_funs") {
+            opts.hoist_funs = v;
+        }
+        if let Some(Value::String(name)) = obj.get("top_retain") {
+            opts.top_retain = Some(name.clone());
         }
         if let Some(v) = obj.get("inline") {
             opts.inline = match v {
@@ -615,6 +643,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.squeezed.contains(&ptr) {
         return Rc::clone(n);
     }
+    // terser `Compressor.before`: hoist before descending. An enclosing `use asm` skips it.
+    let hoisted;
+    let n = if was_scope(&n.data) && !cx.in_asm() {
+        hoisted = hoist::hoist(n, cx.opts.hoist_props, cx.opts.hoist_funs, cx.opts.hoist_vars, cx.opts.toplevel_vars, cx.opts.top_retain.as_deref(), cx.syms.as_ref());
+        &hoisted
+    } else {
+        n
+    };
     let entered = cx.enter(n);
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.

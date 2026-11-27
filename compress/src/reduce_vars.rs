@@ -5,7 +5,7 @@
 //! `single_use`, and `escaped`. `inline_ref` is `inline_into_symbolref` in
 //! `lib/compress/inline.js` for values that are constant expressions.
 
-use ast::{Data, N, Node, SymKind};
+use ast::{Data, Key, N, Node, SymKind};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -28,7 +28,8 @@ struct Tw<'a> {
     /// `var` initialized here does not dominate later reads.
     conditional_var: u32,
     loop_ids: HashMap<usize, u32>,
-    parents: Vec<usize>,
+    /// Node stack. The last entry is the node being walked. `mark_escaped` reads parents off it.
+    parents: Vec<N>,
 }
 
 /// terser `lib/compress/index.js` `AST_Toplevel.reset_opt_flags`.
@@ -89,7 +90,7 @@ pub fn inline_ref(n: &N, table: &SymTable, env: &Env) -> Option<N> {
 }
 
 fn walk(n: &N, tw: &mut Tw) {
-    tw.parents.push(syms::ptr(n));
+    tw.parents.push(Rc::clone(n));
     match &n.data {
         Data::Toplevel { body } => {
             // terser `reduce-vars.js` `AST_Toplevel`: reset variables on the root frame.
@@ -385,6 +386,7 @@ fn reset_def(tw: &mut Tw, id: usize) {
     d.references.clear();
     d.single_use = SingleUse::No;
     d.escaped = 0;
+    d.direct_access = false;
     d.recursive_refs = 0;
     d.replaced.set(0);
     if d.pinned {
@@ -492,13 +494,12 @@ fn ref_once(tw: &Tw, id: usize) -> bool {
 /// terser `reduce-vars.js` `AST_SymbolRef`.
 fn on_ref(tw: &mut Tw, id: usize, node: &N) {
     tw.table.defs[id].references.push(syms::ptr(node));
+    let mut fixed_value = None;
     if tw.table.defs[id].fixed.is_none() || !safe_to_read(tw, id) {
         tw.table.defs[id].fixed = None;
         tw.table.defs[id].single_use = SingleUse::No;
-        return;
-    }
-    let fixed = tw.table.defs[id].fixed.clone();
-    if let Some(fixed) = fixed {
+    } else if let Some(fixed) = tw.table.defs[id].fixed.clone() {
+        fixed_value = Some(Rc::clone(&fixed));
         if tw.env.unused && !exposed(&tw.table.defs[id], tw.env) && ref_once(tw, id) {
             // terser sets single_use when the fixed value is a constant expression in this scope.
             tw.table.defs[id].single_use = if is_constant_expr(&fixed) { SingleUse::Yes } else { SingleUse::No };
@@ -512,6 +513,168 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
                 tw.table.defs[id].fixed = None;
             }
         }
+    }
+    // terser `reduce-vars.js` `mark_escaped`, called for every reference.
+    mark_escaped(tw, id, node, fixed_value, 0, 1);
+}
+
+/// terser `reduce-vars.js` `mark_escaped`.
+/// A reference used as a value sets `direct_access`. Property reads do not.
+fn mark_escaped(tw: &mut Tw, id: usize, node: &N, value: Option<N>, level: usize, depth: u32) {
+    if let Some(v) = &value {
+        if is_constant_value(v) || matches!(v.data, Data::Class { stmt: false, .. }) {
+            return;
+        }
+    }
+    let Some(parent) = parent_at(tw, level).map(Rc::clone) else {
+        if level == 0 {
+            tw.table.defs[id].direct_access = true;
+        }
+        return;
+    };
+    let node_ptr = syms::ptr(node);
+    let parent_ptr = syms::ptr(&parent);
+    match &parent.data {
+        Data::Assign { op, right, logical, .. } if (*logical || op == "=") && syms::ptr(right) == node_ptr => {
+            set_escaped(tw, id, value.as_ref(), depth);
+            return;
+        }
+        Data::Call { expr, is_new, .. } if *is_new || syms::ptr(expr) != node_ptr => {
+            set_escaped(tw, id, value.as_ref(), depth);
+            return;
+        }
+        Data::Return { value: Some(v) } | Data::Throw { value: v } if syms::ptr(v) == node_ptr && ref_scope(tw, level) != Some(tw.table.defs[id].scope) => {
+            set_escaped(tw, id, value.as_ref(), depth);
+            return;
+        }
+        Data::Yield { expr: Some(v), .. } if syms::ptr(v) == node_ptr && ref_scope(tw, level) != Some(tw.table.defs[id].scope) => {
+            set_escaped(tw, id, value.as_ref(), depth);
+            return;
+        }
+        Data::VarDef { value: Some(v), .. } if syms::ptr(v) == node_ptr => {
+            set_escaped(tw, id, value.as_ref(), depth);
+            return;
+        }
+        Data::Array { .. }
+        | Data::Await { .. }
+        | Data::Spread { .. } => {
+            mark_escaped(tw, id, &parent, Some(Rc::clone(&parent)), level + 1, depth);
+            return;
+        }
+        Data::Binary { op, .. } if matches!(op.as_str(), "&&" | "||" | "??") => {
+            mark_escaped(tw, id, &parent, Some(Rc::clone(&parent)), level + 1, depth);
+            return;
+        }
+        Data::Cond { cond, .. } if syms::ptr(cond) != node_ptr => {
+            mark_escaped(tw, id, &parent, Some(Rc::clone(&parent)), level + 1, depth);
+            return;
+        }
+        Data::Seq { exprs } if exprs.last().is_some_and(|e| syms::ptr(e) == node_ptr) => {
+            mark_escaped(tw, id, &parent, Some(Rc::clone(&parent)), level + 1, depth);
+            return;
+        }
+        Data::Prop { value, .. } if syms::ptr(value) == node_ptr => {
+            if let Some(obj) = parent_at(tw, level + 1) {
+                if matches!(obj.data, Data::Object { .. }) {
+                    let obj = Rc::clone(obj);
+                    mark_escaped(tw, id, &obj, Some(Rc::clone(&obj)), level + 2, depth);
+                    return;
+                }
+            }
+        }
+        Data::Dot { expr, prop, .. } if syms::ptr(expr) == node_ptr => {
+            if let Some(prop_value) = value.as_ref().and_then(|v| read_property(v, prop)) {
+                mark_escaped(tw, id, &parent, Some(prop_value), level + 1, depth + 1);
+                return;
+            }
+        }
+        Data::Sub { expr, prop, .. } if syms::ptr(expr) == node_ptr => {
+            if let Some(key) = const_key(prop) {
+                if let Some(prop_value) = value.as_ref().and_then(|v| read_property(v, &key)) {
+                    mark_escaped(tw, id, &parent, Some(prop_value), level + 1, depth + 1);
+                    return;
+                }
+            }
+        }
+        _ => {}
+    }
+    let _ = parent_ptr;
+    if level > 0 {
+        return;
+    }
+    if let Data::Seq { exprs } = &parent.data {
+        if exprs.last().is_some_and(|e| syms::ptr(e) != node_ptr) {
+            return;
+        }
+    }
+    if matches!(parent.data, Data::Simple { .. }) {
+        return;
+    }
+    tw.table.defs[id].direct_access = true;
+}
+
+fn set_escaped(tw: &mut Tw, id: usize, value: Option<&N>, mut depth: u32) {
+    if depth > 1 && !value.is_some_and(is_constant_expr) {
+        depth = 1;
+    }
+    let escaped = tw.table.defs[id].escaped;
+    if escaped == 0 || escaped > depth {
+        tw.table.defs[id].escaped = depth;
+    }
+}
+
+/// Immediate parent is level 0. The node being walked is the last stack entry.
+fn parent_at<'a>(tw: &'a Tw<'_>, level: usize) -> Option<&'a N> {
+    let len = tw.parents.len();
+    let index = len.checked_sub(2 + level)?;
+    tw.parents.get(index)
+}
+
+fn ref_scope(tw: &Tw, level: usize) -> Option<usize> {
+    let len = tw.parents.len();
+    let start = len.checked_sub(1 + level)?;
+    for parent in tw.parents[..=start].iter().rev() {
+        if let Some(&id) = tw.table.node_scope.get(&syms::ptr(parent)) {
+            return Some(id);
+        }
+    }
+    None
+}
+
+fn is_constant_value(n: &N) -> bool {
+    matches!(
+        n.data,
+        Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::RegExp { .. } | Data::True | Data::False | Data::Null | Data::Infinity
+    )
+}
+
+fn const_key(n: &N) -> Option<String> {
+    match &n.data {
+        Data::String { value, .. } => Some(value.clone()),
+        Data::Number { value, .. } if value.is_finite() => Some(codegen_number(*value)),
+        _ => None,
+    }
+}
+
+fn codegen_number(value: f64) -> String {
+    if value == 0.0 { "0".into() } else { value.to_string() }
+}
+
+/// terser `common.js` `read_property` for a static key on an object or array.
+fn read_property(obj: &N, key: &str) -> Option<N> {
+    match &obj.data {
+        Data::Object { props } => {
+            let mut found = None;
+            for prop in props {
+                let Data::Prop { key: prop_key, value, .. } = &prop.data else { return None };
+                let Key::Static { name, .. } = prop_key else { return None };
+                if name == key {
+                    found = Some(Rc::clone(value));
+                }
+            }
+            found
+        }
+        _ => None,
     }
 }
 

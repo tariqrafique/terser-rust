@@ -35,6 +35,8 @@ pub struct SymbolDef {
     pub fixed: Option<N>,
     pub assignments: u32,
     pub escaped: u32,
+    /// terser `reduce-vars.js` `mark_escaped`: the name is used as a value, not only as `obj.prop`.
+    pub direct_access: bool,
     pub recursive_refs: u32,
     pub references: Vec<usize>,
     pub single_use: SingleUse,
@@ -46,6 +48,10 @@ pub struct SymTable {
     pub node_def: HashMap<usize, usize>,
     pub node_scope: HashMap<usize, usize>,
     pub scope_defs: HashMap<usize, Vec<usize>>,
+    /// Parent scope id for each scope, indexed by scope id.
+    pub scope_parent: Vec<Option<usize>>,
+    /// Function scope that owns each scope id.
+    pub fn_of: Vec<usize>,
 }
 
 struct Scope {
@@ -71,12 +77,16 @@ pub fn bind(root: &N) -> SymTable {
         node_def: HashMap::new(),
         node_scope: HashMap::new(),
         scope_defs: HashMap::new(),
+        scope_parent: Vec::new(),
+        fn_of: Vec::new(),
     };
     table.node_scope.insert(ptr(root), 0);
     if let Data::Toplevel { body } = &root.data {
         hoist(body, 0, &mut scopes, &mut table);
     }
     walk(root, 0, &mut scopes, &mut table);
+    table.scope_parent = scopes.iter().map(|s| s.parent).collect();
+    table.fn_of = scopes.iter().map(|s| s.fn_scope).collect();
     table
 }
 
@@ -337,6 +347,7 @@ fn define(
         fixed: None,
         assignments: 0,
         escaped: 0,
+        direct_access: false,
         recursive_refs: 0,
         references: Vec::new(),
         single_use: SingleUse::No,
