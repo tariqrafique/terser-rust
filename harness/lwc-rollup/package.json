@@ -1,0 +1,19 @@
+{
+  "name": "lwc-rollup-corpus",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Bundle the LWC sample with rollup and capture the string @rollup/plugin-terser passes to terser.minify.",
+  "type": "module",
+  "dependencies": {
+    "@lwc/engine-dom": "9.5.3",
+    "@lwc/rollup-plugin": "9.5.3",
+    "@lwc/synthetic-shadow": "9.5.3",
+    "@lwc/wire-service": "9.5.3",
+    "@rollup/plugin-terser": "1.0.2",
+    "rollup": "4.63.5",
+    "terser": "5.51.4"
+  },
+  "overrides": {
+    "terser": "5.51.4"
+  }
+}

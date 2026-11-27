@@ -7,6 +7,11 @@
 
 # Upstream checkouts and downloaded sources. Corpus outputs are committed.
 /harness/lwc/.cache
+/harness/lwc-rollup/node_modules
+/harness/lwc-rollup/.cache
+/harness/corpus/lwc-rollup/.staging
+/harness/corpus/lwc-rollup/.inputs-old
+/.audit
 /harness/corpus/bundles/files
 /harness/corpus/bundles/.cache
 /harness/.board-cache

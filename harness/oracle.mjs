@@ -57,6 +57,15 @@ const NAMED = {
     roundtrip: { compress: false, mangle: false },
     mangle: { compress: false, mangle: true },
     default: {},
+    // What @rollup/plugin-terser passes into minify for an es bundle.
+    // The stated plugin options are the four keys. The plugin adds module:true.
+    "lwc-rollup": {
+        compress: true,
+        mangle: true,
+        sourceMap: false,
+        format: { wrap_func_args: false },
+        module: true,
+    },
 };
 
 async function runNamed(input, setName) {
@@ -162,6 +171,20 @@ for (const file of lwc.files) {
     });
 }
 
+const rollupManifestPath = path.join(here, "corpus/lwc-rollup/manifest.json");
+const rollupCorpus = JSON.parse(fs.readFileSync(rollupManifestPath, "utf8"));
+for (const file of rollupCorpus.files) {
+    if (!file.id) throw new Error("lwc-rollup manifest entry has no id: " + file.path);
+    const input = fs.readFileSync(path.join(here, "corpus/lwc-rollup", file.path), "utf8");
+    cases.push({
+        id: file.id,
+        corpus: "lwc-rollup",
+        input,
+        sets: ["lwc-rollup"],
+        entry: null,
+    });
+}
+
 const bundles = ensureBundles();
 for (const file of bundles.files) {
     const input = fs.readFileSync(path.join(here, "corpus/bundles", file.file), "utf8");
@@ -174,7 +197,7 @@ for (const file of bundles.files) {
     });
 }
 
-const corpusOrder = { compress: 0, lwc: 1, bundles: 2 };
+const corpusOrder = { compress: 0, lwc: 1, "lwc-rollup": 2, bundles: 3 };
 cases.sort((a, b) => {
     const byCorpus = (corpusOrder[a.corpus] ?? 9) - (corpusOrder[b.corpus] ?? 9);
     if (byCorpus !== 0) return byCorpus;
@@ -193,7 +216,8 @@ function ensureHeap(heap) {
 }
 let n = 0;
 for (const item of cases) {
-    ensureHeap(item.corpus === "bundles" ? 4096 : 192);
+    const heap = item.corpus === "bundles" ? 4096 : item.corpus === "lwc-rollup" ? 1024 : 192;
+    ensureHeap(heap);
     if (process.env.ORACLE_RESUME === "1" && fs.existsSync(path.join(expectedRoot, item.id + ".json"))) {
         n++;
         continue;

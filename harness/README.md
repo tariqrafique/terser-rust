@@ -8,20 +8,22 @@ Node runs only here and in `oracle/`. The Rust crate does not embed a JS engine.
 node harness/extract-compress.mjs   # rebuild compress fixtures from the v5.51.4 tag
 node harness/lwc/build-sample.mjs    # rebuild the LWC sample
 node harness/fetch-bundles.mjs       # download pinned bundles
+node harness/lwc-rollup/build.mjs    # rebuild the rollup minify corpus
 node harness/oracle.mjs              # write harness/expected
 cargo run -p harness -- board        # compare Rust minify to those bytes
 ```
 
 ## Option sets
 
-Every corpus input is minified with the same named sets. The objects below are what both the oracle and the board pass through.
+The objects below are what both the oracle and the board pass through. `compress`, `lwc`, and `bundles` use `roundtrip`, `mangle`, and `default`. `lwc-rollup` uses only `lwc-rollup`. `fixture` is only for `test/compress` cases.
 
 | Set | terser options | Who |
 | --- | --- | --- |
-| `roundtrip` | `{ compress: false, mangle: false }` | every input |
-| `mangle` | `{ compress: false, mangle: true }` | every input |
-| `default` | `{}` (terser's own defaults: compress on, mangle on) | every input |
+| `roundtrip` | `{ compress: false, mangle: false }` | `compress`, `lwc`, and `bundles` |
+| `mangle` | `{ compress: false, mangle: true }` | `compress`, `lwc`, and `bundles` |
+| `default` | `{}` (terser's own defaults: compress on, mangle on) | `compress`, `lwc`, and `bundles` |
 | `fixture` | the compress test's own options, translated below | `test/compress` cases only |
+| `lwc-rollup` | `{ compress: true, mangle: true, sourceMap: false, format: { wrap_func_args: false }, module: true }` | `lwc-rollup` inputs only |
 
 `mangle: true` is the same as `mangle: {}` inside terser (`defaults()` treats `true` as `{}`).
 
@@ -31,7 +33,7 @@ Comparison is the UTF-8 bytes of the output string. There is no whitespace norma
 name\nmessage\nline\ncol\n
 ```
 
-`line` and `col` are empty when the exception has neither. Named sets run in a worker with a 192MB heap (bundles use 4GB). Nine `test/compress/typescript` inputs make the default parser allocate until that worker dies (`SIGABRT`). Those `roundtrip`, `mangle`, and `default` results are `Abort` records with a fixed message. Two runs of `node harness/oracle.mjs` produced identical files. `fixture` still passes `parse.experimental_typescript` and returns code. A Rust error is canonicalized as `error\n<message>\n\n\n`, so the unimplemented stub does not match a terser `SyntaxError`.
+`line` and `col` are empty when the exception has neither. Named sets run in a worker with a 192MB heap. Bundles use 4GB. The `lwc-rollup` set uses 1024MB. Nine `test/compress/typescript` inputs make the default parser allocate until that worker dies (`SIGABRT`). Those `roundtrip`, `mangle`, and `default` results are `Abort` records with a fixed message. Two runs of `node harness/oracle.mjs` produced identical files. `fixture` still passes `parse.experimental_typescript` and returns code. A Rust error is canonicalized as `error\n<message>\n\n\n`, so the unimplemented stub does not match a terser `SyntaxError`.
 
 ## Compress fixtures
 
@@ -105,6 +107,8 @@ The runner's `reminify()` (on unless the case sets `reminify = false`, which one
 ## Other corpora
 
 LWC: `corpus/lwc/README.md`.
+
+LWC rollup bundles are described in `corpus/lwc-rollup/README.md`. `node harness/lwc-rollup/build.mjs` rebuilds that corpus. The board scores the `lwc-rollup` set on unique input sha256 values. The manifest keeps every chunk.
 
 Bundles (`node harness/fetch-bundles.mjs`, sources gitignored):
 

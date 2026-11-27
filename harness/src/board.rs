@@ -19,13 +19,13 @@ use terser::{minify, Options};
 
 const MAX_SHOW: usize = 8;
 const MAX_BUCKETS: usize = 12;
-const CORPORA: &[&str] = &["compress", "lwc", "bundles"];
-const SETS: &[&str] = &["roundtrip", "mangle", "default", "fixture"];
+const CORPORA: &[&str] = &["compress", "lwc", "lwc-rollup", "bundles"];
+const SETS: &[&str] = &["roundtrip", "mangle", "default", "fixture", "lwc-rollup"];
 
 pub const USAGE: &str = "\
 usage: harness board [options]
-  --corpus <name>       compress, lwc, or bundles (repeatable)
-  --set <name>          roundtrip, mangle, default, or fixture (repeatable)
+  --corpus <name>       compress, lwc, lwc-rollup, or bundles (repeatable)
+  --set <name>          roundtrip, mangle, default, fixture, or lwc-rollup (repeatable)
   --filter <substring>  case id must contain this
   --failed              only cases that failed the previous run
   --case <id>           one case, full expected/actual diff
@@ -141,7 +141,7 @@ pub fn run(args: Args) -> Result<(), String> {
     };
 
     let skip_abort = load_skip_list(&corpus.join("skip-abort.txt"))?;
-    let cases = load_cases(&corpus)?;
+    let (cases, rollup_files, rollup_unique) = load_cases(&corpus)?;
     let mut jobs = Vec::new();
     let mut corrupt = 0u64;
     let expected = load_expected(&expected_dir, &cases)?;
@@ -266,6 +266,10 @@ pub fn run(args: Args) -> Result<(), String> {
     }
     println!();
     println!("total {pass}/{total}");
+    let show_rollup = args.corpora.is_empty() || args.corpora.iter().any(|name| name == "lwc-rollup");
+    if show_rollup && rollup_files > 0 {
+        println!("lwc-rollup inputs {rollup_unique} unique, {rollup_files} in the manifest");
+    }
     if corrupt > 0 {
         println!("corrupt expected records: {corrupt}");
     }
@@ -605,6 +609,13 @@ fn named_options(set: &str) -> Value {
         "roundtrip" => serde_json::json!({"compress": false, "mangle": false}),
         "mangle" => serde_json::json!({"compress": false, "mangle": true}),
         "default" => serde_json::json!({}),
+        "lwc-rollup" => serde_json::json!({
+            "compress": true,
+            "mangle": true,
+            "sourceMap": false,
+            "format": { "wrap_func_args": false },
+            "module": true
+        }),
         other => panic!("unknown option set {other}"),
     }
 }
@@ -735,7 +746,7 @@ fn load_skip_list(path: &Path) -> Result<HashSet<String>, String> {
         .collect())
 }
 
-fn load_cases(corpus: &Path) -> Result<Vec<Case>, String> {
+fn load_cases(corpus: &Path) -> Result<(Vec<Case>, u64, u64), String> {
     let mut cases = Vec::new();
     let mut compress = Vec::new();
     collect_files(&corpus.join("compress/cases"), &mut compress)?;
@@ -786,6 +797,45 @@ fn load_cases(corpus: &Path) -> Result<Vec<Case>, String> {
         });
     }
 
+    let rollup: Value = read_json(&corpus.join("lwc-rollup/manifest.json"))?;
+    let rollup_list = rollup
+        .get("files")
+        .and_then(|v| v.as_array())
+        .ok_or("lwc-rollup manifest has no files")?;
+    let mut rollup_files = 0u64;
+    let mut rollup_unique = 0u64;
+    let mut seen_inputs = HashSet::new();
+    for file in rollup_list {
+        rollup_files += 1;
+        let rel = file
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or("lwc-rollup file missing path")?;
+        let id = file
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("lwc-rollup file missing id")?
+            .to_string();
+        let input = fs::read_to_string(corpus.join("lwc-rollup").join(rel))
+            .map_err(|err| format!("lwc-rollup {rel}: {err}"))?;
+        let digest = sha256_hex(input.as_bytes());
+        let claimed = file.get("sha256").and_then(|v| v.as_str()).unwrap_or("");
+        if claimed != digest {
+            return Err(format!("lwc-rollup {rel} sha256 does not match its bytes"));
+        }
+        if !seen_inputs.insert(digest) {
+            continue;
+        }
+        rollup_unique += 1;
+        cases.push(Case {
+            id,
+            corpus: "lwc-rollup".into(),
+            input,
+            sets: vec!["lwc-rollup".into()],
+            fixture: Value::Null,
+        });
+    }
+
     let bundles: Value = read_json(&corpus.join("bundles/manifest.json"))?;
     let files = bundles
         .get("files")
@@ -818,7 +868,7 @@ fn load_cases(corpus: &Path) -> Result<Vec<Case>, String> {
             fixture: Value::Null,
         });
     }
-    Ok(cases)
+    Ok((cases, rollup_files, rollup_unique))
 }
 
 fn json_str(value: &Value, key: &str) -> Option<String> {
@@ -963,6 +1013,16 @@ mod tests {
             serde_json::json!({"compress": false, "mangle": true})
         );
         assert_eq!(named_options("default"), serde_json::json!({}));
+        assert_eq!(
+            named_options("lwc-rollup"),
+            serde_json::json!({
+                "compress": true,
+                "mangle": true,
+                "sourceMap": false,
+                "format": { "wrap_func_args": false },
+                "module": true
+            })
+        );
     }
 
     #[test]
