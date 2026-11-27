@@ -765,7 +765,7 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
             let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope);
             let yes = (is_lambda(&fixed) && !func_scope_pinned(tw.table, &fixed))
                 || matches!(fixed.data, Data::Class { .. })
-                || (same && const_expr_truthy(&fixed, tw.table, ref_scope(tw, 0)));
+                || (same && const_expr_truthy(&fixed, tw.table, None));
             tw.table.defs[id].single_use = if yes { SingleUse::Yes } else { SingleUse::No };
         } else {
             tw.table.defs[id].single_use = SingleUse::No;
@@ -1359,6 +1359,25 @@ fn func_name(n: &N) -> Option<String> {
 }
 
 fn func_scope_pinned(table: &SymTable, func: &N) -> bool {
+    // A direct `eval` or `with` inside pins the function (`uses_eval`).
+    fn pins(n: &N, top: bool) -> bool {
+        match &n.data {
+            Data::With { .. } => true,
+            Data::Call { expr, .. } if matches!(&expr.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "eval") => true,
+            Data::Func { .. } if !top => false,
+            _ => {
+                let mut hit = false;
+                let _ = ast::map_children(n, &mut |c| {
+                    hit = hit || pins(c, false);
+                    Rc::clone(c)
+                });
+                hit
+            }
+        }
+    }
+    if pins(func, true) {
+        return true;
+    }
     table
         .node_scope
         .get(&syms::ptr(func))
@@ -1665,7 +1684,9 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
             Some(scope) => {
                 let looked = find_var(table, scope, name);
                 if table.defs[id].undeclared {
-                    if looked.is_none() {
+                    // Undeclared names live on the root scope here, so the
+                    // lookup can find the same undeclared def.
+                    if looked.is_none_or(|l| table.defs[l].undeclared) {
                         result = CExpr::Free;
                     } else {
                         result = CExpr::No;
