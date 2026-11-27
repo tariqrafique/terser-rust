@@ -38,6 +38,7 @@ struct Opts {
     lhs_constants: bool,
     typeofs: bool,
     if_return: bool,
+    inline: i32,
 }
 
 impl Opts {
@@ -61,6 +62,7 @@ impl Opts {
             lhs_constants: true,
             typeofs: true,
             if_return: true,
+            inline: 3,
         }
     }
 
@@ -84,6 +86,7 @@ impl Opts {
             lhs_constants: false,
             typeofs: false,
             if_return: false,
+            inline: 0,
         }
     }
 
@@ -147,6 +150,14 @@ impl Opts {
         if let Some(v) = bool_key(obj, "if_return") {
             opts.if_return = v;
         }
+        if let Some(v) = obj.get("inline") {
+            opts.inline = match v {
+                Value::Bool(true) => 3,
+                Value::Bool(false) => 0,
+                Value::Number(n) => n.as_i64().unwrap_or(0) as i32,
+                _ => opts.inline,
+            };
+        }
         opts
     }
 
@@ -168,6 +179,7 @@ impl Opts {
             || self.lhs_constants
             || self.typeofs
             || self.if_return
+            || self.inline > 0
     }
 }
 
@@ -208,7 +220,15 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         keep_block: false,
         locals: vec![HashSet::new()],
     };
-    transform(root, &mut cx)
+    let once = transform(root, &mut cx);
+    // A second walk folds nodes the first walk just built (return
+    // conditionals, merged sequences). Terser re-optimizes those in place.
+    cx.frames = vec![HashMap::new()];
+    cx.locals = vec![HashSet::new()];
+    cx.in_bool = false;
+    cx.eq_cmp = false;
+    cx.keep_block = false;
+    transform(&once, &mut cx)
 }
 
 struct Cx {

@@ -3,7 +3,7 @@
 //! Values follow JavaScript number and truthiness rules. A folded form is
 //! kept only when it is not longer than the original expression.
 
-use ast::{Data, Key, N, Node};
+use ast::{Data, Key, N, Node, Seg};
 use std::rc::Rc;
 
 use crate::Cx;
@@ -93,6 +93,11 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     }
     if cx.opts.loops {
         if let Some(rewritten) = fold_while(n) {
+            return rewritten;
+        }
+    }
+    if cx.opts.inline > 0 {
+        if let Some(rewritten) = fold_inline(n) {
             return rewritten;
         }
     }
@@ -770,6 +775,163 @@ fn fold_while(n: &N) -> Option<N> {
             body: Rc::clone(body),
         },
     ))
+}
+
+fn fold_inline(n: &N) -> Option<N> {
+    let Data::Call { expr, args, optional, is_new } = &n.data else {
+        return None;
+    };
+    if *optional || *is_new || args.iter().any(|a| matches!(a.data, Data::Spread { .. })) {
+        return None;
+    }
+    let Data::Func { kind, name, args: params, body, async_, generator } = &expr.data else {
+        return None;
+    };
+    if *async_ || *generator || name.is_some() || !matches!(kind, ast::FuncKind::Expr | ast::FuncKind::Arrow) {
+        return None;
+    }
+    let params = simple_params(params)?;
+    let returned = single_return(body)?;
+    if let Some(value) = &returned {
+        if blocked_inline(value) {
+            return None;
+        }
+    }
+    if params.len() == 1 && args.len() == 1 {
+        if let Some(value) = &returned {
+            if let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &value.data {
+                if name == &params[0] {
+                    return Some(Rc::clone(&args[0]));
+                }
+            }
+        }
+    }
+    if returned.as_ref().is_some_and(|value| uses_any(value, &params)) {
+        return None;
+    }
+    let mut exprs: Vec<N> = args.iter().cloned().collect();
+    exprs.push(returned.unwrap_or_else(|| void0(n)));
+    Some(sequence(n, exprs))
+}
+
+fn simple_params(params: &[N]) -> Option<Vec<String>> {
+    let mut names = Vec::new();
+    for param in params {
+        let Data::Symbol { name, kind: ast::SymKind::Funarg, .. } = &param.data else {
+            return None;
+        };
+        names.push(name.clone());
+    }
+    Some(names)
+}
+
+fn single_return(body: &[N]) -> Option<Option<N>> {
+    let mut meaningful = body.iter().filter(|s| !matches!(s.data, Data::Empty | Data::Directive { .. }));
+    let stat = meaningful.next()?;
+    if meaningful.next().is_some() {
+        return None;
+    }
+    match &stat.data {
+        Data::Return { value } => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn blocked_inline(n: &N) -> bool {
+    match &n.data {
+        Data::This | Data::Super | Data::NewTarget => true,
+        Data::Symbol { name, .. } if name == "arguments" => true,
+        Data::Func { .. } | Data::Class { .. } => true,
+        other => walk_children(other, blocked_inline),
+    }
+}
+
+fn uses_any(n: &N, params: &[String]) -> bool {
+    match &n.data {
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => params.iter().any(|p| p == name),
+        Data::Func { .. } | Data::Class { .. } => false,
+        other => walk_children(other, |c| uses_any(c, params)),
+    }
+}
+
+fn walk_children(data: &Data, mut f: impl FnMut(&N) -> bool) -> bool {
+    let mut hit = false;
+    let mut go = |n: &N| {
+        if !hit {
+            hit = f(n);
+        }
+    };
+    match data {
+        Data::Simple { body }
+        | Data::Throw { value: body }
+        | Data::Spread { expr: body }
+        | Data::Unary { expr: body, .. }
+        | Data::Await { expr: body }
+        | Data::Return { value: Some(body) }
+        | Data::Chain { expr: body }
+        | Data::Dot { expr: body, .. } => go(body),
+        Data::Binary { left, right, .. }
+        | Data::Assign { left, right, .. }
+        | Data::DefaultAssign { left, right }
+        | Data::PrivateIn { key: left, value: right } => {
+            go(left);
+            go(right);
+        }
+        Data::Sub { expr, prop, .. } => {
+            go(expr);
+            go(prop);
+        }
+        Data::Cond { cond, cons, alt } => {
+            go(cond);
+            go(cons);
+            go(alt);
+        }
+        Data::Call { expr, args, .. } => {
+            go(expr);
+            args.iter().for_each(&mut go);
+        }
+        Data::DynImport { args, .. } => args.iter().for_each(&mut go),
+        Data::Array { elements } | Data::Seq { exprs: elements } => elements.iter().for_each(&mut go),
+        Data::Object { props } => props.iter().for_each(&mut go),
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(expr) = key {
+                go(expr);
+            }
+            go(value);
+        }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let Seg::Expr(expr) = seg {
+                    go(expr);
+                }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => {
+            go(tag);
+            go(template);
+        }
+        Data::If { cond, body, alt } => {
+            go(cond);
+            go(body);
+            if let Some(alt) = alt {
+                go(alt);
+            }
+        }
+        Data::Yield { expr, .. } => {
+            if let Some(expr) = expr {
+                go(expr);
+            }
+        }
+        _ => {}
+    }
+    hit
+}
+
+fn sequence(span: &N, exprs: Vec<N>) -> N {
+    if exprs.len() == 1 {
+        return exprs.into_iter().next().unwrap();
+    }
+    atom(span, Data::Seq { exprs })
 }
 
 fn negate_iife(n: &N) -> Option<N> {
