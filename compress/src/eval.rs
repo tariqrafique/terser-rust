@@ -535,6 +535,12 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
                 Data::Cond { cond: Rc::clone(&cond), cons, alt: alt_expr },
             );
             let expr = crate::conditional::optimize(&made, cx).unwrap_or(made);
+            // `def_optimize(AST_Conditional)` flags its return value. The
+            // assignment it builds must not run `AST_Assign.optimize` later,
+            // or `x = (y, 2)` is lifted to `y, x = 2`.
+            if matches!(expr.data, Data::Assign { .. }) {
+                crate::seal(cx, &expr);
+            }
             return Some(simple_opt(n, expr, cx));
         }
         (StmtClass::Expr(expr), StmtClass::Empty) => {

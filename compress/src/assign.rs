@@ -618,6 +618,9 @@ fn lift(n: &N, cx: &Cx, depth: u32) -> Option<N> {
         if exprs.is_empty() || has_side(left, cx) {
             return None;
         }
+        // terser `AST_Binary.lift_sequences`: `x = (a(), b)` still lifts, because
+        // `assign` skips the side-effect break. A global read is a side effect
+        // for every other operator.
         let symbol_assign = op == "=" && !*logical && is_ref(left);
         let last = exprs.len() - 1;
         let mut i = 0;

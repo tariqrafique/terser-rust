@@ -19,6 +19,7 @@ mod unary;
 
 use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -521,6 +522,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         syms: None,
         squeezed: HashSet::new(),
         optimized: HashSet::new(),
+        sealed: RefCell::new(Vec::new()),
         flag_keep: Vec::new(),
         stack: Vec::new(),
         parents: Vec::new(),
@@ -570,6 +572,12 @@ struct Cx {
     squeezed: HashSet<usize>,
     /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
     optimized: HashSet<usize>,
+    /// Nodes `def_optimize` already returned, so a later `before` must not run
+    /// their optimizer again. Terser sets `OPTIMIZED` on that object and then
+    /// mutates its children in place. An assignment built by
+    /// `AST_Conditional` is the case that matters here: `x = (y ? 2 : 2)`
+    /// becomes `x = (y, 2)` and is not lifted to `y, x = 2`.
+    sealed: RefCell<Vec<N>>,
     /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
     flag_keep: Vec<N>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
@@ -935,7 +943,13 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
-    let mut out = if cx.optimized.contains(&twice_ptr) {
+    let sealed = is_sealed(cx, n);
+    let mut out = if sealed {
+        if !is_sealed(cx, &twice) {
+            seal(cx, &twice);
+        }
+        Rc::clone(&twice)
+    } else if cx.optimized.contains(&twice_ptr) {
         Rc::clone(&twice)
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
@@ -1103,6 +1117,15 @@ fn child_refs(data: &Data) -> Vec<&N> {
         _ => {}
     }
     out
+}
+
+fn seal(cx: &Cx, n: &N) {
+    cx.sealed.borrow_mut().push(Rc::clone(n));
+}
+
+fn is_sealed(cx: &Cx, n: &N) -> bool {
+    let ptr = Rc::as_ptr(n) as usize;
+    cx.sealed.borrow().iter().any(|kept| Rc::as_ptr(kept) as usize == ptr)
 }
 
 fn mark_optimized(cx: &mut Cx, n: &N) {

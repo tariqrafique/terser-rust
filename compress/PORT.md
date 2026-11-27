@@ -38,4 +38,6 @@ Lambda board `4e2e5c8f5f7c-848142da17ac`: default 1794/3013 -> 1798/3013, 4 newl
 
 Sequence board `389e392e2390-848142da17ac`: default 1798/3013, 0 newly passing, 0 newly failing, lwc 174/339.
 
+Assign board: default 1798/3013 → 1810/3013, 12 newly passing, 0 newly failing, lwc 174/339. An assignment returned by `AST_Conditional` stays `OPTIMIZED`, so `x=(y,2)` is not lifted.
+
 Next: the rest of the shared fold chain (object/array/template, loops/switch/try/if-return).
