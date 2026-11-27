@@ -90,3 +90,11 @@ Var-defs board: `drop_unused` ports `AST_Definitions` `head` / `tail` / side eff
 `join_object_assignments` is ported (statements and `extract_object_assignments` slots; not a `for` init). Its removed writes stay in `collapse`'s reference counts, as terser's `def.references` do. A `fixed` value follows its slot when the slot's node is compressed (terser's `() => node.value`). `single_use == "m"` still inlines. A symbol is an lhs only as the direct target. Default 2466/3013 → 2509/3013.
 
 Block collapse board: `collapse` also runs in a nested block for that block's own `let` / `const`. A `var` candidate is rejected when `reduce_vars` still counts more references than the tree has (terser `get_lhs` reads `def.references`). `drop_unused` descends into every statement and splices an evictable block in a list. Flags carry across `collapse` and spliced blocks. Default 2542/3013 → 2589/3013, lwc 271 → 297.
+
+Full board after the string-join commit: compress default 2305/2671, fixture 1848/2671, lwc default 305/339, lwc-rollup 464/779, bundles default 0/3. Roundtrip and mangle sets are 100%.
+
+Known gaps worth the next pass:
+- An inlined function copy (single-use defun) and switch-built blocks get terser's one-time `optimize` (`opt_AST_Lambda` → `tighten_body`) but no further `tighten_body` once `OPTIMIZED`. Here `after_descend` runs whenever the node is transformed.
+- `collapse` is name based; blocks only collapse their own `let` / `const`.
+- lwc-rollup bundles: remaining differences in the LWC engine code shift the mangler's character frequencies, so many bundles differ only in names.
+- `arrow/issue_2136_2` (rest parameter in an IIFE), `drop_console`, `unsafe_Function`.
