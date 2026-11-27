@@ -57,8 +57,20 @@ struct Opts {
     hoist_funs: bool,
     /// terser `top_retain` when it is a plain name. Other forms are not read yet.
     top_retain: Option<String>,
+    /// terser `lib/compress/index.js` `pure_getters`. `"strict"` by default.
+    pure_getters: PureGetters,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
+}
+
+/// terser `lib/compress/index.js` `pure_getters`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PureGetters {
+    Off,
+    /// `true`: only null and undefined receivers throw.
+    On,
+    /// `"strict"`: receivers that might be nullish or a getter throw.
+    Strict,
 }
 
 impl Opts {
@@ -93,6 +105,7 @@ impl Opts {
             hoist_vars: false,
             hoist_funs: false,
             top_retain: None,
+            pure_getters: PureGetters::Strict,
             passes: 1,
         }
     }
@@ -128,6 +141,7 @@ impl Opts {
             hoist_vars: false,
             hoist_funs: false,
             top_retain: None,
+            pure_getters: PureGetters::Off,
             passes: 1,
         }
     }
@@ -234,6 +248,9 @@ impl Opts {
         if let Some(Value::String(name)) = obj.get("top_retain") {
             opts.top_retain = Some(name.clone());
         }
+        if let Some(v) = obj.get("pure_getters") {
+            opts.pure_getters = pure_getters_of(v);
+        }
         if let Some(v) = obj.get("inline") {
             opts.inline = match v {
                 Value::Bool(true) => 3,
@@ -334,6 +351,17 @@ fn bool_key(obj: &Map<String, Value>, key: &str) -> Option<bool> {
     obj.get(key).and_then(Value::as_bool)
 }
 
+/// terser `lib/compress/index.js` defaults: `pure_getters` is `false`, `"strict"`, or `true`.
+fn pure_getters_of(value: &Value) -> PureGetters {
+    match value {
+        Value::Bool(false) => PureGetters::Off,
+        Value::Bool(true) => PureGetters::On,
+        Value::String(s) if s.contains("strict") => PureGetters::Strict,
+        Value::String(_) => PureGetters::On,
+        _ => PureGetters::Off,
+    }
+}
+
 /// Run the passes that are switched on in `minify_opts.compress`.
 ///
 /// `None` for `compress` means terser's default, which turns compress on.
@@ -378,6 +406,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         squeezed: HashSet::new(),
         optimized: HashSet::new(),
         flag_keep: Vec::new(),
+        parents: Vec::new(),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -426,6 +455,8 @@ struct Cx {
     optimized: HashSet<usize>,
     /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
     flag_keep: Vec<N>,
+    /// Walk stack. The last entry is the node `transform` is in. `eval` reads the parent.
+    parents: Vec<N>,
 }
 
 impl Cx {
@@ -534,6 +565,16 @@ impl Cx {
     fn drop_directive(&self, value: &str, ptr: usize) -> bool {
         let known = value == "use strict" || value == "use asm";
         !known || self.lookup(value) != Some(ptr)
+    }
+
+    /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
+    fn parent(&self) -> Option<&N> {
+        let len = self.parents.len();
+        if len >= 2 {
+            self.parents.get(len - 2)
+        } else {
+            None
+        }
     }
 }
 
@@ -651,6 +692,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     } else {
         n
     };
+    cx.parents.push(Rc::clone(n));
+    let out = transform_walk(n, cx);
+    cx.parents.pop();
+    out
+}
+
+fn transform_walk(n: &N, cx: &mut Cx) -> N {
+    let ptr = Rc::as_ptr(n) as usize;
     let entered = cx.enter(n);
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.
