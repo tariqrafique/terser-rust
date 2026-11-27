@@ -5,6 +5,7 @@
 //! Unchanged subtrees stay the same `Rc`, so a pass that does not fire
 //! prints exactly like the input tree.
 
+mod collapse;
 mod eval;
 
 use ast::{Data, Key, N, Node, Seg};
@@ -41,6 +42,8 @@ struct Opts {
     inline: i32,
     switches: bool,
     reduce_vars: bool,
+    collapse_vars: bool,
+    unused: bool,
 }
 
 impl Opts {
@@ -67,6 +70,8 @@ impl Opts {
             inline: 3,
             switches: true,
             reduce_vars: true,
+            collapse_vars: true,
+            unused: true,
         }
     }
 
@@ -93,6 +98,8 @@ impl Opts {
             inline: 0,
             switches: false,
             reduce_vars: false,
+            collapse_vars: false,
+            unused: false,
         }
     }
 
@@ -162,6 +169,12 @@ impl Opts {
         if let Some(v) = bool_key(obj, "reduce_vars") {
             opts.reduce_vars = v;
         }
+        if let Some(v) = bool_key(obj, "collapse_vars") {
+            opts.collapse_vars = v;
+        }
+        if let Some(v) = bool_key(obj, "unused") {
+            opts.unused = v;
+        }
         if let Some(v) = obj.get("inline") {
             opts.inline = match v {
                 Value::Bool(true) => 3,
@@ -194,6 +207,8 @@ impl Opts {
             || self.inline > 0
             || self.switches
             || self.reduce_vars
+            || self.collapse_vars
+            || self.unused
     }
 }
 
@@ -273,6 +288,8 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if !opts.any() {
         return Rc::clone(root);
     }
+    let collapse_vars = opts.collapse_vars;
+    let unused = opts.unused;
     let mut cx = Cx {
         opts,
         frames: vec![HashMap::new()],
@@ -284,7 +301,12 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         locals: vec![HashSet::new()],
         consts: vec![HashMap::new()],
     };
-    transform(root, &mut cx)
+    let out = transform(root, &mut cx);
+    if collapse_vars {
+        collapse::collapse(&out, unused)
+    } else {
+        out
+    }
 }
 
 struct Cx {
