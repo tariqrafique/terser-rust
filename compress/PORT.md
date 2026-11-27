@@ -41,4 +41,6 @@ Sequence board `389e392e2390-848142da17ac`: default 1798/3013, 0 newly passing, 
 
 Assign board `81aabec8be8d-848142da17ac`: default 1798/3013 → 1810/3013, 12 newly passing, 0 newly failing, lwc 174/339. An assignment returned by `AST_Conditional` stays `OPTIMIZED`, so `x=(y,2)` is not lifted.
 
+Object board `916f95ba3b34-848142da17ac`: default 1810/3013 → 1825/3013, 15 newly passing, 0 newly failing, lwc 174/339.
+
 Next: the rest of the shared fold chain (loops/switch/try/if-return, side effects).
