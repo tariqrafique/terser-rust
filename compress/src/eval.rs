@@ -115,10 +115,32 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     Rc::clone(n)
 }
 
+/// terser `lib/compress/index.js` `def_optimize(AST_SymbolRef)`.
+///
+/// Undeclared `undefined` / `NaN` / `Infinity` fold first (`AST_Undefined`,
+/// `AST_NaN`, `AST_Infinity`). The constant half of `inline_into_symbolref`
+/// follows. A lambda is not inlined here.
 fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &n.data else {
         return None;
     };
+    if !cx.opts.ie8 && is_undeclared_ref(n, name, cx) && !inside_with(cx) {
+        match name.as_str() {
+            "undefined" | "NaN" | "Infinity" => {
+                // Direct lhs stays the identifier (`is_atomic`). `keep_infinity`
+                // defaults off, so a value use of `Infinity` is `1/0`.
+                if symbol_is_lhs(cx) {
+                    return None;
+                }
+                return Some(match name.as_str() {
+                    "undefined" => void0(n),
+                    "NaN" => nan_node(n, cx),
+                    _ => infinity(n, false),
+                });
+            }
+            _ => {}
+        }
+    }
     if cx.opts.reduce_vars && !cx.in_lhs {
         if let Some(table) = &cx.syms {
             if let Some(value) = crate::reduce_vars::inline_ref(
@@ -138,28 +160,27 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
             return Some(Rc::clone(value));
         }
     }
-    // terser `index.js` `def_optimize(AST_SymbolRef)` turns an undeclared
-    // `undefined` / `NaN` / `Infinity` into the constant before `is_lhs`.
-    // `AST_Undefined.optimize` then keeps the identifier only when `is_lhs`
-    // (`inference.js`) is this symbol: the direct child of `delete` / `++` /
-    // `--`, the assign target, or a for-in/of init. `o[undefined] = 1` is not
-    // that, so the index becomes `void 0`. The broad `in_lhs` flag covers the
-    // whole left tree and must not block the index.
-    if cx.shadowed(name) || cx.opts.ie8 || direct_write_target(cx) {
-        return None;
-    }
-    match name.as_str() {
-        "undefined" => Some(void0(n)),
-        "NaN" => Some(nan_node(n, cx)),
-        "Infinity" => Some(infinity(n, false)),
-        _ => None,
-    }
+    None
 }
 
-/// terser `inference.js` `is_lhs` for the symbol being optimized.
-/// Nested operands (an index, a sequence element, a conditional branch) are
-/// not the write target, so `undefined` there still becomes `void 0`.
-fn direct_write_target(cx: &Cx) -> bool {
+/// terser `inference.js` `is_undeclared_ref`.
+fn is_undeclared_ref(n: &N, name: &str, cx: &Cx) -> bool {
+    if let Some(table) = &cx.syms {
+        if let Some(&id) = table.node_def.get(&crate::syms::ptr(n)) {
+            return table.defs[id].undeclared;
+        }
+    }
+    !cx.shadowed(name)
+}
+
+/// terser `TreeWalker.find_parent(AST_With)`. The `with` node is already on the
+/// stack while its expression is compressed, so `with (undefined)` stays.
+fn inside_with(cx: &Cx) -> bool {
+    cx.parents.iter().any(|p| matches!(p.data, Data::With { .. }))
+}
+
+/// terser `inference.js` `is_lhs`: `delete` / `++` / `--`, assignment left, `for in` / `for of` init.
+fn symbol_is_lhs(cx: &Cx) -> bool {
     let len = cx.parents.len();
     if len < 2 {
         return false;
@@ -174,6 +195,40 @@ fn direct_write_target(cx: &Cx) -> bool {
         }
         Data::Assign { left, .. } if Rc::ptr_eq(left, self_n) => true,
         Data::ForIn { init, .. } | Data::ForOf { init, .. } if Rc::ptr_eq(init, self_n) => true,
+        _ => false,
+    }
+}
+
+/// terser `lib/compress/index.js` `opt_AST_Lambda`.
+///
+/// `def_optimize(AST_Lambda)`, `def_optimize(AST_Defun)`, and `def_optimize(AST_Arrow)`
+/// share this. `AST_Function` calls it and may then build an arrow; that step is not here.
+///
+/// A body that is only the active `"use strict"` is cleared when `side_effects` is on.
+/// An `if` / `switch` / `while` / `do` can leave a statement terser has not dropped yet
+/// (`if (0) x()` becomes `0;`), so the directive stays when the original body had one.
+pub(crate) fn opt_ast_lambda(original: &[N], body: Vec<N>, cx: &Cx) -> Vec<N> {
+    if !cx.opts.side_effects || body.len() != 1 || !active_strict(&body[0], cx) {
+        return body;
+    }
+    if original.iter().any(may_leave_remnant) {
+        return body;
+    }
+    Vec::new()
+}
+
+fn active_strict(n: &N, cx: &Cx) -> bool {
+    let Data::Directive { value, .. } = &n.data else {
+        return false;
+    };
+    value == "use strict" && cx.lookup("use strict") == Some(Rc::as_ptr(n) as usize)
+}
+
+fn may_leave_remnant(n: &N) -> bool {
+    match &n.data {
+        Data::If { .. } | Data::Switch { .. } | Data::While { .. } | Data::Do { .. } => true,
+        Data::Block { body } => body.iter().any(may_leave_remnant),
+        Data::Labeled { body, .. } | Data::With { body, .. } => may_leave_remnant(body),
         _ => false,
     }
 }
