@@ -2144,11 +2144,15 @@ fn is_bigint(n: &N) -> bool {
     matches!(n.data, Data::BigInt { .. })
 }
 
+/// terser `inference.js` `is_string`.
 fn is_string(n: &N) -> bool {
     match &n.data {
-        Data::String { .. } => true,
+        Data::String { .. } | Data::Template { .. } => true,
         Data::Unary { op, prefix: true, .. } => op == "typeof",
         Data::Binary { op, left, right } if op == "+" => is_string(left) || is_string(right),
+        Data::Assign { op, right, .. } => (op == "=" || op == "+=") && is_string(right),
+        Data::Seq { exprs } => exprs.last().is_some_and(is_string),
+        Data::Cond { cons, alt, .. } => is_string(cons) && is_string(alt),
         _ => false,
     }
 }
