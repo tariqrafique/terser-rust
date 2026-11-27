@@ -102,9 +102,13 @@ fn walk(n: &N, tw: &mut Tw) {
         }
         Data::Func { body, .. } => {
             // terser `reduce-vars.js` `mark_lambda`: push a safe_ids frame, reset this function's variables, descend, pop.
+            // The function body is a block in terser (`AST_Block.reduce_vars` calls
+            // `reset_block_variables`). Our body is the statement list on the function,
+            // so the body's `let`/`const` live on this scope and are reset here.
             push(tw);
             if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
                 reset_variables(tw, scope);
+                reset_block_variables(tw, scope);
             }
             for stmt in body {
                 walk(stmt, tw);
@@ -237,7 +241,13 @@ fn walk(n: &N, tw: &mut Tw) {
             if let Some(id) = sym_ref(left).and_then(|()| def_of(tw, left)) {
                 // An assignment inside `&&` / `if` / a label that can break may not run,
                 // so it must not become the value later reads inline.
-                let safe = !*logical && op == "=" && tw.conditional_var == 0 && safe_to_assign(tw, id);
+                // `safe_to_assign` rejects `const` (its `orig` is `AST_SymbolConst`):
+                // `const n=1; return n=2, n` keeps the read as `n`.
+                let safe = !*logical
+                    && op == "="
+                    && tw.conditional_var == 0
+                    && !tw.table.defs[id].is_const
+                    && safe_to_assign(tw, id);
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
                 if safe {
                     tw.table.defs[id].fixed = Some(Rc::clone(right));

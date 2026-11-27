@@ -525,6 +525,14 @@ fn map_drop(n: &N, table: &SymTable) -> N {
         },
         Data::Simple { body } => Data::Simple { body: go(body) },
         Data::Return { value } => Data::Return { value: value.as_ref().map(|v| go(v)) },
+        Data::Call { expr, args, optional, is_new } => Data::Call {
+            expr: go(expr),
+            args: args.iter().map(go).collect(),
+            optional: *optional,
+            is_new: *is_new,
+        },
+        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
+        Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(go).collect() },
         _ => return Rc::clone(n),
     };
     node(n, data)
