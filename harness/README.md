@@ -104,10 +104,17 @@ The runner's `reminify()` (on unless the case sets `reminify = false`, which one
 
 ## Other corpora
 
-LWC and the large bundles are described next to their manifests:
+LWC: `corpus/lwc/README.md`.
 
-- `corpus/lwc/README.md`
-- `corpus/bundles/manifest.json`
+Bundles (`node harness/fetch-bundles.mjs`, sources gitignored):
+
+| id | package | file |
+| --- | --- | --- |
+| `bundles/react-dom-production` | `react-dom@18.3.1` | `umd/react-dom.production.min.js` |
+| `bundles/lodash` | `lodash@4.17.21` | `lodash.js` |
+| `bundles/three` | `three@0.160.1` | `build/three.js` |
+
+sha256 pins are in `corpus/bundles/manifest.json`. The board scores `roundtrip`, `mangle`, and `default` for LWC and these bundles.
 
 ## Board id
 

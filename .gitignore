@@ -8,3 +8,4 @@
 # Upstream checkouts and downloaded sources. Corpus outputs are committed.
 /harness/lwc/.cache
 /harness/corpus/bundles/files
+/harness/corpus/bundles/.cache

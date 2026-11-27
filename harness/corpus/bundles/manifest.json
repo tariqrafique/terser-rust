@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "terser": "5.51.4",
+  "note": "The bundle sources are downloaded by harness/fetch-bundles.mjs and are not committed. Expected minify output is committed under harness/expected/bundles.",
+  "files": [
+    {
+      "id": "bundles/react-dom-production",
+      "package": "react-dom",
+      "version": "18.3.1",
+      "tarball_sha1": "c2265d79511b57d479b3dd3fdfa51536494c5cb4",
+      "tarball_sha256": "031d4427a99f2f3f6cac18bbbf308594a67e4f47d10f4896fdec446505b040e0",
+      "inner_path": "package/umd/react-dom.production.min.js",
+      "file": "files/react-dom-production.js",
+      "sha256": "35f4f974f4b2bcd44da73963347f8952e341f83909e4498227d4e26b98f66f0d"
+    },
+    {
+      "id": "bundles/lodash",
+      "package": "lodash",
+      "version": "4.17.21",
+      "tarball_sha1": "679591c564c3bffaae8454cf0b3df370c3d6911c",
+      "tarball_sha256": "6a087ac9e5702a0c9d60fbcd48696012646ec8df1491dea472b150e79fcaf804",
+      "inner_path": "package/lodash.js",
+      "file": "files/lodash.js",
+      "sha256": "4c04561befdf653aef017a42ac5addf68ea943cdfca6bdee5ce04e04e8139f54"
+    },
+    {
+      "id": "bundles/three",
+      "package": "three",
+      "version": "0.160.1",
+      "tarball_sha1": "61fe2907312e8604b1f64187f58e047503847413",
+      "tarball_sha256": "d462f9bb4a53d0a75f5ebba49ec1c69847f166cd1bd6cbfdd98ce0b5b7988609",
+      "inner_path": "package/build/three.js",
+      "file": "files/three.js",
+      "sha256": "7710f93ba2f67bc9886848e05a244e5414aeb116b04bfa0645053e4a3e96e6f8"
+    }
+  ]
+}
