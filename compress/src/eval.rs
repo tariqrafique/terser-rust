@@ -55,6 +55,11 @@ pub fn fold(n: &N, cx: &Cx) -> N {
         if let Some(rewritten) = fold_empty_switch(n, cx) {
             return rewritten;
         }
+        if cx.opts.switches {
+            if let Some(rewritten) = fold_switch_if(n, cx) {
+                return rewritten;
+            }
+        }
     }
     if cx.opts.computed_props {
         if let Some(rewritten) = fold_computed(n) {
@@ -107,10 +112,13 @@ pub fn fold(n: &N, cx: &Cx) -> N {
         }
     }
     if cx.opts.side_effects {
-        if let Some(rewritten) = drop_statement(n) {
+        if let Some(rewritten) = unwrap_void_statement(n, cx) {
             return rewritten;
         }
-        if let Some(rewritten) = trim_sequence(n) {
+        if let Some(rewritten) = drop_statement(n, cx) {
+            return rewritten;
+        }
+        if let Some(rewritten) = trim_sequence(n, cx) {
             return rewritten;
         }
     }
@@ -121,6 +129,11 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &n.data else {
         return None;
     };
+    if cx.opts.reduce_vars {
+        if let Some(value) = cx.const_value(name) {
+            return Some(Rc::clone(value));
+        }
+    }
     if cx.shadowed(name) || cx.opts.ie8 {
         return None;
     }
@@ -194,6 +207,128 @@ fn truth(n: &N, cx: &Cx) -> N {
         unary(n, "!", num(n, 0.0))
     } else {
         atom(n, Data::True)
+    }
+}
+
+fn fold_switch_if(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Switch { expr, body } = &n.data else {
+        return None;
+    };
+    if body.is_empty() || has_control_jump(body) {
+        return None;
+    }
+    if break_only(body, cx) {
+        return Some(if statement_pure(expr, cx) {
+            empty(n)
+        } else {
+            simple(n, Rc::clone(expr))
+        });
+    }
+    let mut case_test: Option<&N> = None;
+    let mut case_body: Option<Vec<N>> = None;
+    let mut default_body: Option<Vec<N>> = None;
+    for arm in body {
+        match &arm.data {
+            Data::Case { expr: test, body } => {
+                if case_test.is_some() {
+                    return None;
+                }
+                case_test = Some(test);
+                case_body = Some(strip_break(body));
+            }
+            Data::Default { body } => {
+                if default_body.is_some() {
+                    return None;
+                }
+                default_body = Some(strip_break(body));
+            }
+            _ => return None,
+        }
+    }
+    let (Some(test), Some(case_body)) = (case_test, case_body) else {
+        return None;
+    };
+    if case_body.is_empty() {
+        return None;
+    }
+    let cond = eq_test(n, Rc::clone(expr), Rc::clone(test), cx);
+    let body = stmt_list(n, &case_body, cx);
+    let alt = default_body.and_then(|stmts| {
+        if stmts.is_empty() {
+            None
+        } else {
+            Some(stmt_list(n, &stmts, cx))
+        }
+    });
+    Some(atom(n, Data::If { cond, body, alt }))
+}
+
+fn eq_test(span: &N, left: N, right: N, cx: &Cx) -> N {
+    let node = binary(span, "===", left, right);
+    fold_compare(&node, cx).unwrap_or(node)
+}
+
+fn break_only(body: &[N], cx: &Cx) -> bool {
+    body.iter().all(|arm| match &arm.data {
+        Data::Case { expr, body } => statement_pure(expr, cx) && strip_break(body).is_empty(),
+        Data::Default { body } => strip_break(body).is_empty(),
+        _ => false,
+    })
+}
+
+fn strip_break(body: &[N]) -> Vec<N> {
+    let mut out: Vec<N> = body.iter().cloned().collect();
+    if let Some(Data::Break { label: None }) = out.last().map(|s| &s.data) {
+        out.pop();
+    }
+    out
+}
+
+fn has_control_jump(body: &[N]) -> bool {
+    body.iter().any(|arm| {
+        let stmts = match &arm.data {
+            Data::Case { body, .. } | Data::Default { body } => body.as_slice(),
+            _ => &[],
+        };
+        stmts.iter().enumerate().any(|(i, stmt)| {
+            let last = i + 1 == stmts.len();
+            match &stmt.data {
+                Data::Break { label: None } if last => false,
+                Data::Break { .. } | Data::Continue { .. } => true,
+                Data::If { .. } | Data::For { .. } | Data::While { .. } | Data::Do { .. } | Data::Switch { .. } | Data::Block { .. } | Data::Try { .. } => {
+                    contains_jump(stmt)
+                }
+                _ => false,
+            }
+        })
+    })
+}
+
+fn contains_jump(n: &N) -> bool {
+    match &n.data {
+        Data::Break { .. } | Data::Continue { .. } => true,
+        Data::Func { .. } | Data::Class { .. } => false,
+        other => walk_children(other, contains_jump),
+    }
+}
+
+fn stmt_list(span: &N, stmts: &[N], cx: &Cx) -> N {
+    let merged = if cx.opts.sequences_limit > 0 && stmts.len() > 1 && stmts.iter().all(|s| matches!(s.data, Data::Simple { .. })) {
+        let exprs = stmts
+            .iter()
+            .map(|s| match &s.data {
+                Data::Simple { body } => Rc::clone(body),
+                _ => unreachable!(),
+            })
+            .collect();
+        vec![simple(span, sequence(span, exprs))]
+    } else {
+        stmts.to_vec()
+    };
+    if merged.len() == 1 {
+        merged.into_iter().next().unwrap()
+    } else {
+        atom(span, Data::Block { body: merged })
     }
 }
 
@@ -791,26 +926,22 @@ fn fold_inline(n: &N) -> Option<N> {
         return None;
     }
     let params = simple_params(params)?;
-    let returned = single_return(body)?;
-    if let Some(value) = &returned {
-        if blocked_inline(value) {
-            return None;
-        }
+    let returned = inline_result(body)?;
+    if blocked_inline(&returned) {
+        return None;
     }
     if params.len() == 1 && args.len() == 1 {
-        if let Some(value) = &returned {
-            if let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &value.data {
-                if name == &params[0] {
-                    return Some(Rc::clone(&args[0]));
-                }
+        if let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &returned.data {
+            if name == &params[0] {
+                return Some(Rc::clone(&args[0]));
             }
         }
     }
-    if returned.as_ref().is_some_and(|value| uses_any(value, &params)) {
+    if uses_any(&returned, &params) {
         return None;
     }
     let mut exprs: Vec<N> = args.iter().cloned().collect();
-    exprs.push(returned.unwrap_or_else(|| void0(n)));
+    exprs.push(returned);
     Some(sequence(n, exprs))
 }
 
@@ -825,15 +956,64 @@ fn simple_params(params: &[N]) -> Option<Vec<String>> {
     Some(names)
 }
 
-fn single_return(body: &[N]) -> Option<Option<N>> {
+fn inline_result(body: &[N]) -> Option<N> {
     let mut meaningful = body.iter().filter(|s| !matches!(s.data, Data::Empty | Data::Directive { .. }));
     let stat = meaningful.next()?;
     if meaningful.next().is_some() {
         return None;
     }
     match &stat.data {
-        Data::Return { value } => Some(value.clone()),
+        Data::Return { value: Some(value) } => Some(Rc::clone(value)),
+        Data::Return { value: None } => Some(void0(stat)),
+        Data::Simple { body } => Some(unary(stat, "void", Rc::clone(body))),
         _ => None,
+    }
+}
+
+pub(crate) fn only_pure_decls(body: &[N], cx: &Cx) -> bool {
+    !body.is_empty() && body.iter().all(|s| pure_decl(s, cx))
+}
+
+fn pure_decl(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Empty => true,
+        Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const, defs, .. } => defs.iter().all(|d| match &d.data {
+            Data::VarDef { value: None, .. } => true,
+            Data::VarDef { value: Some(v), .. } => statement_pure(v, cx),
+            _ => false,
+        }),
+        Data::Class { extends: None, props, .. } => props.iter().all(|p| match &p.data {
+            Data::Prop { key, value, .. } => pure_key(key, cx) && matches!(value.data, Data::Func { .. }),
+            Data::Field { key, value, .. } => {
+                pure_key(key, cx) && value.as_ref().map(|v| statement_pure(v, cx)).unwrap_or(true)
+            }
+            _ => false,
+        }),
+        _ => false,
+    }
+}
+
+fn pure_key(key: &Key, cx: &Cx) -> bool {
+    match key {
+        Key::Computed(expr) => statement_pure(expr, cx),
+        _ => true,
+    }
+}
+
+fn unwrap_void_statement(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Simple { body } = &n.data else {
+        return None;
+    };
+    let Data::Unary { op, expr, prefix: true } = &body.data else {
+        return None;
+    };
+    if op != "void" {
+        return None;
+    }
+    if statement_pure(expr, cx) {
+        Some(empty(n))
+    } else {
+        Some(simple(n, Rc::clone(expr)))
     }
 }
 
@@ -955,18 +1135,64 @@ fn is_iife_call(n: &N) -> bool {
     }
 }
 
-fn drop_statement(n: &N) -> Option<N> {
+pub(crate) fn drop_trailing_return(mut body: Vec<N>, cx: &Cx) -> Vec<N> {
+    let Some(last) = body.last() else {
+        return body;
+    };
+    let Data::Return { value } = &last.data else {
+        return body;
+    };
+    match value {
+        None => {
+            body.pop();
+            body
+        }
+        Some(v) => {
+            let Data::Unary { op, expr, prefix: true } = &v.data else {
+                return body;
+            };
+            if op != "void" {
+                return body;
+            }
+            let expr = Rc::clone(expr);
+            body.pop();
+            if !statement_pure(&expr, cx) {
+                let stmt = simple(&expr, Rc::clone(&expr));
+                body.push(stmt);
+            }
+            body
+        }
+    }
+}
+
+fn drop_statement(n: &N, cx: &Cx) -> Option<N> {
     let Data::Simple { body } = &n.data else {
         return None;
     };
-    if is_pure(body) {
+    if statement_pure(body, cx) {
         Some(empty(n))
     } else {
         None
     }
 }
 
-fn trim_sequence(n: &N) -> Option<N> {
+fn statement_pure(n: &N, cx: &Cx) -> bool {
+    if cx.in_with {
+        return is_pure(n);
+    }
+    match &n.data {
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") => {
+            statement_pure(expr, cx)
+        }
+        Data::Binary { op, left, right } if !is_assign(op) => statement_pure(left, cx) && statement_pure(right, cx),
+        Data::Seq { exprs } => exprs.iter().all(|e| statement_pure(e, cx)),
+        Data::Cond { cond, cons, alt } => statement_pure(cond, cx) && statement_pure(cons, cx) && statement_pure(alt, cx),
+        _ => is_pure(n),
+    }
+}
+
+fn trim_sequence(n: &N, cx: &Cx) -> Option<N> {
     let Data::Seq { exprs } = &n.data else {
         return None;
     };
@@ -976,7 +1202,7 @@ fn trim_sequence(n: &N) -> Option<N> {
     let mut kept: Vec<N> = Vec::new();
     for (i, e) in exprs.iter().enumerate() {
         let last = i + 1 == exprs.len();
-        if !last && is_pure(e) {
+        if !last && statement_pure(e, cx) {
             continue;
         }
         kept.push(Rc::clone(e));

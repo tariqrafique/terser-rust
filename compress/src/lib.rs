@@ -39,6 +39,8 @@ struct Opts {
     typeofs: bool,
     if_return: bool,
     inline: i32,
+    switches: bool,
+    reduce_vars: bool,
 }
 
 impl Opts {
@@ -63,6 +65,8 @@ impl Opts {
             typeofs: true,
             if_return: true,
             inline: 3,
+            switches: true,
+            reduce_vars: true,
         }
     }
 
@@ -87,6 +91,8 @@ impl Opts {
             typeofs: false,
             if_return: false,
             inline: 0,
+            switches: false,
+            reduce_vars: false,
         }
     }
 
@@ -150,6 +156,12 @@ impl Opts {
         if let Some(v) = bool_key(obj, "if_return") {
             opts.if_return = v;
         }
+        if let Some(v) = bool_key(obj, "switches") {
+            opts.switches = v;
+        }
+        if let Some(v) = bool_key(obj, "reduce_vars") {
+            opts.reduce_vars = v;
+        }
         if let Some(v) = obj.get("inline") {
             opts.inline = match v {
                 Value::Bool(true) => 3,
@@ -180,6 +192,8 @@ impl Opts {
             || self.typeofs
             || self.if_return
             || self.inline > 0
+            || self.switches
+            || self.reduce_vars
     }
 }
 
@@ -192,6 +206,27 @@ fn sequences_limit(value: &Value) -> i32 {
             if n == 1 { 800 } else { n as i32 }
         }
         _ => 0,
+    }
+}
+
+fn bind_short_consts(defs: &[N], cx: &mut Cx) {
+    let Some(frame) = cx.consts.last_mut() else {
+        return;
+    };
+    for def in defs {
+        let Data::VarDef { name, value: Some(value) } = &def.data else {
+            continue;
+        };
+        let Data::Symbol { name, .. } = &name.data else {
+            continue;
+        };
+        let primitive = matches!(
+            value.data,
+            Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null
+        );
+        if primitive && codegen::print(value).len() < name.len() {
+            frame.insert(name.clone(), Rc::clone(value));
+        }
     }
 }
 
@@ -218,17 +253,12 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         in_bool: false,
         eq_cmp: false,
         keep_block: false,
+        in_with: false,
+        in_for_init: false,
         locals: vec![HashSet::new()],
+        consts: vec![HashMap::new()],
     };
-    let once = transform(root, &mut cx);
-    // A second walk folds nodes the first walk just built (return
-    // conditionals, merged sequences). Terser re-optimizes those in place.
-    cx.frames = vec![HashMap::new()];
-    cx.locals = vec![HashSet::new()];
-    cx.in_bool = false;
-    cx.eq_cmp = false;
-    cx.keep_block = false;
-    transform(&once, &mut cx)
+    transform(root, &mut cx)
 }
 
 struct Cx {
@@ -237,12 +267,27 @@ struct Cx {
     in_bool: bool,
     eq_cmp: bool,
     keep_block: bool,
+    in_with: bool,
+    in_for_init: bool,
     locals: Vec<HashSet<String>>,
+    consts: Vec<HashMap<String, N>>,
 }
 
 impl Cx {
     fn shadowed(&self, name: &str) -> bool {
         self.locals.iter().any(|set| set.contains(name))
+    }
+
+    fn const_value(&self, name: &str) -> Option<&N> {
+        for (locals, consts) in self.locals.iter().rev().zip(self.consts.iter().rev()) {
+            if let Some(value) = consts.get(name) {
+                return Some(value);
+            }
+            if locals.contains(name) {
+                return None;
+            }
+        }
+        None
     }
 
     fn enter(&mut self, n: &N) -> Enter {
@@ -256,6 +301,7 @@ impl Cx {
                 }
                 scan_hoisted(body, &mut names);
                 self.locals.push(names);
+                self.consts.push(HashMap::new());
                 Enter::Scope
             }
             Data::StaticBlock { body } => {
@@ -263,12 +309,14 @@ impl Cx {
                 let mut names = HashSet::new();
                 scan_lexical(body, &mut names);
                 self.locals.push(names);
+                self.consts.push(HashMap::new());
                 Enter::Scope
             }
             Data::Block { body } => {
                 let mut names = HashSet::new();
                 scan_lexical(body, &mut names);
                 self.locals.push(names);
+                self.consts.push(HashMap::new());
                 Enter::Locals
             }
             Data::Catch { arg, .. } => {
@@ -277,12 +325,14 @@ impl Cx {
                     collect_binding(arg, &mut names);
                 }
                 self.locals.push(names);
+                self.consts.push(HashMap::new());
                 Enter::Locals
             }
             Data::Class { .. } => {
                 let already = self.lookup("use strict").is_some();
                 self.frames.push(HashMap::new());
                 self.locals.push(HashSet::new());
+                self.consts.push(HashMap::new());
                 if !already {
                     self.frames.last_mut().unwrap().insert("use strict".into(), ptr);
                 }
@@ -303,9 +353,11 @@ impl Cx {
             Enter::Scope => {
                 self.frames.pop();
                 self.locals.pop();
+                self.consts.pop();
             }
             Enter::Locals => {
                 self.locals.pop();
+                self.consts.pop();
             }
             Enter::None => {}
         }
@@ -854,7 +906,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         Data::Block { body } => {
             let (body, _) = map_list(body, cx);
             let body = tighten(body, cx);
-            if !cx.keep_block && body.is_empty() {
+            if !cx.keep_block && (body.is_empty() || eval::only_pure_decls(&body, cx)) {
                 return empty(n);
             }
             if !cx.keep_block && body.len() == 1 && can_evict(&body[0]) {
@@ -881,7 +933,10 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::While { cond: cond_m, body: body_m }, c)
         }
         Data::For { init, cond, step, body } => {
+            let prev = cx.in_for_init;
+            cx.in_for_init = true;
             let (init, c1) = map_opt(init, cx);
+            cx.in_for_init = prev;
             let (cond, c2) = map_opt_bool(cond, cx);
             let (step, c3) = map_opt(step, cx);
             let body_m = transform(body, cx);
@@ -889,14 +944,20 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             finish(n, Data::For { init, cond, step, body: body_m }, c)
         }
         Data::ForIn { init, object, body } => {
+            let prev = cx.in_for_init;
+            cx.in_for_init = true;
             let init_m = transform(init, cx);
+            cx.in_for_init = prev;
             let object_m = transform(object, cx);
             let body_m = transform(body, cx);
             let c = !Rc::ptr_eq(&init_m, init) || !Rc::ptr_eq(&object_m, object) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::ForIn { init: init_m, object: object_m, body: body_m }, c)
         }
         Data::ForOf { init, object, body, await_ } => {
+            let prev = cx.in_for_init;
+            cx.in_for_init = true;
             let init_m = transform(init, cx);
+            cx.in_for_init = prev;
             let object_m = transform(object, cx);
             let body_m = transform(body, cx);
             let c = !Rc::ptr_eq(&init_m, init) || !Rc::ptr_eq(&object_m, object) || !Rc::ptr_eq(&body_m, body);
@@ -904,7 +965,10 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::With { expr, body } => {
             let expr_m = transform(expr, cx);
+            let prev = cx.in_with;
+            cx.in_with = true;
             let body_m = transform(body, cx);
+            cx.in_with = prev;
             let c = !Rc::ptr_eq(&expr_m, expr) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::With { expr: expr_m, body: body_m }, c)
         }
@@ -951,6 +1015,9 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Defs { kind, defs, await_ } => {
             let (defs, c) = map_list(defs, cx);
+            if cx.opts.reduce_vars && *kind == ast::DefKind::Const && !cx.in_for_init {
+                bind_short_consts(&defs, cx);
+            }
             finish(n, Data::Defs { kind: *kind, defs, await_: *await_ }, c)
         }
         Data::VarDef { name, value } => {
@@ -964,6 +1031,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let (args, c2) = map_list(args, cx);
             let (body, c3) = map_list(body, cx);
             let body = tighten(body, cx);
+            let body = if cx.opts.if_return { eval::drop_trailing_return(body, cx) } else { body };
             finish(n, Data::Func { kind: *kind, name, args, body, async_: *async_, generator: *generator }, c1 || c2 || c3 || true)
         }
         Data::Class { stmt, name, extends, props } => {
