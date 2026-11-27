@@ -93,10 +93,8 @@ pub fn fold(n: &N, cx: &Cx) -> N {
             return rewritten;
         }
     }
-    if cx.opts.inline > 0 {
-        if let Some(rewritten) = fold_inline(n) {
-            return rewritten;
-        }
+    if let Some(rewritten) = crate::call::optimize(n, cx) {
+        return rewritten;
     }
     if cx.opts.negate_iife {
         if let Some(rewritten) = negate_iife(n) {
@@ -2762,63 +2760,6 @@ fn fold_while(n: &N) -> Option<N> {
     ))
 }
 
-fn fold_inline(n: &N) -> Option<N> {
-    let Data::Call { expr, args, optional, is_new } = &n.data else {
-        return None;
-    };
-    if *optional || *is_new || args.iter().any(|a| matches!(a.data, Data::Spread { .. })) {
-        return None;
-    }
-    let Data::Func { kind, name, args: params, body, async_, generator } = &expr.data else {
-        return None;
-    };
-    if *async_ || *generator || name.is_some() || !matches!(kind, ast::FuncKind::Expr | ast::FuncKind::Arrow) {
-        return None;
-    }
-    let params = simple_params(params)?;
-    let returned = inline_result(body)?;
-    if blocked_inline(&returned) {
-        return None;
-    }
-    if params.len() == 1 && args.len() == 1 {
-        if let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &returned.data {
-            if name == &params[0] {
-                return Some(Rc::clone(&args[0]));
-            }
-        }
-    }
-    if uses_any(&returned, &params) {
-        return None;
-    }
-    let mut exprs: Vec<N> = args.iter().cloned().collect();
-    exprs.push(returned);
-    Some(sequence(n, exprs))
-}
-
-fn simple_params(params: &[N]) -> Option<Vec<String>> {
-    let mut names = Vec::new();
-    for param in params {
-        let Data::Symbol { name, kind: ast::SymKind::Funarg, .. } = &param.data else {
-            return None;
-        };
-        names.push(name.clone());
-    }
-    Some(names)
-}
-
-fn inline_result(body: &[N]) -> Option<N> {
-    let mut meaningful = body.iter().filter(|s| !matches!(s.data, Data::Empty | Data::Directive { .. }));
-    let stat = meaningful.next()?;
-    if meaningful.next().is_some() {
-        return None;
-    }
-    match &stat.data {
-        Data::Return { value: Some(value) } => Some(Rc::clone(value)),
-        Data::Return { value: None } => Some(void0(stat)),
-        Data::Simple { body } => Some(unary(stat, "void", Rc::clone(body))),
-        _ => None,
-    }
-}
 
 pub(crate) fn only_pure_decls(body: &[N], cx: &Cx) -> bool {
     !body.is_empty() && body.iter().all(|s| pure_decl(s, cx))
@@ -2867,22 +2808,6 @@ fn unwrap_void_statement(n: &N, cx: &Cx) -> Option<N> {
     }
 }
 
-fn blocked_inline(n: &N) -> bool {
-    match &n.data {
-        Data::This | Data::Super | Data::NewTarget => true,
-        Data::Symbol { name, .. } if name == "arguments" => true,
-        Data::Func { .. } | Data::Class { .. } => true,
-        other => walk_children(other, blocked_inline),
-    }
-}
-
-fn uses_any(n: &N, params: &[String]) -> bool {
-    match &n.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => params.iter().any(|p| p == name),
-        Data::Func { .. } | Data::Class { .. } => false,
-        other => walk_children(other, |c| uses_any(c, params)),
-    }
-}
 
 fn walk_children(data: &Data, mut f: impl FnMut(&N) -> bool) -> bool {
     let mut hit = false;
@@ -3016,6 +2941,9 @@ pub(crate) fn drop_trailing_return(mut body: Vec<N>, cx: &Cx) -> Vec<N> {
 }
 
 fn drop_statement(n: &N, cx: &Cx) -> Option<N> {
+    if let Some(out) = drop_pure_call(n) {
+        return Some(out);
+    }
     let Data::Simple { body } = &n.data else {
         return None;
     };
@@ -3024,6 +2952,21 @@ fn drop_statement(n: &N, cx: &Cx) -> Option<N> {
     } else {
         None
     }
+}
+
+/// terser `inference.js` `AST_Call.is_callee_pure` when a pure annotation is already on the call.
+fn drop_pure_call(n: &N) -> Option<N> {
+    let Data::Simple { body } = &n.data else {
+        return None;
+    };
+    let effects = crate::call::pure_effects(body)?;
+    if effects.is_empty() {
+        return Some(empty(n));
+    }
+    if effects.len() == 1 {
+        return Some(simple(n, effects.into_iter().next().unwrap()));
+    }
+    Some(simple(n, sequence(n, effects)))
 }
 
 fn statement_pure(n: &N, cx: &Cx) -> bool {
@@ -3050,14 +2993,23 @@ fn trim_sequence(n: &N, cx: &Cx) -> Option<N> {
         return None;
     }
     let mut kept: Vec<N> = Vec::new();
+    let mut changed = false;
     for (i, e) in exprs.iter().enumerate() {
         let last = i + 1 == exprs.len();
-        if !last && statement_pure(e, cx) {
-            continue;
+        if !last {
+            if let Some(effects) = crate::call::pure_effects(e) {
+                changed = true;
+                kept.extend(effects);
+                continue;
+            }
+            if statement_pure(e, cx) {
+                changed = true;
+                continue;
+            }
         }
         kept.push(Rc::clone(e));
     }
-    if kept.len() == exprs.len() {
+    if !changed {
         return None;
     }
     if kept.is_empty() {

@@ -5,6 +5,7 @@
 //! Unchanged subtrees stay the same `Rc`, so a pass that does not fire
 //! prints exactly like the input tree.
 
+mod call;
 mod drop_unused;
 mod eval;
 mod hoist;
@@ -60,6 +61,9 @@ struct Opts {
     top_retain: Option<String>,
     /// terser `lib/compress/index.js` `pure_getters`. `"strict"` by default.
     pure_getters: PureGetters,
+    /// terser `unsafe` / `unsafe_math`. Off unless the fixture sets them.
+    unsafe_opt: bool,
+    unsafe_math: bool,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
     /// terser `unsafe_comps`. Off unless the fixture sets it.
@@ -109,6 +113,8 @@ impl Opts {
             hoist_funs: false,
             top_retain: None,
             pure_getters: PureGetters::Strict,
+            unsafe_opt: false,
+            unsafe_math: false,
             passes: 1,
             unsafe_comps: false,
         }
@@ -146,6 +152,8 @@ impl Opts {
             hoist_funs: false,
             top_retain: None,
             pure_getters: PureGetters::Off,
+            unsafe_opt: false,
+            unsafe_math: false,
             passes: 1,
             unsafe_comps: false,
         }
@@ -267,6 +275,12 @@ impl Opts {
                 _ => opts.inline,
             };
         }
+        if let Some(v) = bool_key(obj, "unsafe") {
+            opts.unsafe_opt = v;
+        }
+        if let Some(v) = bool_key(obj, "unsafe_math") {
+            opts.unsafe_math = v;
+        }
         opts
     }
 
@@ -294,6 +308,8 @@ impl Opts {
             || self.reduce_vars
             || self.collapse_vars
             || self.unused
+            || self.unsafe_opt
+            || self.unsafe_math
     }
 }
 
@@ -467,7 +483,7 @@ struct Cx {
     flag_keep: Vec<N>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
     stack: Vec<N>,
-    /// terser `TreeWalker.stack` for unary and property-access parents.
+    /// terser `TreeWalker` stack. The last entry is the node being transformed.
     parents: Vec<N>,
 }
 
@@ -588,6 +604,91 @@ impl Cx {
             None
         }
     }
+
+    /// terser `TreeWalker.is_within_loop`.
+    fn in_loop(&self) -> bool {
+        let stack = &self.parents;
+        if stack.is_empty() {
+            return false;
+        }
+        let mut i = stack.len() - 1;
+        let mut child = &stack[i];
+        while i > 0 {
+            i -= 1;
+            let node = &stack[i];
+            if matches!(node.data, Data::Func { .. }) {
+                return false;
+            }
+            let inside = match &node.data {
+                Data::For { init, .. } => !init.as_ref().is_some_and(|init| Rc::ptr_eq(init, child)),
+                Data::ForIn { object, .. } | Data::ForOf { object, .. } => !Rc::ptr_eq(object, child),
+                Data::While { .. } | Data::Do { .. } => true,
+                _ => false,
+            };
+            if inside {
+                return true;
+            }
+            child = node;
+        }
+        false
+    }
+
+    fn parent_is_simple(&self) -> bool {
+        self.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Simple { .. }))
+    }
+
+    fn parent_is_class(&self) -> bool {
+        self.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Class { .. }))
+    }
+
+    fn nearest_scope_is_class(&self) -> bool {
+        for node in self.parents.iter().rev() {
+            match &node.data {
+                Data::Class { .. } => return true,
+                Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } => return false,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn in_default_assign(&self) -> bool {
+        for node in self.parents.iter().rev().skip(1) {
+            match &node.data {
+                Data::DefaultAssign { .. } => return true,
+                Data::Block { .. }
+                | Data::Func { .. }
+                | Data::Toplevel { .. }
+                | Data::StaticBlock { .. }
+                | Data::Class { .. } => return false,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn in_computed_key(&self) -> bool {
+        if !self.opts.evaluate {
+            return false;
+        }
+        let Some(self_node) = self.parents.last() else {
+            return false;
+        };
+        self.parents.iter().rev().skip(1).any(|p| {
+            matches!(&p.data, Data::Prop { key: ast::Key::Computed(key), .. } if Rc::ptr_eq(key, self_node))
+        })
+    }
+
+    fn parent_calls(&self, node: &N) -> bool {
+        let Some(parent) = self.parents.iter().rev().nth(1) else {
+            return false;
+        };
+        let Data::Call { expr, is_new: false, .. } = &parent.data else {
+            return false;
+        };
+        Rc::ptr_eq(expr, node) || self.parents.last().is_some_and(|top| Rc::ptr_eq(expr, top))
+>>>>>>> 95d3145 (default 1630/3013 -> 1655/3013: AST_Call and AST_New)
+    }
 }
 
 enum Enter {
@@ -706,12 +807,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     };
     cx.parents.push(Rc::clone(n));
     let entered = cx.enter(n);
+    cx.parents.push(Rc::clone(n));
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.
     if cx.in_asm() {
         let once = map_children(n, cx);
         let out = map_children(&once, cx);
         mark_squeezed(cx, &out);
+        cx.parents.pop();
         cx.leave(entered);
         cx.parents.pop();
         return out;
