@@ -81,6 +81,11 @@ pub fn fold(n: &N, cx: &Cx) -> N {
             return rewritten;
         }
     }
+    if cx.opts.comparisons || cx.opts.lhs_constants {
+        if let Some(rewritten) = fold_compare(n, cx) {
+            return rewritten;
+        }
+    }
     if cx.opts.properties {
         if let Some(rewritten) = fold_property(n) {
             return rewritten;
@@ -448,6 +453,261 @@ fn fold_and_or(n: &N) -> Option<N> {
             }
         }
         _ => None,
+    }
+}
+
+fn fold_compare(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { op, left, right } = &n.data else {
+        return None;
+    };
+    if cx.opts.comparisons && matches!(op.as_str(), "&&" | "||") {
+        if let Some(rewritten) = fold_nullish(n, op, left, right, cx) {
+            return Some(rewritten);
+        }
+    }
+    let mut op_s = op.clone();
+    let mut left_n = Rc::clone(left);
+    let mut right_n = Rc::clone(right);
+    if cx.opts.lhs_constants && commutative(&op_s) && is_constant(&right_n) && !is_constant(&left_n) {
+        let blocked = match &left_n.data {
+            Data::Binary { op: left_op, .. } => prec(left_op) >= prec(&op_s),
+            _ => false,
+        };
+        if !blocked {
+            std::mem::swap(&mut left_n, &mut right_n);
+        }
+    }
+    if cx.opts.comparisons {
+        let strict = op_s == "===" || op_s == "!==";
+        if strict
+            && (same_compare_type(&left_n, &right_n) || equivalent(&left_n, &right_n))
+        {
+            op_s.truncate(2);
+        }
+        let still_strict = op_s.len() == 3 && (op_s == "===" || op_s == "!==");
+        if matches!(op_s.as_str(), "==" | "!=" | "===" | "!==") {
+            if !still_strict && is_undefined_value(&left_n, cx) {
+                left_n = atom(n, Data::Null);
+            } else if !still_strict && is_undefined_value(&right_n, cx) {
+                right_n = atom(n, Data::Null);
+            } else if cx.opts.typeofs {
+                if let Some((left, right, op)) = fold_typeof(&left_n, &right_n, &op_s, n, cx) {
+                    left_n = left;
+                    right_n = right;
+                    op_s = op;
+                }
+            }
+        }
+    }
+    if op_s == *op && Rc::ptr_eq(&left_n, left) && Rc::ptr_eq(&right_n, right) {
+        None
+    } else {
+        Some(binary(n, &op_s, left_n, right_n))
+    }
+}
+
+fn fold_nullish(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
+    let want = if op == "&&" { "!==" } else { "===" };
+    let (chain, cmp_l): (Option<N>, &N) = match &left.data {
+        Data::Binary { op: chain_op, left: chain_left, right: chain_right } if chain_op == op => {
+            (Some(Rc::clone(chain_left)), chain_right)
+        }
+        _ => (None, left),
+    };
+    let Data::Binary { op: left_op, left: left_l, right: left_r } = &cmp_l.data else {
+        return None;
+    };
+    let Data::Binary { op: right_op, left: right_l, right: right_r } = &right.data else {
+        return None;
+    };
+    if left_op != want || right_op != want || !read_is_pure(left_r, cx) || !equivalent(left_r, right_r) {
+        return None;
+    }
+    let paired = is_undefined_value(left_l, cx) && matches!(right_l.data, Data::Null)
+        || matches!(left_l.data, Data::Null) && is_undefined_value(right_l, cx);
+    if !paired {
+        return None;
+    }
+    let combined_op = if want == "===" { "==" } else { "!=" };
+    let combined = binary(span, combined_op, atom(span, Data::Null), Rc::clone(left_r));
+    Some(match chain {
+        Some(chain) => binary(span, op, chain, combined),
+        None => combined,
+    })
+}
+
+fn fold_typeof(left: &N, right: &N, op: &str, span: &N, cx: &Cx) -> Option<(N, N, String)> {
+    let strict = if op.len() == 2 { format!("{op}=") } else { op.to_string() };
+    if let Data::String { value, .. } = &left.data {
+        if value == "undefined" {
+            if let Data::Unary { op: top, expr, prefix: true } = &right.data {
+                if top == "typeof" && typeof_target_ok(expr, cx) {
+                    return Some((void0(span), Rc::clone(expr), strict));
+                }
+            }
+        }
+    }
+    if let Data::Unary { op: top, expr, prefix: true } = &left.data {
+        if top == "typeof" {
+            if let Data::String { value, .. } = &right.data {
+                if value == "undefined" && typeof_target_ok(expr, cx) {
+                    return Some((Rc::clone(expr), void0(span), strict));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn typeof_target_ok(expr: &N, cx: &Cx) -> bool {
+    match &expr.data {
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Dot { .. } | Data::Sub { .. } => !cx.opts.ie8,
+        _ => true,
+    }
+}
+
+fn commutative(op: &str) -> bool {
+    matches!(op, "==" | "===" | "!=" | "!==" | "*" | "&" | "|" | "^")
+}
+
+fn prec(op: &str) -> i32 {
+    match op {
+        "**" => 15,
+        "*" | "/" | "%" => 14,
+        "+" | "-" => 13,
+        "<<" | ">>" | ">>>" => 12,
+        "<" | "<=" | ">" | ">=" | "in" | "instanceof" => 11,
+        "==" | "!=" | "===" | "!==" => 10,
+        "&" => 9,
+        "^" => 8,
+        "|" => 7,
+        "&&" => 6,
+        "||" | "??" => 5,
+        _ => 0,
+    }
+}
+
+fn is_constant(n: &N) -> bool {
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::BigInt { .. }
+        | Data::True
+        | Data::False
+        | Data::Null => true,
+        Data::Unary { op, expr, prefix: true } => {
+            matches!(op.as_str(), "!" | "~" | "-" | "+" | "void") && is_constant(expr)
+        }
+        _ => false,
+    }
+}
+
+fn is_undefined_value(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Unary { op, expr, prefix: true } if op == "void" && is_pure(expr) => true,
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        _ => false,
+    }
+}
+
+fn read_is_pure(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        _ => is_pure(n),
+    }
+}
+
+fn same_compare_type(left: &N, right: &N) -> bool {
+    is_string(left) && is_string(right)
+        || is_number(left) && is_number(right)
+        || is_bigint(left) && is_bigint(right)
+        || is_boolean(left) && is_boolean(right)
+}
+
+fn is_boolean(n: &N) -> bool {
+    match &n.data {
+        Data::True | Data::False => true,
+        Data::Unary { op, prefix: true, .. } => matches!(op.as_str(), "!" | "delete"),
+        Data::Binary { op, left, right } => {
+            matches!(op.as_str(), "in" | "instanceof" | "==" | "!=" | "===" | "!==" | "<" | "<=" | ">" | ">=")
+                || matches!(op.as_str(), "&&" | "||" | "??") && is_boolean(left) && is_boolean(right)
+        }
+        _ => false,
+    }
+}
+
+fn is_number(n: &N) -> bool {
+    match &n.data {
+        Data::Number { .. } => true,
+        Data::Unary { op, expr, prefix: true } => {
+            matches!(op.as_str(), "+" | "-" | "~") && is_number(expr)
+        }
+        Data::Binary { op, left, right } => {
+            if op == "+" {
+                is_number(left) && is_number_or_bigint(right) || is_number(right) && is_number_or_bigint(left)
+            } else if matches!(op.as_str(), "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" | ">>>") {
+                is_number(left) || is_number(right)
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+fn is_number_or_bigint(n: &N) -> bool {
+    match &n.data {
+        Data::Number { .. } | Data::BigInt { .. } => true,
+        Data::Unary { op, prefix: true, .. } => matches!(op.as_str(), "+" | "-" | "~"),
+        Data::Binary { op, left, right } => {
+            if op == "+" {
+                is_number_or_bigint(left) && is_number_or_bigint(right)
+            } else {
+                matches!(op.as_str(), "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>")
+            }
+        }
+        _ => false,
+    }
+}
+
+fn is_bigint(n: &N) -> bool {
+    matches!(n.data, Data::BigInt { .. })
+}
+
+fn is_string(n: &N) -> bool {
+    match &n.data {
+        Data::String { .. } => true,
+        Data::Unary { op, prefix: true, .. } => op == "typeof",
+        Data::Binary { op, left, right } if op == "+" => is_string(left) || is_string(right),
+        _ => false,
+    }
+}
+
+fn equivalent(a: &N, b: &N) -> bool {
+    match (&a.data, &b.data) {
+        (Data::Symbol { name: n1, kind: k1, .. }, Data::Symbol { name: n2, kind: k2, .. }) => n1 == n2 && k1 == k2,
+        (
+            Data::Dot { expr: e1, prop: p1, optional: o1, private: v1, .. },
+            Data::Dot { expr: e2, prop: p2, optional: o2, private: v2, .. },
+        ) => p1 == p2 && o1 == o2 && v1 == v2 && equivalent(e1, e2),
+        (Data::Sub { expr: e1, prop: p1, optional: o1 }, Data::Sub { expr: e2, prop: p2, optional: o2 }) => {
+            o1 == o2 && equivalent(e1, e2) && equivalent(p1, p2)
+        }
+        (Data::Unary { op: o1, expr: e1, prefix: p1 }, Data::Unary { op: o2, expr: e2, prefix: p2 }) => {
+            o1 == o2 && p1 == p2 && equivalent(e1, e2)
+        }
+        (Data::Binary { op: o1, left: l1, right: r1 }, Data::Binary { op: o2, left: l2, right: r2 }) => {
+            o1 == o2 && equivalent(l1, l2) && equivalent(r1, r2)
+        }
+        (Data::Call { expr: e1, args: a1, optional: o1, is_new: n1 }, Data::Call { expr: e2, args: a2, optional: o2, is_new: n2 }) => {
+            o1 == o2 && n1 == n2 && equivalent(e1, e2) && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| equivalent(x, y))
+        }
+        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1.to_bits() == v2.to_bits(),
+        (Data::String { value: s1, .. }, Data::String { value: s2, .. }) => s1 == s2,
+        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
+        (Data::True, Data::True) | (Data::False, Data::False) | (Data::Null, Data::Null) | (Data::This, Data::This) => true,
+        _ => false,
     }
 }
 

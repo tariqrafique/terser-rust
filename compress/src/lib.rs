@@ -34,6 +34,10 @@ struct Opts {
     properties: bool,
     loops: bool,
     computed_props: bool,
+    comparisons: bool,
+    lhs_constants: bool,
+    typeofs: bool,
+    if_return: bool,
 }
 
 impl Opts {
@@ -53,6 +57,10 @@ impl Opts {
             properties: true,
             loops: true,
             computed_props: true,
+            comparisons: true,
+            lhs_constants: true,
+            typeofs: true,
+            if_return: true,
         }
     }
 
@@ -72,6 +80,10 @@ impl Opts {
             properties: false,
             loops: false,
             computed_props: false,
+            comparisons: false,
+            lhs_constants: false,
+            typeofs: false,
+            if_return: false,
         }
     }
 
@@ -123,6 +135,18 @@ impl Opts {
         if let Some(v) = bool_key(obj, "computed_props") {
             opts.computed_props = v;
         }
+        if let Some(v) = bool_key(obj, "comparisons") {
+            opts.comparisons = v;
+        }
+        if let Some(v) = bool_key(obj, "lhs_constants") {
+            opts.lhs_constants = v;
+        }
+        if let Some(v) = bool_key(obj, "typeofs") {
+            opts.typeofs = v;
+        }
+        if let Some(v) = bool_key(obj, "if_return") {
+            opts.if_return = v;
+        }
         opts
     }
 
@@ -140,6 +164,10 @@ impl Opts {
             || self.properties
             || self.loops
             || self.computed_props
+            || self.comparisons
+            || self.lhs_constants
+            || self.typeofs
+            || self.if_return
     }
 }
 
@@ -499,11 +527,69 @@ fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
     } else {
         stmts
     };
-    if cx.opts.join_vars {
-        var_into_for(stmts)
+    let stmts = if cx.opts.join_vars { var_into_for(stmts) } else { stmts };
+    if cx.opts.if_return && cx.opts.conditionals {
+        if_return(stmts)
     } else {
         stmts
     }
+}
+
+fn if_return(mut stmts: Vec<N>) -> Vec<N> {
+    for _ in 0..8 {
+        let (changed, next) = if_return_once(stmts);
+        stmts = next;
+        if !changed {
+            break;
+        }
+    }
+    stmts
+}
+
+fn if_return_once(stmts: Vec<N>) -> (bool, Vec<N>) {
+    let mut out = Vec::with_capacity(stmts.len());
+    let mut changed = false;
+    let mut i = 0;
+    while i < stmts.len() {
+        let stat = &stmts[i];
+        if let Data::If { cond, body, alt: None } = &stat.data {
+            if let Data::Return { value: Some(cons) } = &body.data {
+                if let Some(Data::Return { value: Some(alt) }) = stmts.get(i + 1).map(|n| &n.data) {
+                    out.push(return_cond(stat, Rc::clone(cond), Rc::clone(cons), Rc::clone(alt)));
+                    changed = true;
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+        if let Data::If { cond, body, alt: Some(alt_stmt) } = &stat.data {
+            if let (Data::Return { value: cons }, Data::Return { value: alt }) = (&body.data, &alt_stmt.data) {
+                if cons.is_some() && alt.is_some() {
+                    out.push(return_cond(stat, Rc::clone(cond), cons.clone().unwrap(), alt.clone().unwrap()));
+                    changed = true;
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+        out.push(Rc::clone(stat));
+        i += 1;
+    }
+    (changed, out)
+}
+
+fn return_cond(span: &N, cond: N, cons: N, alt: N) -> N {
+    Rc::new(Node {
+        start: span.start.clone(),
+        end: span.end.clone(),
+        data: Data::Return {
+            value: Some(Rc::new(Node {
+                start: span.start.clone(),
+                end: span.end.clone(),
+                data: Data::Cond { cond, cons, alt },
+            })),
+        },
+    })
 }
 
 fn var_into_for(stmts: Vec<N>) -> Vec<N> {
