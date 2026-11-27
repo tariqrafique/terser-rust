@@ -30,4 +30,6 @@ Stop: default 2260, fixture 1336, reduce_vars 261/261, collapse_vars 199/199, or
 
 A class expression name is bound inside the class, so it does not keep an outer `var` of the same name. A class field initializer is a use.
 
+Scores: default 1791/3013 (compress 1617/2671, lwc 174/339, bundles 0/3). Compare vs `1ee7920`: 6 newly passing, 0 newly failing.
+
 Next: the rest of the shared fold chain (sequences, assign, object/array, loops/switch/try).
