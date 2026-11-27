@@ -1068,6 +1068,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     } else {
         n
     };
+    // `keep_block` is for this block only (a `catch` / `finally` body), not
+    // for blocks nested in it.
+    let keep_block = cx.keep_block;
+    cx.keep_block = false;
     // The stack top is the once-rewritten node during the second descend so
     // `parent.left === self` sees updated children, then the original for `fold`.
     cx.stack.push(Rc::clone(n));
@@ -1082,6 +1086,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // Statement joining (`tighten`) is part of the scope/block optimizer, so it
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
+    cx.keep_block = keep_block;
     let twice = if already || pre { twice } else { after_descend(twice, n, cx) };
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
