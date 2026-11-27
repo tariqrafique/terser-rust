@@ -1,8 +1,9 @@
 #![forbid(unsafe_code)]
 
-//! JavaScript parser. Not implemented in the harness milestone.
+//! JavaScript parser matching terser 5.51.4 with experimental TypeScript off.
 
-/// Marks the crate as linked into the minify pipeline.
-pub fn touch() {
-    ast::touch();
-}
+mod parse;
+mod token;
+
+pub use parse::parse;
+pub use parse::ParseError;

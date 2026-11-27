@@ -6,3 +6,5 @@ publish.workspace = true
 
 [dependencies]
 ast = { path = "../ast" }
+regex = "1"
+ryu = "1"
