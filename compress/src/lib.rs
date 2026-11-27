@@ -6,6 +6,7 @@
 //! prints exactly like the input tree.
 
 mod assign;
+mod body;
 mod call;
 mod conditional;
 mod drop_unused;
@@ -1312,10 +1313,10 @@ fn same_stmts(a: &[N], b: &[N]) -> bool {
 /// Scope and block optimizers that terser runs inside `def_optimize`, after
 /// `Compressor.before` has descended twice: `join_vars`, sequences, `if_return`,
 /// trailing-return drop, and single-statement block eviction.
-fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
+fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
     match &n.data {
         Data::Toplevel { body } => {
-            let next = tighten(body.clone(), cx);
+            let next = body::tighten_body(body.clone(), cx);
             if same_stmts(body, &next) {
                 n
             } else {
@@ -1323,7 +1324,7 @@ fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
             }
         }
         Data::StaticBlock { body } => {
-            let next = tighten(body.clone(), cx);
+            let next = body::tighten_body(body.clone(), cx);
             if same_stmts(body, &next) {
                 n
             } else {
@@ -1331,7 +1332,7 @@ fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
             }
         }
         Data::Block { body } => {
-            let next = tighten(body.clone(), cx);
+            let next = body::tighten_body(body.clone(), cx);
             if !cx.keep_block && (next.is_empty() || eval::only_pure_decls(&next, cx)) {
                 return empty(&n);
             }
@@ -1345,10 +1346,7 @@ fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
             }
         }
         Data::Func { kind, name, args, body, async_, generator } => {
-            let mut next = tighten(body.clone(), cx);
-            if cx.opts.if_return {
-                next = eval::drop_trailing_return(next, cx);
-            }
+            let mut next = body::tighten_body(body.clone(), cx);
             let original = match &orig.data {
                 Data::Func { body, .. } => body.as_slice(),
                 _ => body.as_slice(),
@@ -1369,6 +1367,22 @@ fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
                     },
                     true,
                 )
+            }
+        }
+        Data::Case { expr, body } => {
+            let next = body::tighten_body(body.clone(), cx);
+            if same_stmts(body, &next) {
+                n
+            } else {
+                finish(&n, Data::Case { expr: Rc::clone(expr), body: next }, true)
+            }
+        }
+        Data::Default { body } => {
+            let next = body::tighten_body(body.clone(), cx);
+            if same_stmts(body, &next) {
+                n
+            } else {
+                finish(&n, Data::Default { body: next }, true)
             }
         }
         _ => n,

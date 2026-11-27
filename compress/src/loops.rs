@@ -314,7 +314,7 @@ fn is_break_stmt(n: &N, cx: &Cx) -> bool {
     loop_target(n, &cx.parents).is_some_and(|t| Rc::ptr_eq(t, top))
 }
 
-fn loop_target<'a>(jump: &N, stack: &'a [N]) -> Option<&'a N> {
+pub(crate) fn loop_target<'a>(jump: &N, stack: &'a [N]) -> Option<&'a N> {
     let label = match &jump.data {
         Data::Break { label } | Data::Continue { label } => label.as_ref(),
         _ => return None,
@@ -864,6 +864,13 @@ fn switch_two(span: &N, expr: &N, arms: &[Arm], marker: u32, cx: &Cx) -> Option<
         let cond = eval::binary(span, "===", Rc::clone(expr), case_expr);
         let body = stable_body(&branch.span, if_body, cx);
         let alt = stable_body(&mark.span, marked_stmts, cx);
+        // `AST_If.optimize`: an aborting body splits off the alternative into
+        // a block, so the returned node is the block and the `if` is not
+        // `OPTIMIZED`. A later descend optimizes it again.
+        if eval::aborts(&body) {
+            let iff = eval::atom(span, Data::If { cond, body, alt: None });
+            return Some(finish_switch_block(span, vec![iff, alt], cx));
+        }
         return Some(sealed_if(span, cond, body, Some(alt), cx));
     }
     let mut operator = "===";

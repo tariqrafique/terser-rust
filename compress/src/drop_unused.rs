@@ -191,10 +191,31 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                 }
             }
         }
-        if !kept.is_empty() {
+        if kept.len() == defs.len() {
+            out.push(Rc::clone(n));
+        } else if !kept.is_empty() {
             out.push(node(n, Data::Defs { kind: *kind, defs: kept, await_: *await_ }));
         }
         return;
+    }
+    // drop-unused.js `tt` `AST_For`: the init is rewritten like a statement.
+    // Side effects of dropped definitions move in front of the loop.
+    if let Data::For { init: Some(init), cond, step, body } = &n.data {
+        if matches!(init.data, Data::Defs { .. }) {
+            let mut tmp = Vec::new();
+            rewrite_stmt(init, table, u, scope_id, drop_vars, drop_funcs, &mut tmp);
+            let same = tmp.len() == 1 && Rc::ptr_eq(&tmp[0], init);
+            if !same {
+                let last = tmp.pop();
+                out.extend(tmp);
+                let new_init = last.map(|l| match &l.data {
+                    Data::Simple { body } => Rc::clone(body),
+                    _ => l,
+                });
+                out.push(node(n, Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
+                return;
+            }
+        }
     }
     if drop_funcs {
         if let Data::Func { name: Some(name), .. } = &n.data {

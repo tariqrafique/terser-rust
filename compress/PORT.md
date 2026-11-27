@@ -66,3 +66,7 @@ Dispatch board: default 1991/3013 → 2008/3013, 17 newly passing, 0 newly faili
 Reduce-vars board `947e9cd109bb-848142da17ac`: default 2008/3013 → 2041/3013, 33 newly passing, 0 newly failing, lwc 184/339.
 
 Collapse was measured against `1c3bdeb` as default 2008/3013 → 2055/3013, 47 newly passing, 0 newly failing. Rebased onto `947e9cd` and remeasured below.
+
+`tighten-body.js` `tighten_body` is `body.rs` `tighten_body`: `eliminate_spurious_blocks`, `eliminate_dead_code`, `handle_if_return`, `sequencesize`, `sequencesize_2`, `join_consecutive_vars`, looped until unchanged. `collapse` stays the separate `tighten.rs` pass. Not yet: `join_object_assignments`, label reference removal. Switch branches are tightened too. `drop_unused` rewrites a `for` init like a statement.
+
+Tighten board: default 2088/3013 → 2205/3013, 117 newly passing, 0 newly failing, lwc 196/339 → 235/339 (before the template-string fix).

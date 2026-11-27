@@ -306,16 +306,16 @@ fn optimize_template(n: &N, cx: &Cx) -> Option<N> {
         out.push(seg.clone());
         i += 1;
     }
-    if out.len() == segments.len() && out.iter().zip(segments).all(|(a, b)| seg_eq(a, b)) {
-        return None;
-    }
     if out.len() == 1 {
-        if let Seg::Cooked { value, .. } = &out[0] {
+        if let Seg::Cooked { value, units, .. } = &out[0] {
             return Some(atom(
                 n,
-                Data::String { value: value.clone(), quote: '"', units: None },
+                Data::String { value: value.clone(), quote: '"', units: units.clone() },
             ));
         }
+    }
+    if out.len() == segments.len() && out.iter().zip(segments).all(|(a, b)| seg_eq(a, b)) {
+        return None;
     }
     Some(atom(n, Data::Template { segments: out }))
 }
