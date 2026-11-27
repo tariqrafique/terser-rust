@@ -402,6 +402,11 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
                     top_retain: cx.opts.top_retain.as_deref(),
                 },
             ) {
+                // terser `fixed.optimize(compressor)`: a lambda that was not yet
+                // optimized gets its one `tighten_body` now.
+                if matches!(value.data, Data::Func { .. }) && !cx.optimized.contains(&(Rc::as_ptr(&value) as usize)) {
+                    cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
+                }
                 return Some(value);
             }
         }

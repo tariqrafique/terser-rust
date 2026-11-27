@@ -94,7 +94,8 @@ Block collapse board: `collapse` also runs in a nested block for that block's ow
 Full board after the string-join commit: compress default 2305/2671, fixture 1848/2671, lwc default 305/339, lwc-rollup 464/779, bundles default 0/3. Roundtrip and mangle sets are 100%.
 
 Known gaps worth the next pass:
-- An inlined function copy (single-use defun) and switch-built blocks get terser's one-time `optimize` (`opt_AST_Lambda` → `tighten_body`) but no further `tighten_body` once `OPTIMIZED`. Here `after_descend` runs whenever the node is transformed.
 - `collapse` is name based; blocks only collapse their own `let` / `const`.
 - lwc-rollup bundles: remaining differences in the LWC engine code shift the mangler's character frequencies, so many bundles differ only in names.
 - `arrow/issue_2136_2` (rest parameter in an IIFE), `drop_console`, `unsafe_Function`.
+
+Optimize-once board: `tighten_body` (`after_descend`) is skipped for a node that is already `OPTIMIZED`, as terser's `def_optimize` is. A node terser `.optimize()`s where it is made (an inlined lambda not yet optimized, a switch-built block, a falsy-loop block) is in `Cx.pre_tighten`: its `tighten_body` runs once on the children as they are, before they are descended. Default 2610/3013 → 2615/3013, fixture unchanged.

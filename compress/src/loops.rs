@@ -124,7 +124,10 @@ fn optimize_for(n: &N, cx: &Cx) -> Option<N> {
                         stmts.push(as_statement(i));
                     }
                     stmts.push(eval::simple(n, c));
-                    return Some(eval::atom(n, Data::Block { body: stmts }));
+                    // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
+                    let block = eval::atom(n, Data::Block { body: stmts });
+                    cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&block) as usize, Rc::clone(&block));
+                    return Some(block);
                 }
             }
         }
@@ -976,7 +979,10 @@ fn finish_switch_block(span: &N, stmts: Vec<N>, cx: &Cx) -> N {
     } else if stmts.len() == 1 && crate::can_evict(&stmts[0]) {
         stmts.into_iter().next().unwrap()
     } else {
-        eval::atom(span, Data::Block { body: stmts })
+        // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
+        let block = eval::atom(span, Data::Block { body: stmts });
+        cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&block) as usize, Rc::clone(&block));
+        block
     }
 }
 

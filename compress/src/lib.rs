@@ -598,6 +598,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
+        pre_tighten: RefCell::new(HashMap::new()),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -682,6 +683,10 @@ struct Cx {
     /// (its bindings, its free references). The node is kept so its address
     /// cannot be reused.
     scope_cache: RefCell<HashMap<(usize, u8), (N, std::rc::Rc<HashSet<String>>)>>,
+    /// Nodes terser `.optimize()`s once where they are made (an inlined lambda
+    /// copy): `tighten_body` runs on them before their children are descended,
+    /// and never again (`OPTIMIZED`).
+    pre_tighten: RefCell<HashMap<usize, N>>,
 }
 
 impl Cx {
@@ -1042,6 +1047,18 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         retarget(cx, orig_ptr, &out);
         return out;
     }
+    // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
+    // part of it. A node made by an optimizer was already optimized there.
+    let already = cx.optimized.contains(&orig_ptr) || is_sealed(cx, n) || cx.seal.borrow().contains(&orig_ptr);
+    let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
+    let pre_node;
+    let n = if pre {
+        pre_node = after_descend(Rc::clone(n), n, cx);
+        set_parent(cx, &pre_node);
+        &pre_node
+    } else {
+        n
+    };
     // The stack top is the once-rewritten node during the second descend so
     // `parent.left === self` sees updated children, then the original for `fold`.
     cx.stack.push(Rc::clone(n));
@@ -1056,7 +1073,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // Statement joining (`tighten`) is part of the scope/block optimizer, so it
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
-    let twice = after_descend(twice, n, cx);
+    let twice = if already || pre { twice } else { after_descend(twice, n, cx) };
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
