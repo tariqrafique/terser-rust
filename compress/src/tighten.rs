@@ -2505,19 +2505,26 @@ fn collect_locals(stmts: &[N], names: &mut HashSet<String>) {
             }
             Data::Defs { defs, .. } => {
                 for d in defs {
-                    if let Data::VarDef { name, .. } = &d.data {
-                        if let Some(sym) = sym_name(name) {
-                            names.insert(sym.to_string());
+                    if let Data::VarDef { name, value } = &d.data {
+                        // A destructuring pattern binds every name in it.
+                        rec(name, names);
+                        if let Some(v) = value {
+                            rec(v, names);
                         }
                     }
                 }
             }
             Data::Symbol { name, kind, .. }
-                if !matches!(kind, SymKind::Ref | SymKind::Label | SymKind::LabelRef) =>
+                if !matches!(kind, SymKind::Ref | SymKind::Label | SymKind::LabelRef | SymKind::Export | SymKind::ExportForeign | SymKind::ImportForeign | SymKind::ClassProperty | SymKind::Method | SymKind::Private) =>
             {
                 names.insert(name.clone());
             }
-            other => each_child(other, |c| rec(c, names)),
+            _ => {
+                let _ = ast::map_children(n, &mut |c| {
+                    rec(c, names);
+                    Rc::clone(c)
+                });
+            }
         }
     }
     for s in stmts {
