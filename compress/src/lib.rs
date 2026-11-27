@@ -5,6 +5,7 @@
 //! Unchanged subtrees stay the same `Rc`, so a pass that does not fire
 //! prints exactly like the input tree.
 
+mod call;
 mod drop_unused;
 mod eval;
 mod hoist;
@@ -57,6 +58,9 @@ struct Opts {
     hoist_funs: bool,
     /// terser `top_retain` when it is a plain name. Other forms are not read yet.
     top_retain: Option<String>,
+    /// terser `unsafe` / `unsafe_math`. Off unless the fixture sets them.
+    unsafe_opt: bool,
+    unsafe_math: bool,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
 }
@@ -93,6 +97,8 @@ impl Opts {
             hoist_vars: false,
             hoist_funs: false,
             top_retain: None,
+            unsafe_opt: false,
+            unsafe_math: false,
             passes: 1,
         }
     }
@@ -128,6 +134,8 @@ impl Opts {
             hoist_vars: false,
             hoist_funs: false,
             top_retain: None,
+            unsafe_opt: false,
+            unsafe_math: false,
             passes: 1,
         }
     }
@@ -242,6 +250,12 @@ impl Opts {
                 _ => opts.inline,
             };
         }
+        if let Some(v) = bool_key(obj, "unsafe") {
+            opts.unsafe_opt = v;
+        }
+        if let Some(v) = bool_key(obj, "unsafe_math") {
+            opts.unsafe_math = v;
+        }
         opts
     }
 
@@ -268,6 +282,8 @@ impl Opts {
             || self.reduce_vars
             || self.collapse_vars
             || self.unused
+            || self.unsafe_opt
+            || self.unsafe_math
     }
 }
 
@@ -378,6 +394,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         squeezed: HashSet::new(),
         optimized: HashSet::new(),
         flag_keep: Vec::new(),
+        parents: Vec::new(),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -426,6 +443,8 @@ struct Cx {
     optimized: HashSet<usize>,
     /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
     flag_keep: Vec<N>,
+    /// terser `TreeWalker` stack. The last entry is the node being transformed.
+    parents: Vec<N>,
 }
 
 impl Cx {
@@ -534,6 +553,90 @@ impl Cx {
     fn drop_directive(&self, value: &str, ptr: usize) -> bool {
         let known = value == "use strict" || value == "use asm";
         !known || self.lookup(value) != Some(ptr)
+    }
+
+    /// terser `TreeWalker.is_within_loop`.
+    fn in_loop(&self) -> bool {
+        let stack = &self.parents;
+        if stack.is_empty() {
+            return false;
+        }
+        let mut i = stack.len() - 1;
+        let mut child = &stack[i];
+        while i > 0 {
+            i -= 1;
+            let node = &stack[i];
+            if matches!(node.data, Data::Func { .. }) {
+                return false;
+            }
+            let inside = match &node.data {
+                Data::For { init, .. } => !init.as_ref().is_some_and(|init| Rc::ptr_eq(init, child)),
+                Data::ForIn { object, .. } | Data::ForOf { object, .. } => !Rc::ptr_eq(object, child),
+                Data::While { .. } | Data::Do { .. } => true,
+                _ => false,
+            };
+            if inside {
+                return true;
+            }
+            child = node;
+        }
+        false
+    }
+
+    fn parent_is_simple(&self) -> bool {
+        self.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Simple { .. }))
+    }
+
+    fn parent_is_class(&self) -> bool {
+        self.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Class { .. }))
+    }
+
+    fn nearest_scope_is_class(&self) -> bool {
+        for node in self.parents.iter().rev() {
+            match &node.data {
+                Data::Class { .. } => return true,
+                Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } => return false,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn in_default_assign(&self) -> bool {
+        for node in self.parents.iter().rev().skip(1) {
+            match &node.data {
+                Data::DefaultAssign { .. } => return true,
+                Data::Block { .. }
+                | Data::Func { .. }
+                | Data::Toplevel { .. }
+                | Data::StaticBlock { .. }
+                | Data::Class { .. } => return false,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn in_computed_key(&self) -> bool {
+        if !self.opts.evaluate {
+            return false;
+        }
+        let Some(self_node) = self.parents.last() else {
+            return false;
+        };
+        self.parents.iter().rev().skip(1).any(|p| {
+            matches!(&p.data, Data::Prop { key: ast::Key::Computed(key), .. } if Rc::ptr_eq(key, self_node))
+        })
+    }
+
+    fn parent_calls(&self, node: &N) -> bool {
+        let Some(parent) = self.parents.iter().rev().nth(1) else {
+            return false;
+        };
+        let Data::Call { expr, is_new: false, .. } = &parent.data else {
+            return false;
+        };
+        Rc::ptr_eq(expr, node) || self.parents.last().is_some_and(|top| Rc::ptr_eq(expr, top))
     }
 }
 
@@ -652,12 +755,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         n
     };
     let entered = cx.enter(n);
+    cx.parents.push(Rc::clone(n));
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.
     if cx.in_asm() {
         let once = map_children(n, cx);
         let out = map_children(&once, cx);
         mark_squeezed(cx, &out);
+        cx.parents.pop();
         cx.leave(entered);
         return out;
     }
@@ -699,6 +804,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if same {
         mark_squeezed(cx, &out);
     }
+    cx.parents.pop();
     cx.leave(entered);
     out
 }
