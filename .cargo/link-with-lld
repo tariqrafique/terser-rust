@@ -1,0 +1,10 @@
+#!/bin/sh
+# rustc invokes this with gcc-flavor arguments. Prefer the lld shipped with
+# the toolchain; fall back to the system compiler if it is not there.
+sysroot=$(rustc --print sysroot)
+host=$(rustc -vV | awk '/^host:/ { print $2 }')
+lld="$sysroot/lib/rustlib/$host/bin/gcc-ld/ld.lld"
+if [ -x "$lld" ]; then
+    exec clang -fuse-ld="$lld" "$@"
+fi
+exec cc "$@"

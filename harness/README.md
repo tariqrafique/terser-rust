@@ -116,6 +116,19 @@ Bundles (`node harness/fetch-bundles.mjs`, sources gitignored):
 
 sha256 pins are in `corpus/bundles/manifest.json`. The board scores `roundtrip`, `mangle`, and `default` for LWC and these bundles.
 
+## Running the board
+
+```
+cargo build --profile fast -p harness
+./target/fast/harness board --set roundtrip
+./target/fast/harness board --set roundtrip --failed
+./target/fast/harness board --case compress/arguments/issue_687
+./target/fast/harness board --save-baseline
+./target/fast/harness board --compare
+```
+
+`--corpus`, `--set`, and `--filter` narrow the run. `--failed` reruns ids written to gitignored `harness/.board-cache/failed.tsv` by the previous invocation. Each case is timed out independently (`--timeout-ms`, default 30s) and a panic in one case does not abort the process. Failures are bucketed by the token at the first differing byte. The dev and `fast` profiles keep dependency code optimized and emit line tables only, and linking uses the toolchain's lld when it is present.
+
 ## Board id
 
 `cargo run -p harness -- board` prints one board. The id is `<git short sha>-<corpus manifest hash>` (12 hex chars each). The hash covers every committed corpus file plus the pinned bundle bytes, path-sorted. A dirty worktree appends `-dirty`.

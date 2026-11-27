@@ -14,3 +14,20 @@ members = [
 version = "0.1.0"
 edition = "2021"
 publish = false
+
+# Line tables only: full debuginfo dominates incremental rebuilds of the parser.
+# Dependencies are optimized so JSON parsing and rayon stay cheap; workspace
+# crates stay at opt-level 0 so editing parser/codegen stays a fast compile.
+# `cargo build --profile fast -p harness` is the board loop.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.fast]
+inherits = "dev"
+debug = "line-tables-only"
+
+[profile.fast.package."*"]
+opt-level = 3
