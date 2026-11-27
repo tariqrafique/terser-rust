@@ -3660,10 +3660,27 @@ thread_local! {
     static MANGLED: std::cell::RefCell<std::collections::HashSet<usize>> = Default::default();
 }
 
+thread_local! {
+    /// Every symbol node bound at the start of the pass, and whether a symbol
+    /// made during the pass (`hoist_props`, `flatten_fn`) counts as mangleable.
+    static KNOWN: std::cell::RefCell<std::collections::HashSet<usize>> = Default::default();
+    static NEW_MANGLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 pub(crate) fn set_mangled_symbols(set: std::collections::HashSet<usize>) {
     MANGLED.with(|m| *m.borrow_mut() = set);
 }
 
+pub(crate) fn set_known_symbols(set: std::collections::HashSet<usize>, new_mangled: bool) {
+    KNOWN.with(|k| *k.borrow_mut() = set);
+    NEW_MANGLED.with(|c| c.set(new_mangled));
+}
+
 pub(crate) fn mangled_size(n: &N) -> bool {
-    MANGLED.with(|m| m.borrow().contains(&(Rc::as_ptr(n) as usize)))
+    let p = Rc::as_ptr(n) as usize;
+    if MANGLED.with(|m| m.borrow().contains(&p)) {
+        return true;
+    }
+    // A symbol made during this pass is a local terser would mangle.
+    matches!(n.data, Data::Symbol { .. }) && NEW_MANGLED.with(|c| c.get()) && !KNOWN.with(|k| k.borrow().contains(&p))
 }

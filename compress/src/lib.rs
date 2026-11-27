@@ -619,8 +619,10 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
             }
         }
         eval::set_mangled_symbols(set);
+        eval::set_known_symbols(table.node_def.keys().copied().collect(), mangle_toplevel);
     } else {
         eval::set_mangled_symbols(HashSet::new());
+        eval::set_known_symbols(HashSet::new(), false);
     }
     if reduce_vars_on {
         let mut table = syms::bind(root);

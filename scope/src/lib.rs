@@ -444,6 +444,22 @@ impl Analyzer {
                     self.refs_label(label);
                 }
             }
+            // terser `mark_export`: a declaration directly under `export`
+            // keeps its name, except a default-exported function or class.
+            Data::Export { is_default, definition: Some(def), .. } => {
+                self.walk_children(&n.data);
+                let default_decl = *is_default
+                    && matches!(def.data, Data::Func { kind: FuncKind::Decl, .. } | Data::Class { stmt: true, .. });
+                if !default_decl {
+                    let mut syms = Vec::new();
+                    export_decl_symbols(def, &mut syms);
+                    for sym in syms {
+                        if let Some(&id) = self.node_def.get(&(Rc::as_ptr(&sym) as usize)) {
+                            self.defs[id].export_dont = true;
+                        }
+                    }
+                }
+            }
             other => self.walk_children(other),
         }
     }
@@ -1017,4 +1033,28 @@ impl Freq {
 
 pub fn touch() {
     ast::touch();
+}
+
+/// Declaration symbols of an `export` definition.
+fn export_decl_symbols(n: &N, out: &mut Vec<N>) {
+    fn pattern(n: &N, out: &mut Vec<N>) {
+        match &n.data {
+            Data::Symbol { .. } => out.push(Rc::clone(n)),
+            Data::Destructuring { names, .. } => names.iter().for_each(|x| pattern(x, out)),
+            Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => pattern(left, out),
+            Data::Prop { value, .. } => pattern(value, out),
+            _ => {}
+        }
+    }
+    match &n.data {
+        Data::Func { name: Some(nm), .. } | Data::Class { name: Some(nm), .. } => out.push(Rc::clone(nm)),
+        Data::Defs { defs, .. } => {
+            for d in defs {
+                if let Data::VarDef { name, .. } = &d.data {
+                    pattern(name, out);
+                }
+            }
+        }
+        _ => {}
+    }
 }

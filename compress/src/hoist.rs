@@ -500,50 +500,14 @@ fn finish_children(n: &N, data: &Data, mut map: impl FnMut(&N, bool) -> N) -> N 
 }
 
 fn finish_map(n: &N, mut map: impl FnMut(&N) -> N) -> N {
-    let data = match &n.data {
-        Data::Toplevel { body } => Data::Toplevel { body: body.iter().map(&mut map).collect() },
-        Data::Block { body } => Data::Block { body: body.iter().map(&mut map).collect() },
-        Data::StaticBlock { body } => Data::StaticBlock { body: body.iter().map(&mut map).collect() },
-        Data::Simple { body } => Data::Simple { body: map(body) },
-        Data::If { cond, body, alt } => Data::If { cond: map(cond), body: map(body), alt: alt.as_ref().map(|a| map(a)) },
-        Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: map(left), right: map(right) },
-        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: map(left), right: map(right), logical: *logical },
-        Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(&mut map).collect() },
-        Data::Return { value } => Data::Return { value: value.as_ref().map(|v| map(v)) },
-        Data::Throw { value } => Data::Throw { value: map(value) },
-        Data::Call { expr, args, optional, is_new } => Data::Call { expr: map(expr), args: args.iter().map(&mut map).collect(), optional: *optional, is_new: *is_new },
-        Data::Dot { expr, prop, optional, quote, private } => Data::Dot { expr: map(expr), prop: prop.clone(), optional: *optional, quote: *quote, private: *private },
-        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: map(expr), prefix: *prefix },
-        Data::Array { elements } => Data::Array { elements: elements.iter().map(&mut map).collect() },
-        Data::Object { props } => Data::Object { props: props.iter().map(&mut map).collect() },
-        Data::Prop { method, key, value, static_, private, generator, async_ } => Data::Prop {
-            method: *method,
-            key: match key {
-                Key::Computed(e) => Key::Computed(map(e)),
-                other => other.clone(),
-            },
-            value: map(value),
-            static_: *static_, private: *private, generator: *generator, async_: *async_,
-        },
-        Data::Cond { cond, cons, alt } => Data::Cond { cond: map(cond), cons: map(cons), alt: map(alt) },
-        Data::While { cond, body } => Data::While { cond: map(cond), body: map(body) },
-        Data::Do { body, cond } => Data::Do { body: map(body), cond: map(cond) },
-        Data::Switch { expr, body } => Data::Switch { expr: map(expr), body: body.iter().map(&mut map).collect() },
-        Data::VarDef { name, value } => Data::VarDef { name: map(name), value: value.as_ref().map(|v| map(v)) },
-        Data::Func { kind, name, args, body, async_, generator } => Data::Func {
-            kind: *kind,
-            name: name.as_ref().map(|n| map(n)),
-            args: args.iter().map(&mut map).collect(),
-            body: body.iter().map(&mut map).collect(),
-            async_: *async_,
-            generator: *generator,
-        },
-        Data::Try { body, catch, finally } => Data::Try { body: map(body), catch: catch.as_ref().map(|c| map(c)), finally: finally.as_ref().map(|f| map(f)) },
-        Data::Labeled { label, body } => Data::Labeled { label: map(label), body: map(body) },
-        _ => return Rc::clone(n),
-    };
-    // Keep the same node when every child pointer is unchanged. Cheap enough to always rebuild
-    // only when the match replaced data; the caller compares by walking. Always new is ok for
-    // a hoist that found nothing — collect_props returns early first.
-    finish(n, data)
+    // Every child, so `export` definitions and other statements are reached.
+    let mut changed = false;
+    let out = ast::map_children(n, &mut |c| {
+        let m = map(c);
+        if !Rc::ptr_eq(&m, c) {
+            changed = true;
+        }
+        m
+    });
+    if changed { out } else { Rc::clone(n) }
 }
