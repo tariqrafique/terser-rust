@@ -13,13 +13,15 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `drop-unused.js` `scan_ref_scoped` | `drop_unused.rs` `scan_ref_scoped` | pass 1. Side-effect inits only; destructuring values always |
 | `drop-unused.js` pass 2 (`in_use_ids.forEach`) | `drop_unused.rs` `passes` | inits of in-use names |
 | `drop-unused.js` `tt` | `drop_unused.rs` `rewrite_expr` | drop unread decls; write-only `=` becomes the rhs. `fixed_ids` recorded, not yet applied to in-use names |
-| `index.js` `Compressor.before` | `lib.rs` `transform` | descend twice, then optimize. `SQUEEZED` skips the node. `OPTIMIZED` skips the optimizer on a replacement. Not yet: `hoist_properties`, `hoist_declarations`, `drop_unused` inside `before` |
+| `index.js` `Compressor.before` | `lib.rs` `transform` | descend twice, then optimize, then `drop_unused` and one more descend on a scope. `use asm` skips the drop. Not yet: `hoist_properties`, `hoist_declarations` |
 | `index.js` `def_optimize` / `OPT` | `lib.rs` `after_descend` + `eval.rs` `fold` | scope/block joining runs once after both descends. Per-type bodies are still the `fold` chain, not split into `def_optimize(AST_*)` |
 
-Scores: default 1614/3013, fixture 1176/2671, lwc default 134/339. Compare vs `df00ff9`: default 32 newly passing, fixture 6 newly passing, 0 newly failing. Roundtrip 3013/3013, mangle 3013/3013.
+Scores: default 1622/3013, fixture 1190/2671, lwc default 134/339. Compare vs `cb40fac`: default 8 newly passing, fixture 14 newly passing, 0 newly failing. Roundtrip 3013/3013, mangle 3013/3013.
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
 Stop: default 2260, fixture 1336, reduce_vars 261/261, collapse_vars 199/199, or lwc 339/339.
 
-Next: `drop_unused` from `before` after a scope's optimize, then split `def_optimize` per node type.
+A class expression name is bound inside the class, so it does not keep an outer `var` of the same name. A class field initializer is a use.
+
+Next: `hoist_declarations` and `hoist_properties`, then split `def_optimize` per node type.

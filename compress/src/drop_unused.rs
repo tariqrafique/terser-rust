@@ -316,6 +316,10 @@ fn descend(n: &N, mut f: impl FnMut(&N)) {
             if let Some(extends) = extends { f(extends); }
             props.iter().for_each(|p| f(p));
         }
+        Data::Field { key, value, .. } => {
+            if let Key::Computed(e) = key { f(e); }
+            if let Some(value) = value { f(value); }
+        }
         Data::If { cond, body, alt } => {
             f(cond); f(body);
             if let Some(alt) = alt { f(alt); }

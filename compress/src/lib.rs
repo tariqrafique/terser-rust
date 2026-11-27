@@ -634,18 +634,161 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
-    let out = if cx.optimized.contains(&twice_ptr) {
+    let mut out = if cx.optimized.contains(&twice_ptr) {
         Rc::clone(&twice)
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
     } else {
         eval::fold(&twice, cx)
     };
+    // `index.js` `Compressor.before`: after `optimize`, a scope runs
+    // `drop_unused` and descends once more. `use asm` skips `drop_unused`.
+    // Flags are copied onto the rebuilt tree: terser mutates in place, so a
+    // node that was already optimized stays squeezed and is not folded again.
+    let same = Rc::ptr_eq(&out, &twice);
+    if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
+        // Nodes built by this optimize (a switch turned into `if`, then a comma
+        // pulled into its condition) are already in their final shape. Terser
+        // mutates them in place and leaves `OPTIMIZED` set, so the descend after
+        // `drop_unused` does not fold them again.
+        mark_tree_squeezed(&out, cx);
+        let dropped = drop_unused::drop_unused(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs);
+        transfer_flags(&out, &dropped, cx);
+        out = map_children(&dropped, cx);
+        // The scope's `before` is finished. Squeezing it matches terser setting
+        // `SQUEEZED` on the same scope object after `drop_unused`.
+        mark_squeezed(cx, &out);
+    }
     mark_optimized(cx, &out);
-    if Rc::ptr_eq(&out, &twice) {
+    if same {
         mark_squeezed(cx, &out);
     }
     cx.leave(entered);
+    out
+}
+
+fn was_scope(data: &Data) -> bool {
+    matches!(data, Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. })
+}
+
+/// Copy `SQUEEZED` / `OPTIMIZED` from `old` onto `new` when `drop_unused` rebuilt
+/// the same shape. A different shape is a replacement and must be compressed.
+fn mark_tree_squeezed(n: &N, cx: &mut Cx) {
+    mark_squeezed(cx, n);
+    mark_optimized(cx, n);
+    for child in child_refs(&n.data) {
+        mark_tree_squeezed(child, cx);
+    }
+}
+
+fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
+    if Rc::ptr_eq(old, new) {
+        return;
+    }
+    if std::mem::discriminant(&old.data) != std::mem::discriminant(&new.data) {
+        return;
+    }
+    let ptr = Rc::as_ptr(old) as usize;
+    if cx.squeezed.contains(&ptr) {
+        mark_squeezed(cx, new);
+    }
+    if cx.optimized.contains(&ptr) {
+        mark_optimized(cx, new);
+    }
+    let (left, right) = (child_refs(&old.data), child_refs(&new.data));
+    for (a, b) in left.iter().zip(right.iter()) {
+        transfer_flags(a, b, cx);
+    }
+}
+
+fn child_refs(data: &Data) -> Vec<&N> {
+    let mut out = Vec::new();
+    match data {
+        Data::Toplevel { body } | Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => {
+            out.extend(body.iter());
+        }
+        Data::Simple { body } | Data::Throw { value: body } | Data::Spread { expr: body } | Data::Chain { expr: body } | Data::Await { expr: body } | Data::Unary { expr: body, .. } | Data::Dot { expr: body, .. } | Data::Finally { body } => {
+            out.push(body);
+        }
+        Data::Return { value } | Data::Yield { expr: value, .. } => {
+            if let Some(v) = value { out.push(v); }
+        }
+        Data::Labeled { label, body } => { out.push(label); out.push(body); }
+        Data::Do { body, cond } | Data::While { cond: body, body: cond } => { out.push(body); out.push(cond); }
+        Data::For { init, cond, step, body } => {
+            if let Some(v) = init { out.push(v); }
+            if let Some(v) = cond { out.push(v); }
+            if let Some(v) = step { out.push(v); }
+            out.push(body);
+        }
+        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
+            out.push(init); out.push(object); out.push(body);
+        }
+        Data::With { expr, body } => { out.push(expr); out.push(body); }
+        Data::If { cond, body, alt } => {
+            out.push(cond); out.push(body);
+            if let Some(a) = alt { out.push(a); }
+        }
+        Data::Switch { expr, body } => { out.push(expr); out.extend(body.iter()); }
+        Data::Case { expr, body } => { out.push(expr); out.extend(body.iter()); }
+        Data::Try { body, catch, finally } => {
+            out.push(body);
+            if let Some(v) = catch { out.push(v); }
+            if let Some(v) = finally { out.push(v); }
+        }
+        Data::Catch { arg, body } => {
+            if let Some(a) = arg { out.push(a); }
+            out.push(body);
+        }
+        Data::Defs { defs, .. } => out.extend(defs.iter()),
+        Data::VarDef { name, value } => {
+            out.push(name);
+            if let Some(v) = value { out.push(v); }
+        }
+        Data::Func { name, args, body, .. } => {
+            if let Some(n) = name { out.push(n); }
+            out.extend(args.iter());
+            out.extend(body.iter());
+        }
+        Data::Class { name, extends, props, .. } => {
+            if let Some(n) = name { out.push(n); }
+            if let Some(e) = extends { out.push(e); }
+            out.extend(props.iter());
+        }
+        Data::Break { label } | Data::Continue { label } => {
+            if let Some(l) = label { out.push(l); }
+        }
+        Data::Array { elements } | Data::Seq { exprs: elements } | Data::DynImport { args: elements, .. } => {
+            out.extend(elements.iter());
+        }
+        Data::Object { props } => out.extend(props.iter()),
+        Data::Prop { key, value, .. } => {
+            if let ast::Key::Computed(e) = key { out.push(e); }
+            out.push(value);
+        }
+        Data::Field { key, value, .. } => {
+            if let ast::Key::Computed(e) = key { out.push(e); }
+            if let Some(v) = value { out.push(v); }
+        }
+        Data::Destructuring { names, .. } => out.extend(names.iter()),
+        Data::Sub { expr, prop, .. } => { out.push(expr); out.push(prop); }
+        Data::Call { expr, args, .. } => { out.push(expr); out.extend(args.iter()); }
+        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } | Data::DefaultAssign { left, right } | Data::PrivateIn { key: left, value: right } => {
+            out.push(left); out.push(right);
+        }
+        Data::Cond { cond, cons, alt } => { out.push(cond); out.push(cons); out.push(alt); }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let ast::Seg::Expr(e) = seg { out.push(e); }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => { out.push(tag); out.push(template); }
+        Data::Export { value, definition, .. } => {
+            if let Some(v) = value { out.push(v); }
+            if let Some(d) = definition { out.push(d); }
+        }
+        _ => {}
+    }
     out
 }
 

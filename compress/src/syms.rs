@@ -102,6 +102,29 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 walk(stmt, id, scopes, table);
             }
         }
+        // `class Name` puts `Name` on the enclosing scope. `class Name` in an
+        // expression puts `Name` on the class body only, so it does not count
+        // as a use of an outer `var Name`.
+        Data::Class { name, extends, props, stmt } => {
+            if let Some(extends) = extends {
+                walk(extends, scope, scopes, table);
+            }
+            let id = push_block(scope, scopes);
+            table.node_scope.insert(ptr(n), id);
+            if let Some(name) = name {
+                if let Some(sym_name) = sym(name) {
+                    let (dest, kind) = if *stmt {
+                        (scope, SymKind::DefClass)
+                    } else {
+                        (id, SymKind::Class)
+                    };
+                    define(table, scopes, dest, sym_name, name, kind, None, false);
+                }
+            }
+            for prop in props {
+                walk(prop, id, scopes, table);
+            }
+        }
         Data::Block { body } | Data::StaticBlock { body } => {
             let id = push_block(scope, scopes);
             table.node_scope.insert(ptr(n), id);
@@ -454,15 +477,13 @@ fn walk_children(data: &Data, scope: usize, scopes: &mut Vec<Scope>, table: &mut
             }
             walk(value, scope, scopes, table);
         }
-        Data::Class { name, extends, props, .. } => {
-            if let Some(name) = name {
-                walk(name, scope, scopes, table);
+        // A class field initializer is a use (`static _ = (cls) => cls` reads the name).
+        Data::Field { key, value, .. } => {
+            if let ast::Key::Computed(expr) = key {
+                walk(expr, scope, scopes, table);
             }
-            if let Some(extends) = extends {
-                walk(extends, scope, scopes, table);
-            }
-            for p in props {
-                walk(p, scope, scopes, table);
+            if let Some(value) = value {
+                walk(value, scope, scopes, table);
             }
         }
         _ => {}
