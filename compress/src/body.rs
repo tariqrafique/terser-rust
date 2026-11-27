@@ -155,6 +155,11 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
                     _ => continue,
                 };
                 locals.extend(own.iter().cloned());
+                let lets = cx.cached_names(p, 3, |p| match &p.data {
+                    Data::Func { body, .. } | Data::Toplevel { body } => crate::tighten::lexical_names_deep(body),
+                    _ => Default::default(),
+                });
+                crate::tighten::set_block_lets(lets.iter().cloned().collect());
                 break;
             }
             (locals, true, Some((in_loop, in_try)))

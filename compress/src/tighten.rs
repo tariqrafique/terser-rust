@@ -226,12 +226,49 @@ pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, lo
 
 thread_local! {
     static PHANTOM: std::cell::RefCell<HashMap<String, usize>> = Default::default();
+    /// `let` / `const` names of the enclosing function: terser `get_lhs`
+    /// never takes an assignment to one.
+    static BLOCK_LETS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// A nested block's own `let` / `const`: its only collapse candidates.
     static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+}
+
+pub(crate) fn set_block_lets(set: HashSet<String>) {
+    BLOCK_LETS.with(|d| *d.borrow_mut() = set);
+}
+
+/// `let` / `const` names declared anywhere in `body`, outside nested functions.
+pub(crate) fn lexical_names_deep(body: &[N]) -> HashSet<String> {
+    fn rec(n: &N, out: &mut HashSet<String>) {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } => {}
+            Data::Defs { kind: DefKind::Let | DefKind::Const | DefKind::Using, defs, .. } => {
+                for d in defs {
+                    if let Data::VarDef { name, .. } = &d.data {
+                        let mut tmp = Vec::new();
+                        tmp.push(Rc::clone(name));
+                        let names = scope_bindings(&tmp, &[]);
+                        out.extend(names);
+                    }
+                }
+            }
+            _ => {
+                let _ = ast::map_children(n, &mut |c| {
+                    rec(c, out);
+                    Rc::clone(c)
+                });
+            }
+        }
+    }
+    let mut out = HashSet::new();
+    for s in body {
+        rec(s, &mut out);
+    }
+    out
 }
 
 pub(crate) fn set_block_candidates(set: HashSet<String>) {
@@ -739,7 +776,15 @@ fn apply_candidate(
     escaped: &HashSet<String>,
     counts: &Counts,
 ) -> Option<Vec<N>> {
-    if env.block_only && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
+    // In a nested block: the block's own `let` / `const`, or an assignment
+    // to a function local that is moved (never dropped: reads after the
+    // block are not counted here).
+    let block_assign = env.block_only
+        && cand.kind == Kind::Assign
+        && env.locals.contains(&cand.name)
+        && !BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))
+        && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
+    if env.block_only && !block_assign && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
         return None;
     }
     // terser `get_lhs`: no references, nothing to fold.
@@ -786,6 +831,7 @@ fn apply_candidate(
     // The assignment is the value's only use, and nothing else observes the write.
     // `return (a = r * r - r) + (b = 7)` is `return r * r - r + 7`.
     let sink = cand.kind == Kind::Assign
+        && !block_assign
         && cand.op == "="
         && reads == 1
         && writes == 1
@@ -801,7 +847,10 @@ fn apply_candidate(
     };
     // terser `replace_all_symbols`: a var's single read, or an assignment whose
     // only other reference is that one read (the write itself is the other).
+    // Block counts do not see the whole function, so `replace_all` (which
+    // trusts them) is off for a block assignment.
     let replace_all = !side_effects
+        && !block_assign
         && (mangleable
             || (cand.kind == Kind::Var && total == 1)
             || (cand.kind != Kind::Var && total == 2 && hidden == 0));
