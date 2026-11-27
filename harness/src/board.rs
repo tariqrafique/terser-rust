@@ -141,6 +141,7 @@ pub fn run(args: Args) -> Result<(), String> {
     };
 
     let skip_abort = load_skip_list(&corpus.join("skip-abort.txt"))?;
+    let rollup_skips = load_rollup_skips(&corpus.join("lwc-rollup/skip.txt"))?;
     let (cases, rollup_files, rollup_unique) = load_cases(&corpus)?;
     let mut jobs = Vec::new();
     let mut corrupt = 0u64;
@@ -255,12 +256,11 @@ pub fn run(args: Args) -> Result<(), String> {
     let mut pass = 0u64;
     let mut total = 0u64;
     for ((corpus_name, set_name), group) in &groups {
-        println!(
-            "{:<10} {:<10} {:>12}",
-            corpus_name,
-            set_name,
-            format!("{}/{}", group.pass, group.total)
-        );
+        let mut score = format!("{}/{}", group.pass, group.total);
+        if corpus_name == "lwc-rollup" {
+            score = format!("{score}  skipped {rollup_skips}");
+        }
+        println!("{:<10} {:<10} {:>12}", corpus_name, set_name, score);
         pass += group.pass;
         total += group.total;
     }
@@ -734,6 +734,23 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
+}
+
+fn load_rollup_skips(path: &Path) -> Result<u64, String> {
+    let text = fs::read_to_string(path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let mut count = 0u64;
+    for (lineno, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let id = line.split_whitespace().next().unwrap_or("");
+        if id.is_empty() {
+            return Err(format!("{}:{}: missing component", path.display(), lineno + 1));
+        }
+        count += 1;
+    }
+    Ok(count)
 }
 
 fn load_skip_list(path: &Path) -> Result<HashSet<String>, String> {

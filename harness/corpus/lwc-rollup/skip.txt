@@ -1,0 +1,6 @@
+# Approved skips. These components do not bundle with @lwc/rollup-plugin
+# defaults, so they have no minify input and are not scored.
+lbc-recipes/c/registerWireMocks	imports register, which @lwc/engine-dom does not export
+lbc/lightning/datatable	uses lwc:is, and dynamic components are off
+lbc/lightning/multiColumnSortingModal	uses lwc:is, and dynamic components are off
+lbc/lightning/treeGrid	uses lwc:is, and dynamic components are off
