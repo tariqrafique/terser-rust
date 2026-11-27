@@ -1238,6 +1238,14 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
     if cx.fresh.borrow().contains_key(&ptr) {
         cx.fresh.borrow_mut().insert(Rc::as_ptr(new) as usize, Rc::clone(new));
     }
+    // A rebuilt function or class (hoist_props rewrote a reference in it) is
+    // the same `fixed` value. The source position guards against the greedy
+    // alignment pairing two different nodes.
+    if matches!(old.data, Data::Func { .. } | Data::Class { .. })
+        && old.start.as_ref().map(|t| t.pos) == new.start.as_ref().map(|t| t.pos)
+    {
+        retarget(cx, ptr, new);
+    }
     if cx.squeezed.contains(&ptr) {
         mark_squeezed(cx, new);
     }

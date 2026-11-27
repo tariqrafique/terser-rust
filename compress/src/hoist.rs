@@ -303,6 +303,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
     match &n.data {
         Data::Defs { kind, defs, await_ } => {
             let mut out = Vec::new();
+            let mut changed = false;
             for def in defs {
                 if let Data::VarDef { name, value: Some(value) } = &def.data {
                     if let Some(id) = table.lookup(&syms::ptr(name)) {
@@ -314,12 +315,18 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
                                     let sym = sym_node(prop, fresh, sym_kind(*kind));
                                     out.push(vardef(prop, &sym, Some(rewrite_props(value, table, plan))));
                                 }
+                                changed = true;
                                 continue;
                             }
                         }
                     }
                 }
-                out.push(rewrite_props(def, table, plan));
+                let m = rewrite_props(def, table, plan);
+                changed |= !Rc::ptr_eq(&m, def);
+                out.push(m);
+            }
+            if !changed {
+                return Rc::clone(n);
             }
             finish(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
         }
