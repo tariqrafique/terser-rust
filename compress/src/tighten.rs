@@ -206,9 +206,17 @@ fn tighten_scope(stmts: &[N], env: &Env<'_>, params: &[N], in_fn: bool) -> Vec<N
 /// One `collapse` step for `body.rs` `tighten_body`, on the body of a function,
 /// toplevel, or static block. `scopes` is the bindings of each enclosing scope,
 /// outermost first; the last is this body's own (params included).
-pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, locals: &HashSet<String>, declared: &HashSet<String>, in_fn: bool) -> (Vec<N>, bool) {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, locals: &HashSet<String>, declared: &HashSet<String>, in_fn: bool, phantom: &HashMap<String, usize>) -> (Vec<N>, bool) {
     let env = Env { unused, toplevel_vars, locals, declared, in_loop: false, in_try: false, in_fn };
-    collapse_statements(stmts, &env)
+    PHANTOM.with(|p| *p.borrow_mut() = phantom.clone());
+    let out = collapse_statements(stmts, &env);
+    PHANTOM.with(|p| p.borrow_mut().clear());
+    out
+}
+
+thread_local! {
+    static PHANTOM: std::cell::RefCell<HashMap<String, usize>> = Default::default();
 }
 
 /// Bindings of a function (params and hoisted names) or a toplevel body.
@@ -1870,6 +1878,11 @@ impl Counts {
             refs_rec(s, None, false, &mut refs);
             decls_rec(s, &mut decls);
         }
+        PHANTOM.with(|p| {
+            for (name, k) in p.borrow().iter() {
+                refs.entry(name.clone()).or_insert((0, 0, 0)).1 += *k;
+            }
+        });
         Counts { refs, decls }
     }
 }

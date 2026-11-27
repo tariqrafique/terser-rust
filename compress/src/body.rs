@@ -13,10 +13,13 @@ use std::rc::Rc;
 
 struct St {
     changed: bool,
+    /// terser `def.references` still counts writes that `join_object_assignments`
+    /// moved into the literal. Name → removed references, for `collapse`.
+    phantom: std::collections::HashMap<String, usize>,
 }
 
 pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
-    let mut st = St { changed: false };
+    let mut st = St { changed: false, phantom: Default::default() };
     let mut max_iter = 10;
     let mut collapsed = false;
     loop {
@@ -44,6 +47,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     &scope.0,
                     &scope.1,
                     scope.2,
+                    &st.phantom,
                 );
                 stmts = next;
                 if changed {
@@ -676,9 +680,119 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
     *stmts = out;
 }
 
-fn join_consecutive_vars(stmts: &mut Vec<N>, _cx: &Cx, st: &mut St) {
-    // `join_object_assignments` is not ported: it only fires on an object
-    // literal initializer followed by property writes.
+/// terser `tighten-body.js` `join_object_assignments`: leading `name.prop = const`
+/// writes after `var name = {...}` move into the literal. Returns the new
+/// definitions and the expressions left over.
+fn join_object_assignments(defn: &N, body: &N, cx: &Cx, phantom: &mut std::collections::HashMap<String, usize>) -> Option<(N, Vec<N>)> {
+    let Data::Defs { kind, defs, await_ } = &defn.data else { return None };
+    if *kind == DefKind::Using {
+        return None;
+    }
+    let last = defs.last()?;
+    let Data::VarDef { name: def_name, value: Some(obj) } = &last.data else { return None };
+    let Data::Object { props } = &obj.data else { return None };
+    let Data::Symbol { name: def_name_str, .. } = &def_name.data else { return None };
+    let mut exprs: Vec<N> = match &body.data {
+        Data::Assign { logical: false, .. } => vec![Rc::clone(body)],
+        Data::Seq { exprs } => exprs.clone(),
+        _ => return None,
+    };
+    let mut props = props.clone();
+    let strict_es5 = cx.opts.ecma < 2015 && cx.lookup("use strict").is_some();
+    let mut trimmed = false;
+    while let Some(node) = exprs.first() {
+        let Data::Assign { op, left, right, logical: false } = &node.data else { break };
+        if op != "=" {
+            break;
+        }
+        let (sym, key) = match &left.data {
+            Data::Dot { expr, prop, optional: false, private: false, .. } => (expr, prop.clone()),
+            Data::Sub { expr, prop, optional: false } => {
+                let key = match &prop.data {
+                    Data::String { value, .. } => value.clone(),
+                    Data::Number { value, .. } => crate::eval::js_num_tostring(*value),
+                    _ => match crate::eval::eval_lit(prop) {
+                        Some(crate::eval::Lit::Num(v)) => crate::eval::js_num_tostring(v),
+                        Some(crate::eval::Lit::Str(v)) => v,
+                        _ => break,
+                    },
+                };
+                (expr, key)
+            }
+            _ => break,
+        };
+        let Data::Symbol { name: sname, kind: ast::SymKind::Ref, .. } = &sym.data else { break };
+        if sname != def_name_str {
+            break;
+        }
+        if !object_const_expr(right) {
+            break;
+        }
+        // `diff`: no method or computed key may already use the name.
+        let clash = props.iter().any(|p| match &p.data {
+            Data::Prop { key: ast::Key::Static { name, .. }, method: Some(_), .. } => *name == key,
+            Data::Prop { key: ast::Key::Static { name, .. }, method: None, .. } => strict_es5 && *name == key,
+            Data::Prop { key: ast::Key::Computed(k), .. } => matches!(&k.data, Data::Symbol { name, .. } if *name == key),
+            Data::Prop { .. } => false,
+            // `node.key && ...`: a spread has no key.
+            _ => true,
+        });
+        if clash {
+            break;
+        }
+        let existing = props.iter().position(|p| matches!(&p.data, Data::Prop { key: ast::Key::Static { name, .. }, method: None, .. } if *name == key));
+        match existing {
+            Some(i) => {
+                let Data::Prop { method, key: k, value, static_, private, generator, async_ } = &props[i].data else { break };
+                let joined = eval::atom(value, Data::Seq { exprs: vec![Rc::clone(value), Rc::clone(right)] });
+                props[i] = eval::atom(&props[i], Data::Prop { method: *method, key: k.clone(), value: joined, static_: *static_, private: *private, generator: *generator, async_: *async_ });
+            }
+            None => {
+                let quote = if is_identifier_name(&key) { None } else { Some('"') };
+                props.push(eval::atom(node, Data::Prop {
+                    method: None,
+                    key: ast::Key::Static { name: key, quote },
+                    value: Rc::clone(right),
+                    static_: false,
+                    private: false,
+                    generator: false,
+                    async_: false,
+                }));
+            }
+        }
+        exprs.remove(0);
+        *phantom.entry(def_name_str.clone()).or_insert(0) += 1;
+        trimmed = true;
+    }
+    if !trimmed {
+        return None;
+    }
+    let new_obj = eval::atom(obj, Data::Object { props });
+    let new_last = eval::atom(last, Data::VarDef { name: Rc::clone(def_name), value: Some(new_obj) });
+    let mut new_defs = defs.clone();
+    *new_defs.last_mut().unwrap() = new_last;
+    Some((eval::atom(defn, Data::Defs { kind: *kind, defs: new_defs, await_: *await_ }), exprs))
+}
+
+fn is_identifier_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// terser `is_constant_expression` without lambdas.
+fn object_const_expr(n: &N) -> bool {
+    match &n.data {
+        Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::RegExp { .. } | Data::True | Data::False | Data::Null | Data::Infinity => true,
+        Data::Unary { expr, .. } => object_const_expr(expr),
+        Data::Binary { left, right, .. } => object_const_expr(left) && object_const_expr(right),
+        Data::Array { elements } => elements.iter().all(object_const_expr),
+        Data::Object { props } => props.iter().all(|p| matches!(&p.data, Data::Prop { key: ast::Key::Static { .. }, method: None, value, .. } if object_const_expr(value))),
+        _ => false,
+    }
+}
+
+fn join_consecutive_vars(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
     let input = std::mem::take(stmts);
     let mut out: Vec<N> = Vec::with_capacity(input.len());
     // Index in `out` of terser's `defs`.
@@ -756,10 +870,62 @@ fn join_consecutive_vars(stmts: &mut Vec<N>, _cx: &Cx, st: &mut St) {
                     out.push(Rc::clone(&stat));
                 }
             }
+            Data::Simple { body } => {
+                let joined = prev_idx.and_then(|p| join_object_assignments(&out[p], body, cx, &mut st.phantom));
+                match joined {
+                    Some((defs_node, rest)) => {
+                        st.changed = true;
+                        out[prev_idx.unwrap()] = defs_node;
+                        if !rest.is_empty() {
+                            out.push(eval::simple(&stat, make_sequence(body, rest)));
+                        }
+                    }
+                    None => out.push(Rc::clone(&stat)),
+                }
+            }
+            Data::Return { value: Some(v) } | Data::Throw { value: v } | Data::If { cond: v, .. } | Data::Switch { expr: v, .. } | Data::With { expr: v, .. } | Data::ForIn { object: v, .. } | Data::ForOf { object: v, .. } => {
+                // `extract_object_assignments`
+                let joined = prev_idx.and_then(|p| join_object_assignments(&out[p], v, cx, &mut st.phantom));
+                match joined {
+                    Some((defs_node, rest)) => {
+                        st.changed = true;
+                        out[prev_idx.unwrap()] = defs_node;
+                        let new_v = if !rest.is_empty() {
+                            make_sequence(v, rest)
+                        } else {
+                            match &v.data {
+                                Data::Seq { exprs } => match &exprs.last().unwrap().data {
+                                    Data::Assign { left, .. } => Rc::clone(left),
+                                    _ => Rc::clone(v),
+                                },
+                                Data::Assign { left, .. } => Rc::clone(left),
+                                _ => Rc::clone(v),
+                            }
+                        };
+                        out.push(replace_slot(&stat, new_v));
+                    }
+                    None => out.push(Rc::clone(&stat)),
+                }
+            }
             _ => out.push(Rc::clone(&stat)),
         }
     }
     *stmts = out;
+}
+
+/// The statement with its `extract_object_assignments` slot replaced.
+fn replace_slot(stat: &N, v: N) -> N {
+    let data = match &stat.data {
+        Data::Return { .. } => Data::Return { value: Some(v) },
+        Data::Throw { .. } => Data::Throw { value: v },
+        Data::If { body, alt, .. } => Data::If { cond: v, body: Rc::clone(body), alt: alt.clone() },
+        Data::Switch { body, .. } => Data::Switch { expr: v, body: body.clone() },
+        Data::With { body, .. } => Data::With { expr: v, body: Rc::clone(body) },
+        Data::ForIn { init, body, .. } => Data::ForIn { init: Rc::clone(init), object: v, body: Rc::clone(body) },
+        Data::ForOf { init, body, await_, .. } => Data::ForOf { init: Rc::clone(init), object: v, body: Rc::clone(body), await_: *await_ },
+        _ => return Rc::clone(stat),
+    };
+    eval::atom(stat, data)
 }
 
 fn append_defs(n: &N, more: &[N]) -> N {

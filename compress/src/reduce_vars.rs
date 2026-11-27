@@ -75,7 +75,8 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         }
         (
             def.scope,
-            matches!(def.single_use, SingleUse::Yes),
+            // terser `single_use` is `true` or `"m"`; both are truthy here.
+            matches!(def.single_use, SingleUse::Yes | SingleUse::Modified),
             def.assignments,
             def.references.len() as u32,
             // terser `self.size(compressor)`: one character when it will be mangled.
@@ -143,10 +144,9 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
                 let len = codegen::print(&node).len();
                 (node, len)
             }
-            Lit::Bool(b) => {
-                let one = span_node(&fixed, Data::Number { value: if b { 0.0 } else { 1.0 }, raw: String::new() });
-                (span_node(&fixed, Data::Unary { op: "!".into(), expr: one, prefix: true }), if b { 4 } else { 5 })
-            }
+            // `make_node_from_constant` gives `AST_True` / `AST_False`. The
+            // replacement is `OPTIMIZED`, so it prints as `true` / `false`.
+            Lit::Bool(b) => (span_node(&fixed, if b { Data::True } else { Data::False }), if b { 4 } else { 5 }),
             Lit::Null => (span_node(&fixed, Data::Null), 4),
             Lit::Undef => (void0(&fixed), 6),
             _ => return None,

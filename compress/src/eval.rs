@@ -365,7 +365,11 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
             _ => {}
         }
     }
-    if cx.opts.reduce_vars && !cx.in_lhs {
+    // terser `compressor.is_lhs()` looks at the direct parent only: the `o`
+    // in `o.q = 1` is a read.
+    let lhs = cx.in_lhs
+        && !cx.parent().is_some_and(|p| matches!(p.data, Data::Dot { .. } | Data::Sub { .. } | Data::Call { .. }));
+    if cx.opts.reduce_vars && !lhs {
         if let Some(table) = &cx.syms {
             if let Some(value) = crate::reduce_vars::inline_ref(
                 n,

@@ -631,10 +631,10 @@ pub fn ptr(n: &N) -> usize {
 pub fn index_func_fixed(table: &mut SymTable) {
     table.fixed_of_node.clear();
     for (id, def) in table.defs.iter().enumerate() {
+        // terser keeps `fixed` as `() => node.value`, so a compressed
+        // initializer is what later reads see. Every fixed node is tracked.
         let Some(value) = &def.fixed else { continue };
-        if matches!(value.data, Data::Func { .. } | Data::Class { .. }) {
-            table.fixed_of_node.entry(ptr(value)).or_default().push(id);
-        }
+        table.fixed_of_node.entry(ptr(value)).or_default().push(id);
     }
 }
 
@@ -647,12 +647,12 @@ pub fn retarget_fixed(table: &mut SymTable, old_ptr: usize, new_node: &N) {
     let Some(ids) = table.fixed_of_node.remove(&old_ptr) else { return };
     for id in &ids {
         if let Some(def) = table.defs.get_mut(*id) {
-            def.fixed = Some(Rc::clone(new_node));
+            if def.fixed.as_ref().is_some_and(|f| ptr(f) == old_ptr) {
+                def.fixed = Some(Rc::clone(new_node));
+            }
         }
     }
-    if matches!(new_node.data, Data::Func { .. } | Data::Class { .. }) {
-        table.fixed_of_node.entry(ptr(new_node)).or_default().extend(ids);
-    }
+    table.fixed_of_node.entry(ptr(new_node)).or_default().extend(ids);
 }
 
 /// Drop declarations whose references were all replaced.
