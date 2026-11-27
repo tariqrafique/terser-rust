@@ -1247,6 +1247,9 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
         if let Some(next) = eval_logical(&cur, cx) {
             return Some(next);
         }
+        if let Some(next) = plus_strings(&cur, cx) {
+            return Some(next);
+        }
         if let Some(next) = plus_to_minus(&cur, cx) {
             return Some(next);
         }
@@ -1258,6 +1261,85 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
         cur = next;
     }
     if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
+}
+
+/// `"a" + "b"` as terser's `binary.optimize` would fold it, or `None`.
+fn concat_constants(a: &N, b: &N) -> Option<N> {
+    let (Some(la), Some(lb)) = (eval(a), eval(b)) else { return None };
+    match eval_bin("+", la, lb)? {
+        Lit::Str(v) => Some(atom(a, Data::String { value: v, quote: '"', units: None })),
+        _ => None,
+    }
+}
+
+fn is_constant_node(n: &N) -> bool {
+    matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::True | Data::False | Data::Null | Data::RegExp { .. })
+}
+
+/// terser `def_optimize(AST_Binary)` `case "+"`: string and template joins.
+fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
+    let _ = cx;
+    let Data::Binary { op, left, right } = &n.data else { return None };
+    if op != "+" {
+        return None;
+    }
+    // (x + "foo") + "bar" => x + "foobar"
+    if is_constant_node(right) {
+        if let Data::Binary { op: lop, left: ll, right: lr } = &left.data {
+            if lop == "+" && is_string(left) {
+                if let Some(m) = concat_constants(lr, right) {
+                    return Some(binary(n, "+", Rc::clone(ll), m));
+                }
+            }
+        }
+    }
+    // (x + "foo") + ("bar" + y) => (x + "foobar") + y
+    if let (Data::Binary { op: lop, left: ll, right: lr }, Data::Binary { op: rop, left: rl, right: rr }) = (&left.data, &right.data) {
+        if lop == "+" && rop == "+" && is_string(left) && is_string(right) {
+            if let Some(m) = concat_constants(lr, rl) {
+                return Some(binary(n, "+", binary(left, "+", Rc::clone(ll), m), Rc::clone(rr)));
+            }
+        }
+    }
+    let lit_str = |l: Lit| -> String { js_str(&l) };
+    // `foo${bar}baz` + 1 => `foo${bar}baz1`
+    if let Data::Template { segments } = &left.data {
+        if let Some(r) = eval(right) {
+            let mut segs = segments.clone();
+            if let Some(Seg::Cooked { value, raw, units }) = segs.last_mut() {
+                let add = lit_str(r);
+                value.push_str(&add);
+                raw.push_str(&add);
+                *units = None;
+                return Some(atom(left, Data::Template { segments: segs }));
+            }
+        }
+    }
+    // 1 + `foo${bar}baz` => `1foo${bar}baz`
+    if let Data::Template { segments } = &right.data {
+        if let Some(l) = eval(left) {
+            let mut segs = segments.clone();
+            if let Some(Seg::Cooked { value, raw, units }) = segs.first_mut() {
+                let add = lit_str(l);
+                *value = format!("{add}{value}");
+                *raw = format!("{add}{raw}");
+                *units = None;
+                return Some(atom(right, Data::Template { segments: segs }));
+            }
+        }
+    }
+    // `1${bar}2` + `foo${bar}baz` => `1${bar}2foo${bar}baz`
+    if let (Data::Template { segments: ls }, Data::Template { segments: rs }) = (&left.data, &right.data) {
+        let mut segs = ls.clone();
+        if let (Some(Seg::Cooked { value, raw, units }), Some(Seg::Cooked { value: rv, raw: rr, .. })) = (segs.last_mut(), rs.first()) {
+            value.push_str(rv);
+            raw.push_str(rr);
+            *units = None;
+            segs.extend(rs.iter().skip(1).cloned());
+            return Some(atom(left, Data::Template { segments: segs }));
+        }
+    }
+    None
 }
 
 /// terser `def_optimize(AST_Binary)` `lhs_constants` + `commutativeOperators`.
