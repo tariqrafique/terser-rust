@@ -21,6 +21,7 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `index.js` `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)` / `flatten_object` / `lift_key` | `eval.rs` `fold_prop_access` / `fold_computed` | static key to dot, `.length` of a string or side-effect-free array, object property read to the value. `pure_getters` gates `may_throw_on_access`. Class `constructor` and `__proto__` stay computed |
 | `index.js` `def_optimize(AST_Call)` / `def_optimize(AST_New)` | `call.rs` `optimize` | `inline.js` `inline_into_call`: constant return, identity `(0, prop)`, direct single-statement body, empty call. Spread of a hole-free array. Unused args when the callee is fixed. Pure annotation drops a statement call. `unsafe` turns `new` of Object/RegExp/Function/Error/Array into a call and folds Array/Object/String/Number/Boolean. Not: `drop_console`, `join`/`charAt`/`apply`, var injection, `unsafe_Function` |
 | `index.js` `def_optimize(AST_Conditional)` | `conditional.rs` `optimize` | ternary rewrites: sequence lift, constant branch, negation swap, `||` / `&&` / `??`, assign and call factoring, boolean `true`/`false`. `ecma` defaults to 5, so `??` stays off |
+| `index.js` `def_optimize(AST_Assign)` | `assign.rs` `optimize` | `x = x`, exit writes, `AST_Binary.lift_sequences`, `x = x - 2` → `x -= 2`. `fixed = false` on the compound-to-binary exit. Not `AST_DefaultAssign` |
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
@@ -28,4 +29,4 @@ Stop: default 2260, fixture 1336, reduce_vars 261/261, collapse_vars 199/199, or
 
 A class expression name is bound inside the class, so it does not keep an outer `var` of the same name. A class field initializer is a use.
 
-Next: the rest of the shared fold chain (lambda/scope, sequences, assign, object/array, loops/switch/try).
+Next: the rest of the shared fold chain (lambda/scope, sequences, object/array, loops/switch/try).

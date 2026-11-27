@@ -33,6 +33,8 @@ pub struct SymbolDef {
     pub init: Option<N>,
     /// `None` means `fixed === false`. A node means that node is the fixed value.
     pub fixed: Option<N>,
+    /// terser `def_optimize(AST_Assign)` sets `fixed = false` while the walk continues.
+    pub suppress_fixed: Cell<bool>,
     pub assignments: u32,
     pub escaped: u32,
     /// terser `reduce-vars.js` `mark_escaped`: the name is used as a value, not only as `obj.prop`.
@@ -345,6 +347,7 @@ fn define(
         block_scoped: matches!(kind, SymKind::Let | SymKind::Const | SymKind::Catch),
         init,
         fixed: None,
+        suppress_fixed: Cell::new(false),
         assignments: 0,
         escaped: 0,
         direct_access: false,

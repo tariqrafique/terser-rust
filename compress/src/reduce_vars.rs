@@ -53,7 +53,7 @@ pub fn inline_ref(n: &N, table: &SymTable, env: &Env) -> Option<N> {
     let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
     let id = *table.node_def.get(&syms::ptr(n))?;
     let def = &table.defs[id];
-    if def.fixed.is_none() {
+    if def.suppress_fixed.get() || def.fixed.is_none() {
         return None;
     }
     let fixed = def.fixed.clone()?;

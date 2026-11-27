@@ -82,6 +82,10 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = fold_binary(n, cx) {
         return rewritten;
     }
+    // terser `lib/compress/index.js` `def_optimize(AST_Assign)`.
+    if let Some(rewritten) = crate::assign::optimize(n, cx) {
+        return rewritten;
+    }
     // terser `lib/compress/index.js` `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)`.
     if cx.opts.properties || cx.opts.evaluate {
         if let Some(rewritten) = fold_prop_access(n, cx) {
@@ -1191,7 +1195,7 @@ fn lift_sequences(n: &N, cx: &Cx) -> Option<N> {
 }
 
 /// terser `common.js` `make_sequence` + `def_optimize(AST_Sequence)` side-effect trim.
-fn tighten_seq(span: &N, exprs: Vec<N>, cx: &Cx) -> N {
+pub(crate) fn tighten_seq(span: &N, exprs: Vec<N>, cx: &Cx) -> N {
     let mut flat = Vec::new();
     for e in exprs {
         if let Data::Seq { exprs } = &e.data {
@@ -1705,7 +1709,7 @@ fn mask_bits(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
     Some(booleanify(span, inner, op.starts_with('!'), cx))
 }
 
-fn has_side(n: &N, cx: &Cx) -> bool {
+pub(crate) fn has_side(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }
