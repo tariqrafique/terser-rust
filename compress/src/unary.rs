@@ -370,7 +370,7 @@ fn bitwise_negate(node: &N, force_32: bool, cx: &Cx) -> N {
     unary(node, "~", Rc::clone(node))
 }
 
-fn first_in_statement(cx: &Cx) -> bool {
+pub(crate) fn first_in_statement(cx: &Cx) -> bool {
     if cx.parents.len() < 2 {
         return false;
     }
@@ -542,7 +542,7 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
     false
 }
 
-fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
+pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }

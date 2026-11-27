@@ -108,7 +108,8 @@ pub fn fold(n: &N, cx: &Cx) -> N {
         if let Some(rewritten) = drop_statement(n, cx) {
             return rewritten;
         }
-        if let Some(rewritten) = trim_sequence(n, cx) {
+        // terser `lib/compress/index.js` `def_optimize(AST_Sequence)`.
+        if let Some(rewritten) = crate::sequence::optimize(n, cx) {
             return rewritten;
         }
     }
@@ -1110,7 +1111,8 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     let mut cur = apply_lhs(n, cx);
-    if let Some(lifted) = lift_sequences(&cur, cx) {
+    // terser `lib/compress/index.js` `AST_Binary.lift_sequences`.
+    if let Some(lifted) = crate::sequence::lift_binary(&cur, cx) {
         return Some(lifted);
     }
     if cx.opts.comparisons || cx.opts.lhs_constants {
@@ -1160,73 +1162,9 @@ fn apply_lhs(n: &N, cx: &Cx) -> N {
     }
 }
 
-/// terser `index.js` `AST_Binary.lift_sequences`.
-fn lift_sequences(n: &N, cx: &Cx) -> Option<N> {
-    if cx.opts.sequences_limit <= 0 {
-        return None;
-    }
-    let Data::Binary { op, left, right } = &n.data else {
-        return None;
-    };
-    if let Data::Seq { exprs } = &left.data {
-        if exprs.is_empty() {
-            return None;
-        }
-        let mut parts = exprs.clone();
-        let tail = parts.pop().unwrap();
-        parts.push(binary(n, op, tail, Rc::clone(right)));
-        return Some(tighten_seq(n, parts, cx));
-    }
-    if let Data::Seq { exprs } = &right.data {
-        if exprs.is_empty() || has_side(left, cx) {
-            return None;
-        }
-        let last = exprs.len() - 1;
-        let mut i = 0;
-        while i < last && !has_side(&exprs[i], cx) {
-            i += 1;
-        }
-        if i == 0 {
-            return None;
-        }
-        if i == last {
-            let mut parts = exprs.clone();
-            let tail = parts.pop().unwrap();
-            parts.push(binary(n, op, Rc::clone(left), tail));
-            return Some(tighten_seq(n, parts, cx));
-        }
-        let mut parts = exprs[..i].to_vec();
-        let rest = atom(n, Data::Seq { exprs: exprs[i..].to_vec() });
-        parts.push(binary(n, op, Rc::clone(left), rest));
-        return Some(tighten_seq(n, parts, cx));
-    }
-    None
-}
-
-/// terser `common.js` `make_sequence` + `def_optimize(AST_Sequence)` side-effect trim.
+/// terser `lib/compress/common.js` `make_sequence` then `def_optimize(AST_Sequence)`.
 fn tighten_seq(span: &N, exprs: Vec<N>, cx: &Cx) -> N {
-    let mut flat = Vec::new();
-    for e in exprs {
-        if let Data::Seq { exprs } = &e.data {
-            flat.extend(exprs.iter().cloned());
-        } else {
-            flat.push(e);
-        }
-    }
-    if cx.opts.side_effects && !flat.is_empty() {
-        let last = flat.len() - 1;
-        flat = flat
-            .into_iter()
-            .enumerate()
-            .filter(|(i, e)| *i == last || has_side(e, cx))
-            .map(|(_, e)| e)
-            .collect();
-    }
-    match flat.len() {
-        0 => num(span, 0.0),
-        1 => maintain_this(cx, flat.pop().unwrap()),
-        _ => atom(span, Data::Seq { exprs: flat }),
-    }
+    crate::sequence::make_and_optimize(span, exprs, cx)
 }
 
 /// terser `common.js` `maintain_this_binding`.
@@ -1718,7 +1656,7 @@ fn mask_bits(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
     Some(booleanify(span, inner, op.starts_with('!'), cx))
 }
 
-fn has_side(n: &N, cx: &Cx) -> bool {
+pub(crate) fn has_side(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }
@@ -2994,7 +2932,7 @@ fn drop_pure_call(n: &N) -> Option<N> {
     Some(simple(n, sequence(n, effects)))
 }
 
-fn statement_pure(n: &N, cx: &Cx) -> bool {
+pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
     if cx.in_with {
         return is_pure(n);
     }
@@ -3008,48 +2946,6 @@ fn statement_pure(n: &N, cx: &Cx) -> bool {
         Data::Cond { cond, cons, alt } => statement_pure(cond, cx) && statement_pure(cons, cx) && statement_pure(alt, cx),
         _ => is_pure(n),
     }
-}
-
-fn trim_sequence(n: &N, cx: &Cx) -> Option<N> {
-    let Data::Seq { exprs } = &n.data else {
-        return None;
-    };
-    if exprs.len() < 2 {
-        return None;
-    }
-    let mut kept: Vec<N> = Vec::new();
-    let mut changed = false;
-    for (i, e) in exprs.iter().enumerate() {
-        let last = i + 1 == exprs.len();
-        if !last {
-            if let Some(effects) = crate::call::pure_effects(e) {
-                changed = true;
-                kept.extend(effects);
-                continue;
-            }
-            if statement_pure(e, cx) {
-                changed = true;
-                continue;
-            }
-        }
-        kept.push(Rc::clone(e));
-    }
-    if !changed {
-        return None;
-    }
-    if kept.is_empty() {
-        return Some(num(n, 0.0));
-    }
-    if kept.len() == 1 {
-        // terser `def_optimize(AST_Sequence)`: a single remaining expression
-        // is `maintain_this_binding`'d, so `(0, a.b)()` stays a sequence.
-        return Some(crate::conditional::maintain_this_binding(cx, kept.pop().unwrap()));
-    }
-    Some(Rc::new(Node {
-        start: n.start.clone(),
-        end: n.end.clone(),
-        data: Data::Seq { exprs: kept },
-    }))
 }
 
 fn eval(n: &N) -> Option<Lit> {

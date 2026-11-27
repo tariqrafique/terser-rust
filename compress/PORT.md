@@ -23,6 +23,7 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `index.js` `def_optimize(AST_Conditional)` | `conditional.rs` `optimize` | ternary rewrites: sequence lift, constant branch, negation swap, `||` / `&&` / `??`, assign and call factoring, boolean `true`/`false`. `ecma` defaults to 5, so `??` stays off |
 | `index.js` `opt_AST_Lambda` (`def_optimize(AST_Lambda)` / `AST_Defun` / `AST_Arrow`) | `eval.rs` `opt_ast_lambda` | lone active `"use strict"` dropped when `side_effects` is on. An `if` / `switch` / `while` / `do` that can leave a statement stays. Not `AST_Function`'s `unsafe_arrows` |
 | `index.js` `def_optimize(AST_SymbolRef)` | `eval.rs` `rewrite_global` | undeclared `undefined` / `NaN` / `Infinity` outside `with`, not the direct lhs (`AST_Undefined` / `AST_NaN` / `AST_Infinity`). Constant `inline_ref` is unchanged. Not the lambda half of `inline_into_symbolref` |
+| `index.js` `def_optimize(AST_Sequence)` | `sequence.rs` `optimize` | `side_effects` filter (`drop-side-effect-free.js`), `merge_sequence`, `trim_right_for_undefined`. One expression uses `common.js` `maintain_this_binding`. `AST_Binary.lift_sequences` is the same `make_sequence().optimize`. The conditional sequence lift stays in `conditional.rs` |
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
@@ -32,6 +33,8 @@ A class expression name is bound inside the class, so it does not keep an outer 
 
 A destructuring `let`/`const` is not a pure declaration: the pattern can throw. The root locals frame includes toplevel `var` and function names, so `shadowed` matches `is_undeclared_ref` when there is no symbol table.
 
-Lambda board `60912d4ea89e-848142da17ac`: default 1794/3013 -> 1798/3013, 4 newly passing, 0 newly failing, lwc 174/339.
+Lambda board `4e2e5c8f5f7c-848142da17ac`: default 1794/3013 -> 1798/3013, 4 newly passing, 0 newly failing, lwc 174/339.
 
-Next: the rest of the shared fold chain (sequences, assign, object/array/template, loops/switch/try/if-return).
+Sequence board `922a9fbe9707-848142da17ac`: default 1798/3013, 0 newly passing, 0 newly failing, lwc 174/339.
+
+Next: the rest of the shared fold chain (assign, object/array/template, loops/switch/try/if-return).
