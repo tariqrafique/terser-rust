@@ -133,13 +133,10 @@ fn def_flag(expr: &N, cx: &Cx, f: impl FnOnce(&crate::syms::SymbolDef) -> bool) 
 }
 
 fn retain_top(cx: &Cx, func: &N) -> bool {
-    let Some(keep) = cx.opts.top_retain.as_deref() else {
-        return false;
-    };
     let Data::Func { kind: FuncKind::Decl, name: Some(name), .. } = &func.data else {
         return false;
     };
-    sym_str(name) == Some(keep)
+    sym_str(name).is_some_and(|name| cx.opts.top_retain.hit(name))
 }
 
 fn note_replaced(expr: &N, cx: &Cx) {

@@ -8,12 +8,12 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `reduce-vars.js` `reset_def` / `safe_to_assign` / `AST_SymbolRef` / `mark_escaped` | `reduce_vars.rs` | constants + function-body `let`/`const` + `direct_access`. Not: escaped depth beyond the mark, lambda single_use, IIFE virtual params |
 | `inline.js` `inline_into_symbolref` | `reduce_vars.rs` `inline_ref` | constants only. Regexp is not a constant. Const write clears `fixed` |
 | `tighten-body.js` `collapse` | `tighten.rs` `collapse` | scan + `find_stop`. Straight-line helper removed |
-| `drop-unused.js` `drop_unused` | `drop_unused.rs` `drop_unused` / `passes` | three walks. Not yet: `top_retain`, direct `eval`, `keep_fnames` |
-| `drop-unused.js` `assign_as_unused` | `drop_unused.rs` `assign_as_unused` | `=` of a symbol. Write-only `++` not yet |
-| `drop-unused.js` `scan_ref_scoped` | `drop_unused.rs` `scan_ref_scoped` | pass 1. Side-effect inits only; destructuring values always |
-| `drop-unused.js` pass 2 (`in_use_ids.forEach`) | `drop_unused.rs` `passes` | inits of in-use names |
-| `drop-unused.js` `tt` | `drop_unused.rs` `rewrite_expr` | drop unread decls; write-only `=` becomes the rhs. `fixed_ids` recorded, not yet applied to in-use names |
-| `index.js` `hoist_properties` / `hoist_declarations` | `hoist.rs` `hoist` | runs at the start of `before`. `hoist_props` on by default. `hoist_vars` / `hoist_funs` off unless set. `top_retain` is a plain name only |
+| `drop-unused.js` `drop_unused` | `drop_unused.rs` `drop_unused` / `analyze` | three walks. `top_retain` is a comma list, array, or regexp, and turns toplevel on when `toplevel` is omitted. Direct `eval` and `with` pin the scope (`pinned`). `keep_fnames` / `keep_classnames` drop unused expression names |
+| `drop-unused.js` `assign_as_unused` | `drop_unused.rs` `assign_as_unused` / `write_only_update` | `=` of a `var`. A discarded `++`/`--` is write-only. `keep_assign` leaves the write as a use |
+| `drop-unused.js` `scan_ref_scoped` | `drop_unused.rs` `scan_ref_scoped` | pass 1. Side-effect inits only. `AST_Defun` / `AST_DefClass` are initializers, walked in pass 2 |
+| `drop-unused.js` pass 2 (`in_use_ids.forEach`) | `drop_unused.rs` `analyze` | inits of in-use names, including names marked while walking |
+| `drop-unused.js` `tt` | `drop_unused.rs` `rewrite_stmt` / `rewrite_expr` | drop unread decls; duplicate `var` becomes an assignment; uninitialized names move ahead of initializers. A discarded pure `=` becomes `0` |
+| `index.js` `hoist_properties` / `hoist_declarations` | `hoist.rs` `hoist` | runs at the start of `before`. `hoist_props` on by default. `hoist_vars` / `hoist_funs` off unless set. `top_retain` matches a comma list, an array, or a regexp |
 | `index.js` `def_optimize` / `OPT` | `eval.rs` `fold` / `opt_table` | one arm per node type. `AST_Node` (no arm) returns the node. Debugger and directives stay in `lib.rs` `optimize` |
 | `index.js` `def_optimize(AST_If)` | `eval.rs` `optimize_if` | negation length, `&&`/`||`, dead branch, exits, nested `if`, abort split. Two expression branches become a conditional and run `AST_Conditional.optimize`. `size.js` `AST_Node.size`, `inference.js` `negate` / `aborts`, `tighten-body.js` `extract_from_unreachable_code` |
 | `index.js` `def_optimize(AST_Binary)` | `eval.rs` `fold_binary` | comparisons, `&&`/`||`/`??`, lhs swap, `===`→`==`. Not bitwise De Morgan or string concat |
@@ -60,3 +60,5 @@ Side-effect board: default 1896/3013 → 1991/3013, 95 newly passing, 0 newly fa
 `fold` is `opt_table`: one arm per node type. New arms: postfix `++`/`--` sequence lift, `AST_Chain`, `AST_Return`, `AST_Yield`, `AST_DefaultAssign`, `AST_VarDef`, empty `AST_Definitions`, `AST_TemplateString`, `AST_RegExp` in boolean context.
 
 Dispatch board: default 1991/3013 → 2008/3013, 17 newly passing, 0 newly failing, lwc 177/339 → 184/339.
+
+Drop-unused board: default 2008/3013 → 2118/3013, 110 newly passing, 0 newly failing, lwc 184/339. `compress/drop-unused` default 88/169 → 128/169, fixture 63/169 → 106/169. `top_retain: "f,a,o"` keeps `a` in `drop_toplevel_vars_retain`. A `finally` read is a use (`syms.rs` walks `Finally`). Not yet: `fixed_ids` on in-use names, and `keep_fargs` trimming beyond a direct call.

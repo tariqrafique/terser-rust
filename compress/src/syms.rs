@@ -43,6 +43,8 @@ pub struct SymbolDef {
     pub references: Vec<usize>,
     pub single_use: SingleUse,
     pub replaced: Cell<u32>,
+    /// Declaration nodes for this name, in source order. terser `SymbolDef.orig`.
+    pub origins: Vec<usize>,
 }
 
 pub struct SymTable {
@@ -326,6 +328,7 @@ fn define(
     let key = ptr(node);
     if let Some(&id) = scopes[scope].names.get(&name) {
         table.node_def.insert(key, id);
+        table.defs[id].origins.push(key);
         if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
@@ -355,6 +358,7 @@ fn define(
         references: Vec::new(),
         single_use: SingleUse::No,
         replaced: Cell::new(0),
+        origins: vec![key],
     });
     scopes[scope].names.insert(name, id);
     table.node_def.insert(key, id);
@@ -443,6 +447,7 @@ fn walk_children(data: &Data, scope: usize, scopes: &mut Vec<Scope>, table: &mut
             walk(cond, scope, scopes, table);
             walk(body, scope, scopes, table);
         }
+        Data::Finally { body } | Data::Labeled { body, .. } => walk(body, scope, scopes, table),
         Data::Switch { expr, body } => {
             walk(expr, scope, scopes, table);
             for arm in body {

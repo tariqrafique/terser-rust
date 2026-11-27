@@ -63,8 +63,16 @@ struct Opts {
     /// terser `hoist_vars` / `hoist_funs`, off unless the fixture sets them.
     hoist_vars: bool,
     hoist_funs: bool,
-    /// terser `top_retain` when it is a plain name. Other forms are not read yet.
-    top_retain: Option<String>,
+    /// terser `top_retain`: a comma list, an array of names, or a regexp.
+    top_retain: TopRetain,
+    /// terser `keep_fnames` / `utils/index.js` `keep_name`.
+    keep_fnames: KeepName,
+    /// terser `keep_classnames` / `keep_name`.
+    keep_classnames: KeepName,
+    /// terser `keep_fargs`. True even when `defaults` is false.
+    keep_fargs: bool,
+    /// terser `unused: "keep_assign"` (`drop-unused.js` `r_keep_assign`).
+    keep_assign: bool,
     /// terser `lib/compress/index.js` `pure_getters`. `"strict"` by default.
     pure_getters: PureGetters,
     /// terser `unsafe` / `unsafe_math`. Off unless the fixture sets them.
@@ -89,6 +97,89 @@ enum UnsafeMethods {
     Off,
     All,
     Pattern { source: String, flags: String },
+}
+
+/// terser `lib/compress/index.js` `top_retain`.
+#[derive(Clone, Debug)]
+pub(crate) enum TopRetain {
+    Off,
+    Names(Vec<String>),
+    Pattern { source: String, flags: String },
+}
+
+impl TopRetain {
+    pub(crate) fn active(&self) -> bool {
+        !matches!(self, TopRetain::Off)
+    }
+
+    /// `compressor.top_retain(def)`.
+    pub(crate) fn hit(&self, name: &str) -> bool {
+        match self {
+            TopRetain::Off => false,
+            TopRetain::Names(names) => names.iter().any(|n| n == name),
+            TopRetain::Pattern { source, flags } => regex_match(source, flags, name),
+        }
+    }
+}
+
+/// terser `utils/index.js` `keep_name`.
+#[derive(Clone, Debug)]
+pub(crate) enum KeepName {
+    No,
+    Yes,
+    Pattern { source: String, flags: String },
+}
+
+impl KeepName {
+    pub(crate) fn keeps(&self, name: &str) -> bool {
+        match self {
+            KeepName::No => false,
+            KeepName::Yes => true,
+            KeepName::Pattern { source, flags } => regex_match(source, flags, name),
+        }
+    }
+}
+
+fn regex_match(source: &str, flags: &str, name: &str) -> bool {
+    let mut builder = regex::RegexBuilder::new(source);
+    builder.case_insensitive(flags.contains('i'));
+    builder.multi_line(flags.contains('m'));
+    builder.dot_matches_new_line(flags.contains('s'));
+    builder.ignore_whitespace(flags.contains('x'));
+    builder.build().is_ok_and(|re| re.is_match(name))
+}
+
+fn keep_name_of(value: &Value) -> KeepName {
+    match value {
+        Value::Bool(true) => KeepName::Yes,
+        Value::Bool(false) => KeepName::No,
+        Value::Object(obj) if obj.get("__terser_type").and_then(Value::as_str) == Some("RegExp") => {
+            KeepName::Pattern {
+                source: obj.get("source").and_then(Value::as_str).unwrap_or("").to_string(),
+                flags: obj.get("flags").and_then(Value::as_str).unwrap_or("").to_string(),
+            }
+        }
+        _ => KeepName::No,
+    }
+}
+
+fn top_retain_of(value: &Value) -> TopRetain {
+    match value {
+        Value::Bool(false) | Value::Null => TopRetain::Off,
+        Value::String(s) => {
+            let names: Vec<String> = s.split(',').map(|part| part.to_string()).filter(|part| !part.is_empty()).collect();
+            if names.is_empty() { TopRetain::Off } else { TopRetain::Names(names) }
+        }
+        Value::Array(items) => {
+            let names: Vec<String> = items.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect();
+            if names.is_empty() { TopRetain::Off } else { TopRetain::Names(names) }
+        }
+        Value::Object(obj) if obj.get("__terser_type").and_then(Value::as_str) == Some("RegExp") => TopRetain::Pattern {
+            source: obj.get("source").and_then(Value::as_str).unwrap_or("").to_string(),
+            flags: obj.get("flags").and_then(Value::as_str).unwrap_or("").to_string(),
+        },
+        _ => TopRetain::Off,
+    }
 }
 
 /// terser `lib/compress/index.js` `pure_getters`.
@@ -132,7 +223,11 @@ impl Opts {
             hoist_props: true,
             hoist_vars: false,
             hoist_funs: false,
-            top_retain: None,
+            top_retain: TopRetain::Off,
+            keep_fnames: KeepName::No,
+            keep_classnames: KeepName::No,
+            keep_fargs: true,
+            keep_assign: false,
             pure_getters: PureGetters::Strict,
             unsafe_opt: false,
             unsafe_math: false,
@@ -174,7 +269,11 @@ impl Opts {
             hoist_props: false,
             hoist_vars: false,
             hoist_funs: false,
-            top_retain: None,
+            top_retain: TopRetain::Off,
+            keep_fnames: KeepName::No,
+            keep_classnames: KeepName::No,
+            keep_fargs: true,
+            keep_assign: false,
             pure_getters: PureGetters::Off,
             unsafe_opt: false,
             unsafe_math: false,
@@ -258,10 +357,20 @@ impl Opts {
         if let Some(v) = bool_key(obj, "collapse_vars") {
             opts.collapse_vars = v;
         }
-        if let Some(v) = bool_key(obj, "unused") {
-            opts.unused = v;
+        let mut toplevel_set = false;
+        if let Some(v) = obj.get("unused") {
+            match v {
+                Value::Bool(on) => opts.unused = *on,
+                Value::String(s) if s.contains("keep_assign") => {
+                    opts.unused = true;
+                    opts.keep_assign = true;
+                }
+                Value::String(_) => opts.unused = true,
+                _ => {}
+            }
         }
         if let Some(v) = obj.get("toplevel") {
+            toplevel_set = true;
             match v {
                 Value::Bool(on) => {
                     opts.toplevel_vars = *on;
@@ -288,8 +397,22 @@ impl Opts {
         if let Some(v) = bool_key(obj, "hoist_funs") {
             opts.hoist_funs = v;
         }
-        if let Some(Value::String(name)) = obj.get("top_retain") {
-            opts.top_retain = Some(name.clone());
+        if let Some(v) = obj.get("top_retain") {
+            opts.top_retain = top_retain_of(v);
+        }
+        if !toplevel_set && opts.top_retain.active() {
+            // terser default `toplevel: !!(options && options["top_retain"])`.
+            opts.toplevel_vars = true;
+            opts.toplevel_funcs = true;
+        }
+        if let Some(v) = obj.get("keep_fnames") {
+            opts.keep_fnames = keep_name_of(v);
+        }
+        if let Some(v) = obj.get("keep_classnames") {
+            opts.keep_classnames = keep_name_of(v);
+        }
+        if let Some(v) = bool_key(obj, "keep_fargs") {
+            opts.keep_fargs = v;
         }
         if let Some(v) = obj.get("pure_getters") {
             opts.pure_getters = pure_getters_of(v);
@@ -552,7 +675,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         locals: vec![HashSet::new()],
         consts: vec![HashMap::new()],
         syms: None,
-        squeezed: HashSet::new(),
+        squeezed: RefCell::new(HashSet::new()),
         optimized: HashSet::new(),
         sealed: RefCell::new(Vec::new()),
         seal: RefCell::new(HashSet::new()),
@@ -582,7 +705,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         out
     };
     if unused {
-        drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs)
+        drop_unused::drop_unused(&out, &cx)
     } else {
         out
     }
@@ -603,7 +726,7 @@ struct Cx {
     consts: Vec<HashMap<String, N>>,
     syms: Option<syms::SymTable>,
     /// terser `SQUEEZED` (`index.js` `Compressor.before`): `before` returns the node.
-    squeezed: HashSet<usize>,
+    squeezed: RefCell<HashSet<usize>>,
     /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
     optimized: HashSet<usize>,
     /// Nodes `def_optimize` already returned, so a later `before` must not run
@@ -946,13 +1069,13 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 /// switch that became `if (c) { stmt; }` is not then rewritten to `c && stmt`.
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
-    if cx.squeezed.contains(&ptr) {
+    if cx.squeezed.borrow().contains(&ptr) {
         return Rc::clone(n);
     }
     // terser `Compressor.before`: hoist before descending. An enclosing `use asm` skips it.
     let hoisted;
     let n = if was_scope(&n.data) && !cx.in_asm() {
-        hoisted = hoist::hoist(n, cx.opts.hoist_props, cx.opts.hoist_funs, cx.opts.hoist_vars, cx.opts.toplevel_vars, cx.opts.top_retain.as_deref(), cx.syms.as_ref());
+        hoisted = hoist::hoist(n, cx.opts.hoist_props, cx.opts.hoist_funs, cx.opts.hoist_vars, cx.opts.toplevel_vars, &cx.opts.top_retain, cx.syms.as_ref());
         &hoisted
     } else {
         n
@@ -1012,7 +1135,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         // mutates them in place and leaves `OPTIMIZED` set, so the descend after
         // `drop_unused` does not fold them again.
         mark_tree_squeezed(&out, cx);
-        let dropped = drop_unused::drop_unused(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs);
+        let dropped = drop_unused::drop_unused(&out, cx);
         transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
         out = map_children(&dropped, cx);
@@ -1061,7 +1184,7 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         return;
     }
     let ptr = Rc::as_ptr(old) as usize;
-    if cx.squeezed.contains(&ptr) {
+    if cx.squeezed.borrow().contains(&ptr) {
         mark_squeezed(cx, new);
     }
     if cx.optimized.contains(&ptr) {
@@ -1179,7 +1302,7 @@ fn mark_optimized(cx: &mut Cx, n: &N) {
 }
 
 fn mark_squeezed(cx: &mut Cx, n: &N) {
-    cx.squeezed.insert(Rc::as_ptr(n) as usize);
+    cx.squeezed.borrow_mut().insert(Rc::as_ptr(n) as usize);
     cx.flag_keep.push(Rc::clone(n));
 }
 

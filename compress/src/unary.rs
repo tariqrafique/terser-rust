@@ -578,6 +578,9 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         Data::Dot { expr, optional, .. } => drop_access(n, expr, None, *optional, cx, first),
         Data::Sub { expr, prop, optional } => drop_access(n, expr, Some(prop), *optional, cx, first),
         Data::Chain { expr } | Data::Spread { expr } => drop_side_effect_free(expr, cx, first),
+        // `drop_side_effect_free(AST_Class)`. A discarded class keeps only the
+        // parts that run as it is created. A self-reference with effects stays.
+        Data::Class { .. } => drop_class(n, cx),
         Data::Template { segments } => {
             let mut parts = Vec::new();
             let mut first_flag = first;
@@ -754,6 +757,106 @@ fn trim_list(nodes: &[N], cx: &Cx, mut first: bool) -> Vec<N> {
         }
     }
     out
+}
+
+/// terser `drop-side-effect-free.js` `AST_Class`.
+fn drop_class(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Class { name, extends, props, stmt } = &n.data else {
+        return Some(Rc::clone(n));
+    };
+    if *stmt {
+        return Some(Rc::clone(n));
+    }
+    let label = name.as_ref().and_then(|nm| match &nm.data {
+        Data::Symbol { name, .. } => Some(name.as_str()),
+        _ => None,
+    });
+    if class_mentions_self(extends.as_ref(), props, label) && class_runs(extends.as_ref(), props, cx) {
+        return Some(Rc::clone(n));
+    }
+    let mut parts = Vec::new();
+    if let Some(extends) = extends {
+        if let Some(kept) = drop_side_effect_free(extends, cx, true) {
+            push_flat(&mut parts, kept);
+        }
+    }
+    for prop in props {
+        match &prop.data {
+            Data::StaticBlock { body } if body.iter().any(|s| may_side_effect(s, cx)) => return Some(Rc::clone(n)),
+            Data::Field { key, value, static_, .. } => {
+                if let Key::Computed(expr) = key {
+                    if let Some(kept) = drop_side_effect_free(expr, cx, parts.is_empty()) {
+                        push_flat(&mut parts, kept);
+                    }
+                }
+                if *static_ {
+                    if let Some(value) = value {
+                        if let Some(kept) = drop_side_effect_free(value, cx, parts.is_empty()) {
+                            push_flat(&mut parts, kept);
+                        }
+                    }
+                }
+            }
+            Data::Prop { key, .. } => {
+                if let Key::Computed(expr) = key {
+                    if let Some(kept) = drop_side_effect_free(expr, cx, parts.is_empty()) {
+                        push_flat(&mut parts, kept);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    seq_from_parts(n, parts)
+}
+
+fn class_runs(extends: Option<&N>, props: &[N], cx: &Cx) -> bool {
+    if extends.is_some_and(|e| may_side_effect(e, cx)) {
+        return true;
+    }
+    props.iter().any(|p| match &p.data {
+        Data::StaticBlock { body } => body.iter().any(|s| may_side_effect(s, cx)),
+        Data::Field { key, value, static_, .. } => {
+            matches!(key, Key::Computed(e) if may_side_effect(e, cx))
+                || *static_ && value.as_ref().is_some_and(|v| may_side_effect(v, cx))
+        }
+        Data::Prop { key, .. } => matches!(key, Key::Computed(e) if may_side_effect(e, cx)),
+        _ => false,
+    })
+}
+
+fn class_mentions_self(extends: Option<&N>, props: &[N], label: Option<&str>) -> bool {
+    fn hit(n: &N, label: Option<&str>, in_fn: bool) -> bool {
+        if !in_fn && matches!(n.data, Data::This) {
+            return true;
+        }
+        if let Data::Symbol { name, kind: SymKind::Ref, .. } = &n.data {
+            if label == Some(name.as_str()) {
+                return true;
+            }
+        }
+        match &n.data {
+            Data::Dot { expr, .. } | Data::Unary { expr, .. } | Data::Chain { expr } => hit(expr, label, in_fn),
+            Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => hit(left, label, in_fn) || hit(right, label, in_fn),
+            Data::Call { expr, args, .. } => hit(expr, label, in_fn) || args.iter().any(|a| hit(a, label, in_fn)),
+            Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(|e| hit(e, label, in_fn)),
+            Data::Cond { cond, cons, alt } => hit(cond, label, in_fn) || hit(cons, label, in_fn) || hit(alt, label, in_fn),
+            Data::Func { body, .. } => body.iter().any(|s| hit(s, label, true)),
+            _ => false,
+        }
+    }
+    if extends.is_some_and(|e| hit(e, label, false)) {
+        return true;
+    }
+    props.iter().any(|p| match &p.data {
+        Data::Field { key, value, static_, .. } => {
+            matches!(key, Key::Computed(e) if hit(e, label, false))
+                || *static_ && value.as_ref().is_some_and(|v| hit(v, label, false))
+        }
+        Data::Prop { key, .. } => matches!(key, Key::Computed(e) if hit(e, label, false)),
+        Data::StaticBlock { body } => body.iter().any(|s| hit(s, label, false)),
+        _ => false,
+    })
 }
 
 fn seq_from_parts(span: &N, parts: Vec<N>) -> Option<N> {

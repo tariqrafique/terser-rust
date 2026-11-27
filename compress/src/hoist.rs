@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use crate::syms::{self, SingleUse, SymTable};
 
-pub fn hoist(n: &N, hoist_props: bool, hoist_funs: bool, hoist_vars: bool, toplevel_vars: bool, top_retain: Option<&str>, table: Option<&SymTable>) -> N {
+pub fn hoist(n: &N, hoist_props: bool, hoist_funs: bool, hoist_vars: bool, toplevel_vars: bool, top_retain: &crate::TopRetain, table: Option<&SymTable>) -> N {
     let n = if hoist_props {
         hoist_properties(n, toplevel_vars, top_retain, table)
     } else {
@@ -194,7 +194,7 @@ fn count_node(n: &N, count: &mut i32) {
 }
 
 /// terser `index.js` `hoist_properties`.
-fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: Option<&str>, table: Option<&SymTable>) -> N {
+fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: &crate::TopRetain, table: Option<&SymTable>) -> N {
     let Some(table) = table else { return Rc::clone(n) };
     let Some(&scope) = table.node_scope.get(&syms::ptr(n)) else { return Rc::clone(n) };
     let mut plan: HashMap<usize, HashMap<String, String>> = HashMap::new();
@@ -206,7 +206,7 @@ fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: Option<&str>, table:
     rewrite_props(n, table, &plan)
 }
 
-fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars: bool, top_retain: Option<&str>, used: &mut HashSet<String>, plan: &mut HashMap<usize, HashMap<String, String>>) {
+fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars: bool, top_retain: &crate::TopRetain, used: &mut HashSet<String>, plan: &mut HashMap<usize, HashMap<String, String>>) {
     if syms::ptr(n) != syms::ptr(root) && matches!(n.data, Data::Func { .. } | Data::StaticBlock { .. }) {
         return;
     }
@@ -216,7 +216,7 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
             let Some(&id) = table.node_def.get(&syms::ptr(name)) else { continue };
             let d = &table.defs[id];
             let exposed = d.global && if d.is_defun { false } else { !toplevel_vars };
-            if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain == Some(d.name.as_str()) {
+            if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain.hit(&d.name) {
                 continue;
             }
             let Some(fixed) = &d.fixed else { continue };

@@ -177,7 +177,7 @@ fn trim(span: &N, exprs: Vec<N>, cx: &Cx, preserve: bool) -> N {
 
 fn reopt(n: N, cx: &Cx) -> N {
     let ptr = Rc::as_ptr(&n) as usize;
-    if cx.optimized.contains(&ptr) || cx.squeezed.contains(&ptr) {
+    if cx.optimized.contains(&ptr) || cx.squeezed.borrow().contains(&ptr) {
         return n;
     }
     let Some(_guard) = enter() else {
