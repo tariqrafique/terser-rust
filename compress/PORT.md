@@ -26,6 +26,11 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `index.js` `def_optimize(AST_Sequence)` | `sequence.rs` `optimize` | `side_effects` filter (`drop-side-effect-free.js`), `merge_sequence`, `trim_right_for_undefined`. One expression uses `common.js` `maintain_this_binding`. `AST_Binary.lift_sequences` is the same `make_sequence().optimize`. The conditional sequence lift stays in `conditional.rs` |
 | `index.js` `def_optimize(AST_Assign)` | `assign.rs` `optimize` | `x = x`, exit writes, `AST_Binary.lift_sequences`, `x = x - 2` → `x -= 2`. `fixed = false` on the compound-to-binary exit. Not `AST_DefaultAssign` |
 | `index.js` `def_optimize(AST_Array)` / `def_optimize(AST_Object)` / `def_optimize(AST_ObjectKeyVal)` | `object.rs` `optimize` | `literals_in_boolean_context`, `inline_array_like_spread`, `inline_object_prop_spread`. `lift_key` then `unsafe_methods` (`ecma >= 2015`) turns an anonymous function or block arrow into a concise method. `unsafe_methods` is off unless set |
+| `index.js` `def_optimize(AST_While)` / `def_optimize(AST_Do)` / `def_optimize(AST_For)` / `if_break_in_loop` | `loops.rs` `optimize` | `while` becomes `for`. Constant `do` becomes `for` or a block (`common.js` `has_break_or_continue`). `for` drops a side-effect-free init, drops a truthy test, and removes a falsy test (`dead_code`). A leading `if (c) break` / `else break` folds into the test (`inference.js` `negate`) |
+| `index.js` `def_optimize(AST_ForIn)` / `def_optimize(AST_ForOf)` | — | neither type defines `optimize`. `AST_Node` returns the node |
+| `index.js` `def_optimize(AST_Switch)` | `loops.rs` `optimize_switch` | constant discriminant, dead cases, duplicate `default`, equivalent-branch merge, empty-switch removal, `switch` to `if` or a block. A switch-built `if` stays an `if` (`OPTIMIZED`) |
+| `index.js` `def_optimize(AST_Try)` | `loops.rs` `optimize_try` | drop an empty `finally` when `catch` is present. An empty `try` becomes the `finally` body plus declarations extracted from `catch` |
+| `index.js` `def_optimize(AST_Catch)` / `def_optimize(AST_Finally)` | `lib.rs` `after_descend` | both extend `AST_Block`, so `tighten_body` is the inner block. `keep_block` leaves the braces |
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
@@ -43,4 +48,4 @@ Assign board `81aabec8be8d-848142da17ac`: default 1798/3013 → 1810/3013, 12 ne
 
 Object board `916f95ba3b34-848142da17ac`: default 1810/3013 → 1825/3013, 15 newly passing, 0 newly failing, lwc 174/339.
 
-Next: the rest of the shared fold chain (loops/switch/try/if-return, side effects).
+Next: side-effect folds still in the shared chain (`fold_bool`, `fold_value`, `drop_statement`, `unwrap_void_statement`, `negate_iife`).

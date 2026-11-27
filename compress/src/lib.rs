@@ -12,6 +12,7 @@ mod drop_unused;
 mod eval;
 mod sequence;
 mod hoist;
+mod loops;
 mod object;
 mod tighten;
 mod reduce_vars;
@@ -553,6 +554,8 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         squeezed: HashSet::new(),
         optimized: HashSet::new(),
         sealed: RefCell::new(Vec::new()),
+        seal: RefCell::new(HashSet::new()),
+        seal_keep: RefCell::new(Vec::new()),
         flag_keep: Vec::new(),
         stack: Vec::new(),
         parents: Vec::new(),
@@ -608,6 +611,10 @@ struct Cx {
     /// `AST_Conditional` is the case that matters here: `x = (y ? 2 : 2)`
     /// becomes `x = (y, 2)` and is not lifted to `y, x = 2`.
     sealed: RefCell<Vec<N>>,
+    /// Switch-built `if` nodes. Terser sets `OPTIMIZED` on them inside `def_optimize(AST_Switch)`,
+    /// so the second descend does not turn `if (c) s` into `c && s`.
+    seal: RefCell<HashSet<usize>>,
+    seal_keep: RefCell<Vec<N>>,
     /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
     flag_keep: Vec<N>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
@@ -732,6 +739,12 @@ impl Cx {
     fn drop_directive(&self, value: &str, ptr: usize) -> bool {
         let known = value == "use strict" || value == "use asm";
         !known || self.lookup(value) != Some(ptr)
+    }
+
+    /// Mark `n` so a later `transform` does not run `def_optimize` on it again.
+    pub(crate) fn seal_optimized(&self, n: &N) {
+        self.seal.borrow_mut().insert(Rc::as_ptr(n) as usize);
+        self.seal_keep.borrow_mut().push(Rc::clone(n));
     }
 
     /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
@@ -974,12 +987,13 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
     let sealed = is_sealed(cx, n);
+    let switch_sealed = cx.seal.borrow().contains(&twice_ptr) || cx.seal.borrow().contains(&ptr);
     let mut out = if sealed {
         if !is_sealed(cx, &twice) {
             seal(cx, &twice);
         }
         Rc::clone(&twice)
-    } else if cx.optimized.contains(&twice_ptr) {
+    } else if cx.optimized.contains(&twice_ptr) || switch_sealed {
         Rc::clone(&twice)
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
@@ -1752,7 +1766,12 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let body_m = transform(body, cx);
             let (alt, c3) = map_opt(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body) || c3;
-            finish(n, Data::If { cond: cond_m, body: body_m, alt }, c)
+            let out = finish(n, Data::If { cond: cond_m, body: body_m, alt }, c);
+            // Terser mutates the sealed `if` in place, so `OPTIMIZED` survives a child update.
+            if c && cx.seal.borrow().contains(&(Rc::as_ptr(n) as usize)) {
+                cx.seal_optimized(&out);
+            }
+            out
         }
         Data::Switch { expr, body } => {
             let expr_m = transform(expr, cx);
