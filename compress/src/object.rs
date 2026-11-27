@@ -19,6 +19,7 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
     match &n.data {
         Data::Array { elements } => optimize_array(n, elements, cx),
         Data::Object { props } => optimize_object(n, props, cx),
+        Data::Prop { method: Some(MethodKind::Method), .. } => optimize_method(n, cx),
         Data::Prop { method: None, .. } => optimize_keyval(n, cx),
         // terser `def_optimize(AST_RegExp)` is `literals_in_boolean_context`.
         Data::RegExp { .. } => literals_in_boolean_context(n, cx),
@@ -237,6 +238,77 @@ fn is_constant_expr(expr: &N) -> bool {
         Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void") => {
             is_ast_constant(expr) || is_constant_expr(expr)
         }
+        _ => false,
+    }
+}
+
+/// terser `def_optimize(AST_ConciseMethod)`.
+///
+/// `arrows` (on by default) turns `p(){ return x }` into `p: () => x` when the
+/// method does not use `this` or `arguments` and is not pinned.
+fn optimize_method(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.arrows {
+        return None;
+    }
+    if !cx.parent().is_some_and(|p| matches!(p.data, Data::Object { .. })) {
+        return None;
+    }
+    let Data::Prop { method: Some(MethodKind::Method), key, value, static_, private, .. } = &n.data else {
+        return None;
+    };
+    let Data::Func { args, body, async_, generator, .. } = &value.data else {
+        return None;
+    };
+    if *generator || body.len() != 1 || method_blocked(value) {
+        return None;
+    }
+    let Data::Return { value: Some(_) } = &body[0].data else {
+        return None;
+    };
+    let arrow = atom(
+        value,
+        Data::Func {
+            kind: FuncKind::Arrow,
+            name: None,
+            args: args.clone(),
+            body: body.clone(),
+            async_: *async_,
+            generator: false,
+        },
+    );
+    Some(atom(
+        n,
+        Data::Prop {
+            method: None,
+            key: key.clone(),
+            value: arrow,
+            static_: *static_,
+            private: *private,
+            generator: false,
+            async_: false,
+        },
+    ))
+}
+
+fn method_blocked(func: &N) -> bool {
+    let Data::Func { body, .. } = &func.data else { return true };
+    body.iter().any(method_bad) || eval::contains_this(func)
+}
+
+fn method_bad(n: &N) -> bool {
+    match &n.data {
+        Data::With { .. } => true,
+        Data::Symbol { name, .. } if name == "arguments" => true,
+        Data::Call { expr, .. } if expr.symbol_name() == Some("eval") => true,
+        Data::Func { .. } | Data::Class { .. } => false,
+        Data::Block { body } | Data::Default { body } => body.iter().any(method_bad),
+        Data::If { cond, body, alt } => method_bad(cond) || method_bad(body) || alt.as_ref().is_some_and(|a| method_bad(a)),
+        Data::Return { value: Some(v) } | Data::Simple { body: v } | Data::Unary { expr: v, .. } => method_bad(v),
+        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => method_bad(left) || method_bad(right),
+        Data::Call { expr, args, .. } => method_bad(expr) || args.iter().any(method_bad),
+        Data::Sub { expr, prop, .. } => method_bad(expr) || method_bad(prop),
+        Data::Dot { expr, .. } => method_bad(expr),
+        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(method_bad),
         _ => false,
     }
 }

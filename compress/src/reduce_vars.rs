@@ -5,7 +5,7 @@
 //! `single_use`, and `escaped`. `inline_ref` is `inline_into_symbolref` in
 //! `lib/compress/inline.js` for values that are constant expressions.
 
-use ast::{Data, Key, N, Node, SymKind};
+use ast::{Data, Key, N, SymKind};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -94,14 +94,16 @@ fn walk(n: &N, tw: &mut Tw) {
     match &n.data {
         Data::Toplevel { body } => {
             // terser `reduce-vars.js` `AST_Toplevel`: reset variables on the root frame.
+            // `let` / `const` live on that same frame here (`block_scope` in terser).
             if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
                 reset_variables(tw, scope);
+                reset_block_variables(tw, scope);
             }
             for stmt in body {
                 walk(stmt, tw);
             }
         }
-        Data::Func { body, .. } => {
+        Data::Func { name, args, body, .. } => {
             // terser `reduce-vars.js` `mark_lambda`: push a safe_ids frame, reset this function's variables, descend, pop.
             // The function body is a block in terser (`AST_Block.reduce_vars` calls
             // `reset_block_variables`). Our body is the statement list on the function,
@@ -110,6 +112,13 @@ fn walk(n: &N, tw: &mut Tw) {
             if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
                 reset_variables(tw, scope);
                 reset_block_variables(tw, scope);
+                // terser `reduce-vars.js` `mark_lambda`: an anonymous IIFE's parameters
+                // are fixed to the call arguments so the body can inline them.
+                if name.is_none() && !fn_uses_arguments(body) && !scope_pinned(tw, scope) {
+                    if let Some(call_args) = iife_args(tw, n) {
+                        bind_iife_params(tw, args, &call_args, n);
+                    }
+                }
             }
             for stmt in body {
                 walk(stmt, tw);
@@ -456,7 +465,12 @@ fn safe_to_read(tw: &Tw, id: usize) -> bool {
     if matches!(tw.table.defs[id].single_use, SingleUse::Modified) {
         return false;
     }
-    matches!(safe_flag(tw, id), Some(true))
+    if matches!(safe_flag(tw, id), Some(true)) {
+        return true;
+    }
+    // terser `safe_to_read`: a function declaration stays readable outside `safe_ids`.
+    tw.table.defs[id].is_defun
+        && tw.table.defs[id].fixed.as_ref().is_some_and(|f| matches!(f.data, Data::Func { .. }))
 }
 
 /// terser `reduce-vars.js` `safe_to_assign`.
@@ -500,9 +514,17 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
         tw.table.defs[id].single_use = SingleUse::No;
     } else if let Some(fixed) = tw.table.defs[id].fixed.clone() {
         fixed_value = Some(Rc::clone(&fixed));
-        if tw.env.unused && !exposed(&tw.table.defs[id], tw.env) && ref_once(tw, id) {
-            // terser sets single_use when the fixed value is a constant expression in this scope.
-            tw.table.defs[id].single_use = if is_constant_expr(&fixed) { SingleUse::Yes } else { SingleUse::No };
+        if is_recursive_ref(tw, id) {
+            // terser `reduce-vars.js` `AST_SymbolRef`: a call of the enclosing function name.
+            tw.table.defs[id].recursive_refs = tw.table.defs[id].recursive_refs.saturating_add(1);
+        } else if tw.env.unused && !exposed(&tw.table.defs[id], tw.env) && ref_once(tw, id) {
+            // terser sets single_use for an unpinned lambda, or a constant expression in this scope.
+            let lambda = matches!(fixed.data, Data::Func { .. }) && !value_pinned(&fixed);
+            tw.table.defs[id].single_use = if lambda || is_constant_expr(&fixed) {
+                SingleUse::Yes
+            } else {
+                SingleUse::No
+            };
         } else {
             tw.table.defs[id].single_use = SingleUse::No;
         }
@@ -899,5 +921,101 @@ fn sym_ref(n: &N) -> Option<()> {
     match &n.data {
         Data::Symbol { kind: SymKind::Ref, .. } => Some(()),
         _ => None,
+    }
+}
+
+/// terser `common.js` `is_recursive_ref`.
+fn is_recursive_ref(tw: &Tw, id: usize) -> bool {
+    for node in tw.parents.iter().rev() {
+        let name = match &node.data {
+            Data::Func { name, .. } | Data::Class { name, .. } => name.as_ref(),
+            _ => None,
+        };
+        if name.and_then(|n| def_of(tw, n)) == Some(id) {
+            return true;
+        }
+    }
+    false
+}
+
+fn scope_pinned(tw: &Tw, scope: usize) -> bool {
+    tw.table
+        .scope_defs
+        .get(&scope)
+        .is_some_and(|ids| ids.iter().any(|&id| tw.table.defs[id].pinned))
+}
+
+fn value_pinned(n: &N) -> bool {
+    let Data::Func { body, .. } = &n.data else {
+        return pinned_inside(n);
+    };
+    body.iter().any(pinned_inside)
+}
+
+fn pinned_inside(n: &N) -> bool {
+    match &n.data {
+        Data::With { .. } => true,
+        Data::Func { kind: ast::FuncKind::Arrow, body, .. } => body.iter().any(pinned_inside),
+        Data::Func { .. } | Data::Class { .. } => false,
+        Data::Call { expr, args, .. } => {
+            sym_str(expr).as_deref() == Some("eval") || pinned_inside(expr) || args.iter().any(pinned_inside)
+        }
+        Data::Block { body } | Data::Default { body } => body.iter().any(pinned_inside),
+        Data::If { cond, body, alt } => pinned_inside(cond) || pinned_inside(body) || alt.as_ref().is_some_and(|a| pinned_inside(a)),
+        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => pinned_inside(left) || pinned_inside(right),
+        Data::Return { value: Some(v) } | Data::Simple { body: v } | Data::Unary { expr: v, .. } => pinned_inside(v),
+        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(pinned_inside),
+        _ => false,
+    }
+}
+
+/// `arguments` on this function, including references inside its arrows.
+fn fn_uses_arguments(body: &[N]) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" => true,
+            Data::Func { kind: ast::FuncKind::Arrow, body, .. } => body.iter().any(rec),
+            Data::Func { .. } => false,
+            Data::Block { body } | Data::Default { body } => body.iter().any(rec),
+            Data::If { cond, body, alt } => rec(cond) || rec(body) || alt.as_ref().is_some_and(|a| rec(a)),
+            Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => rec(left) || rec(right),
+            Data::Call { expr, args, .. } => rec(expr) || args.iter().any(rec),
+            Data::Return { value: Some(v) } | Data::Simple { body: v } | Data::Unary { expr: v, .. } => rec(v),
+            Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(rec),
+            Data::Sub { expr, prop, .. } => rec(expr) || rec(prop),
+            Data::Dot { expr, .. } => rec(expr),
+            _ => false,
+        }
+    }
+    body.iter().any(rec)
+}
+
+/// Arguments of the call whose callee is `func`.
+fn iife_args(tw: &Tw, func: &N) -> Option<Vec<N>> {
+    let parent = tw.parents.iter().rev().nth(1)?;
+    match &parent.data {
+        Data::Call { expr, args, .. } if Rc::ptr_eq(expr, func) => Some(args.clone()),
+        _ => None,
+    }
+}
+
+/// terser `reduce-vars.js` `mark_lambda` virtual parameters.
+fn bind_iife_params(tw: &mut Tw, params: &[N], args: &[N], span: &N) {
+    if args.iter().any(|a| matches!(a.data, Data::Spread { .. })) {
+        return;
+    }
+    if !params.iter().all(|p| matches!(p.data, Data::Symbol { kind: SymKind::Funarg, .. })) {
+        return;
+    }
+    for (i, param) in params.iter().enumerate() {
+        let Some(id) = def_of(tw, param) else { continue };
+        if tw.table.defs[id].origins != 1 || tw.table.defs[id].init.is_some() || tw.table.defs[id].fixed.is_some() {
+            tw.table.defs[id].fixed = None;
+            continue;
+        }
+        let value = args.get(i).cloned().unwrap_or_else(|| crate::eval::void0(span));
+        tw.table.defs[id].fixed = Some(value);
+        tw.loop_ids.insert(id, tw.in_loop);
+        mark(tw, id, true);
     }
 }

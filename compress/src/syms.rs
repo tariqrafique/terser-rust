@@ -43,6 +43,8 @@ pub struct SymbolDef {
     pub references: Vec<usize>,
     pub single_use: SingleUse,
     pub replaced: Cell<u32>,
+    /// terser `SymbolDef.orig.length`. More than one means a param shares a `var`.
+    pub origins: u32,
 }
 
 pub struct SymTable {
@@ -54,6 +56,23 @@ pub struct SymTable {
     pub scope_parent: Vec<Option<usize>>,
     /// Function scope that owns each scope id.
     pub fn_of: Vec<usize>,
+}
+
+impl SymTable {
+    /// terser `AST_Scope.conflicting_def`: the name is defined in this scope or an outer one.
+    pub fn name_conflicts(&self, mut scope: usize, name: &str) -> bool {
+        loop {
+            if let Some(ids) = self.scope_defs.get(&scope) {
+                if ids.iter().any(|&id| self.defs[id].name == name) {
+                    return true;
+                }
+            }
+            match self.scope_parent.get(scope).copied().flatten() {
+                Some(parent) => scope = parent,
+                None => return false,
+            }
+        }
+    }
 }
 
 struct Scope {
@@ -209,7 +228,8 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
             Data::Func { .. } => {
                 if let Data::Func { kind: ast::FuncKind::Decl, name: Some(name), .. } = &stmt.data {
                     if let Some(sym_name) = sym(name) {
-                        define(table, scopes, fn_scope, sym_name, name, SymKind::Defun, None, false);
+                        // `def.init` for `AST_SymbolDefun` is the function. `reset_def` copies it to `fixed`.
+                        define(table, scopes, fn_scope, sym_name, name, SymKind::Defun, Some(Rc::clone(stmt)), false);
                     }
                 }
             }
@@ -326,6 +346,7 @@ fn define(
     let key = ptr(node);
     if let Some(&id) = scopes[scope].names.get(&name) {
         table.node_def.insert(key, id);
+        table.defs[id].origins = table.defs[id].origins.saturating_add(1);
         if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
@@ -355,6 +376,7 @@ fn define(
         references: Vec::new(),
         single_use: SingleUse::No,
         replaced: Cell::new(0),
+        origins: 1,
     });
     scopes[scope].names.insert(name, id);
     table.node_def.insert(key, id);

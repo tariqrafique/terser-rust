@@ -234,16 +234,22 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
             }
         }
     }
-    if !direct && !ann.inline_ {
+    // terser `inline_into_call`: a single reference may inline a non-direct callee.
+    // `reduce_funcs` off keeps a function declared in another scope.
+    let single = !direct && cx.opts.unused && single_ref(expr, cx) && is_constant_expr(func) && !cross_scope_blocked(expr, func, cx);
+    if !direct && !ann.inline_ && !single {
         return None;
     }
     if ann.pure || ann.noinline || cx.parent_is_class() || cx.nearest_scope_is_class() || cx.in_default_assign() {
         return None;
     }
-    if name.is_some() && matches!(kind, FuncKind::Expr | FuncKind::Decl) {
+    // `!(fn.name && fn instanceof AST_Function)`. A declaration is not an
+    // `AST_Function`. An expression name that the body never reads was cleared
+    // by `drop_unused` before this call.
+    if name_blocks(kind, name.as_ref(), body) {
         return None;
     }
-    if !matches!(kind, FuncKind::Expr | FuncKind::Arrow) {
+    if !matches!(kind, FuncKind::Expr | FuncKind::Arrow | FuncKind::Decl) {
         return None;
     }
     if params.iter().any(|p| !is_simple_funarg(p))
@@ -253,16 +259,232 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
     {
         return None;
     }
+    let param_used = params.iter().any(|p| sym_str(p).is_some_and(|name| refs_name(body, name)));
+    let has_var = body.iter().any(|s| matches!(s.data, Data::Defs { kind: ast::DefKind::Var, .. }));
+    if param_used || has_var {
+        if param_used && cx.opts.inline < 2 || has_var && cx.opts.inline < 3 {
+            return None;
+        }
+        // terser `inline.js` `flatten_fn` / `can_inject_symbols`.
+        return flatten_fn(n, func, params, body, args, cx);
+    }
     let returned = single_result(body)?;
     if blocked(&returned) {
-        return None;
-    }
-    if params.iter().any(|p| sym_str(p).is_some_and(|name| refs_name(body, name))) {
         return None;
     }
     let mut exprs: Vec<N> = args.to_vec();
     exprs.push(returned);
     Some(finish_seq(n, exprs, cx))
+}
+
+fn single_ref(expr: &N, cx: &Cx) -> bool {
+    let Some(table) = cx.syms.as_ref() else { return false };
+    let Some(&id) = table.node_def.get(&crate::syms::ptr(expr)) else { return false };
+    let def = &table.defs[id];
+    def.references.len() == 1 && def.recursive_refs == 0
+}
+
+/// terser `inline_into_symbolref`: `reduce_funcs` off does not inline a lambda across scopes.
+fn cross_scope_blocked(expr: &N, func: &N, cx: &Cx) -> bool {
+    if cx.opts.reduce_funcs || !matches!(func.data, Data::Func { kind: FuncKind::Decl, .. }) {
+        return false;
+    }
+    let Some(table) = cx.syms.as_ref() else { return false };
+    let Some(&id) = table.node_def.get(&crate::syms::ptr(expr)) else { return false };
+    let def_scope = table.defs[id].scope;
+    let Some(here) = cx.parents.iter().rev().find(|p| matches!(p.data, Data::Func { .. } | Data::Toplevel { .. })) else {
+        return false;
+    };
+    let Some(&scope) = table.node_scope.get(&crate::syms::ptr(here)) else { return false };
+    def_scope != scope
+}
+
+fn name_blocks(kind: &FuncKind, name: Option<&N>, body: &[N]) -> bool {
+    if !matches!(kind, FuncKind::Expr) {
+        return false;
+    }
+    let Some(name) = name else { return false };
+    sym_str(name).is_some_and(|nm| refs_name(body, nm))
+}
+
+/// terser `inline.js` `can_flatten_body` + `flatten_fn`.
+fn flatten_fn(n: &N, func: &N, params: &[N], body: &[N], args: &[N], cx: &Cx) -> Option<N> {
+    let scope = injection_scope(cx)?;
+    let discard_void = cx.parent_is_simple();
+    let (body_vars, value) = flatten_value(body, cx.opts.inline, discard_void, n)?;
+    let blocked = lexical_names(cx);
+    let safe = safe_scope(cx, scope);
+    let mut exprs = Vec::new();
+    let mut decls: Vec<String> = Vec::new();
+    for arg in args.iter().skip(params.len()) {
+        exprs.push(Rc::clone(arg));
+    }
+    for (i, param) in params.iter().enumerate() {
+        let name = sym_str(param)?;
+        let used = refs_name(body, name);
+        let value_arg = args.get(i).cloned();
+        if !used {
+            if let Some(v) = value_arg {
+                exprs.push(v);
+            }
+            continue;
+        }
+        if !safe || name_taken(cx, scope, name, &blocked) {
+            return None;
+        }
+        if !decls.iter().any(|d| d == name) {
+            decls.push(name.to_string());
+        }
+        if let Some(v) = value_arg {
+            exprs.push(assign(n, sym_ref(param, name), v));
+        }
+    }
+    for (name, init) in &body_vars {
+        if !safe || name_taken(cx, scope, name, &blocked) {
+            return None;
+        }
+        if !decls.iter().any(|d| d == name) {
+            decls.push(name.clone());
+        }
+        if let Some(v) = init {
+            exprs.push(assign(n, sym_ref(func, name), Rc::clone(v)));
+        }
+    }
+    exprs.push(value);
+    if !decls.is_empty() {
+        let decl = var_decl(n, &decls);
+        if !cx.inject_var(decl, &decls) {
+            return None;
+        }
+    }
+    Some(finish_seq(n, exprs, cx))
+}
+
+fn flatten_value(body: &[N], inline: i32, discard_void: bool, span: &N) -> Option<(Vec<(String, Option<N>)>, N)> {
+    if inline < 3 {
+        if body.len() != 1 {
+            return None;
+        }
+        return Some((Vec::new(), stmt_value(&body[0], discard_void, span)?));
+    }
+    let mut stat: Option<&N> = None;
+    let mut vars = Vec::new();
+    for line in body {
+        match &line.data {
+            Data::Empty => {}
+            Data::Defs { kind: ast::DefKind::Var, defs, .. } => {
+                for def in defs {
+                    let Data::VarDef { name, value } = &def.data else { return None };
+                    let name = sym_str(name)?.to_string();
+                    if stat.is_some() && value.is_some() {
+                        return None;
+                    }
+                    vars.push((name, value.clone()));
+                }
+            }
+            _ => {
+                if stat.is_some() {
+                    return None;
+                }
+                stat = Some(line);
+            }
+        }
+    }
+    let value = match stat {
+        Some(stat) => stmt_value(stat, discard_void, span)?,
+        None => void0(span),
+    };
+    Some((vars, value))
+}
+
+fn stmt_value(stat: &N, discard_void: bool, span: &N) -> Option<N> {
+    match &stat.data {
+        Data::Return { value: Some(v) } => Some(Rc::clone(v)),
+        Data::Return { value: None } => Some(void0(span)),
+        Data::Simple { body } if discard_void => Some(Rc::clone(body)),
+        Data::Simple { body } => Some(unary(stat, "void", Rc::clone(body))),
+        _ => None,
+    }
+}
+
+fn injection_scope(cx: &Cx) -> Option<&N> {
+    for node in cx.parents.iter().rev().skip(1) {
+        match &node.data {
+            Data::Class { .. } => return None,
+            Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } => return Some(node),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn safe_scope(cx: &Cx, scope: &N) -> bool {
+    !matches!(scope.data, Data::Toplevel { .. }) || cx.opts.toplevel_vars
+}
+
+fn lexical_names(cx: &Cx) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for node in cx.parents.iter().rev().skip(1) {
+        if matches!(node.data, Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } | Data::Class { .. }) {
+            break;
+        }
+        collect_lexical(node, &mut names);
+    }
+    names
+}
+
+fn collect_lexical(n: &N, names: &mut HashSet<String>) {
+    match &n.data {
+        Data::Defs { kind, defs, .. } if !matches!(kind, ast::DefKind::Var) => {
+            for def in defs {
+                if let Data::VarDef { name, .. } = &def.data {
+                    if let Some(name) = sym_str(name) {
+                        names.insert(name.to_string());
+                    }
+                }
+            }
+        }
+        Data::Catch { arg: Some(arg), .. } | Data::Class { name: Some(arg), .. } => {
+            if let Some(name) = sym_str(arg) {
+                names.insert(name.to_string());
+            }
+        }
+        Data::For { init: Some(init), .. } => collect_lexical(init, names),
+        _ => {}
+    }
+}
+
+fn name_taken(cx: &Cx, scope: &N, name: &str, blocked: &HashSet<String>) -> bool {
+    if matches!(name, "Infinity" | "NaN" | "undefined") || blocked.contains(name) || cx.injected_name(scope, name) {
+        return true;
+    }
+    let Some(table) = cx.syms.as_ref() else { return true };
+    let Some(&id) = table.node_scope.get(&crate::syms::ptr(scope)) else { return true };
+    table.name_conflicts(id, name)
+}
+
+fn sym_ref(span: &N, name: &str) -> N {
+    atom(span, Data::Symbol { name: name.into(), kind: SymKind::Ref, quote: None })
+}
+
+fn assign(span: &N, left: N, right: N) -> N {
+    atom(span, Data::Assign { op: "=".into(), left, right, logical: false })
+}
+
+fn var_decl(span: &N, names: &[String]) -> N {
+    let defs = names
+        .iter()
+        .map(|name| {
+            atom(
+                span,
+                Data::VarDef {
+                    name: atom(span, Data::Symbol { name: name.clone(), kind: SymKind::Var, quote: None }),
+                    value: None,
+                },
+            )
+        })
+        .collect();
+    atom(span, Data::Defs { kind: ast::DefKind::Var, defs, await_: false })
 }
 
 fn drop_empty_call(n: &N, func: &N, args: &[N], cx: &Cx) -> Option<N> {

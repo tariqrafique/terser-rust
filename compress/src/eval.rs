@@ -2243,7 +2243,8 @@ fn fixed_of<'a>(n: &N, cx: &'a Cx) -> Option<&'a N> {
 pub(crate) fn contains_this(root: &N) -> bool {
     fn rec(n: &N) -> bool {
         match &n.data {
-            Data::This => return true,
+            // `AST_Super` extends `AST_This`, so `instanceof AST_This` is true for `super`.
+            Data::This | Data::Super => return true,
             Data::Func { kind, .. } if *kind != FuncKind::Arrow => return false,
             Data::Class { .. } => return false,
             _ => {}
@@ -3495,6 +3496,13 @@ fn eval_typeof(expr: &N, cx: &Cx) -> Option<Lit> {
 fn typeof_ast(expr: &N, cx: &Cx) -> Option<String> {
     if !cx.opts.typeofs {
         return None;
+    }
+    // A binding named `arguments` is the arguments object unless a function
+    // declaration shadows it. Terser does not fold `typeof arguments` there.
+    if let Data::Symbol { name, .. } = &expr.data {
+        if name == "arguments" {
+            return None;
+        }
     }
     if is_lambda(expr) || fixed_of(expr, cx).is_some_and(is_lambda) {
         return Some("function".into());

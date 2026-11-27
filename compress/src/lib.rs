@@ -81,6 +81,12 @@ struct Opts {
     expression: bool,
     /// terser `unsafe_methods`. Off unless set. A regexp only rewrites matching keys.
     unsafe_methods: UnsafeMethods,
+    /// terser `unsafe_arrows`. Off unless the fixture sets it.
+    unsafe_arrows: bool,
+    /// terser `arrows`. On by default. A concise method that only returns becomes an arrow property.
+    arrows: bool,
+    /// terser `reduce_funcs`. On by default. Cross-scope function values stay when this is off.
+    reduce_funcs: bool,
 }
 
 /// terser `unsafe_methods`: `false`, `true`, or a `RegExp`.
@@ -141,6 +147,9 @@ impl Opts {
             ecma: 5,
             expression: false,
             unsafe_methods: UnsafeMethods::Off,
+            unsafe_arrows: false,
+            arrows: true,
+            reduce_funcs: true,
         }
     }
 
@@ -183,6 +192,9 @@ impl Opts {
             ecma: 5,
             expression: false,
             unsafe_methods: UnsafeMethods::Off,
+            unsafe_arrows: false,
+            arrows: false,
+            reduce_funcs: false,
         }
     }
 
@@ -318,6 +330,15 @@ impl Opts {
         if let Some(v) = obj.get("unsafe_methods") {
             opts.unsafe_methods = unsafe_methods_of(v);
         }
+        if let Some(v) = bool_key(obj, "unsafe_arrows") {
+            opts.unsafe_arrows = v;
+        }
+        if let Some(v) = bool_key(obj, "arrows") {
+            opts.arrows = v;
+        }
+        if let Some(v) = bool_key(obj, "reduce_funcs") {
+            opts.reduce_funcs = v;
+        }
         opts
     }
 
@@ -349,6 +370,9 @@ impl Opts {
             || self.unsafe_math
             || self.expression
             || !matches!(self.unsafe_methods, UnsafeMethods::Off)
+            || self.unsafe_arrows
+            || self.arrows
+            || self.reduce_funcs
     }
 }
 
@@ -560,6 +584,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         flag_keep: Vec::new(),
         stack: Vec::new(),
         parents: Vec::new(),
+        injected: RefCell::new(Vec::new()),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -622,6 +647,17 @@ struct Cx {
     stack: Vec<N>,
     /// terser `TreeWalker.stack`. Last node is `self()`, the one before it is `parent()`.
     parents: Vec<N>,
+    /// `inline.js` `flatten_fn` splices `var` declarations into the enclosing scope,
+    /// after the statement that contains the call. `sequence_statements` then
+    /// places a declaration-only `var` ahead of the pending expression statements.
+    injected: RefCell<Vec<Injected>>,
+}
+
+struct Injected {
+    after: usize,
+    decl: N,
+    scope: usize,
+    names: Vec<String>,
 }
 
 impl Cx {
@@ -832,6 +868,60 @@ impl Cx {
         })
     }
 
+    /// terser `inline.js` `flatten_fn`: insert `var` after the statement under the enclosing scope.
+    pub(crate) fn inject_var(&self, decl: N, names: &[String]) -> bool {
+        let parents = &self.parents;
+        if parents.len() < 2 {
+            return false;
+        }
+        let mut scope_i = None;
+        for i in (0..parents.len()).rev() {
+            match &parents[i].data {
+                Data::Class { .. } => return false,
+                Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } => {
+                    scope_i = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        let Some(si) = scope_i else { return false };
+        if si + 1 >= parents.len() {
+            return false;
+        }
+        let scope = Rc::as_ptr(&parents[si]) as usize;
+        let after = Rc::as_ptr(&parents[si + 1]) as usize;
+        self.injected.borrow_mut().push(Injected {
+            after,
+            decl,
+            scope,
+            names: names.to_vec(),
+        });
+        true
+    }
+
+    pub(crate) fn injected_name(&self, scope: &N, name: &str) -> bool {
+        let scope = Rc::as_ptr(scope) as usize;
+        self.injected.borrow().iter().any(|item| item.scope == scope && item.names.iter().any(|n| n == name))
+    }
+
+    fn take_injected(&self, after: usize) -> Vec<N> {
+        let all = std::mem::take(&mut *self.injected.borrow_mut());
+        let mut kept = Vec::new();
+        let mut taken = Vec::new();
+        for item in all {
+            if item.after == after {
+                taken.push(item.decl);
+            } else {
+                kept.push(item);
+            }
+        }
+        *self.injected.borrow_mut() = kept;
+        // Later splices at the same index land in front of earlier ones.
+        taken.reverse();
+        taken
+    }
+
     fn parent_calls(&self, node: &N) -> bool {
         let Some(parent) = self.parents.iter().rev().nth(1) else {
             return false;
@@ -945,6 +1035,7 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 /// walks its children but does not run its optimizer again. That is why a
 /// switch that became `if (c) { stmt; }` is not then rewritten to `c && stmt`.
 fn transform(n: &N, cx: &mut Cx) -> N {
+    let input = Rc::clone(n);
     let ptr = Rc::as_ptr(n) as usize;
     if cx.squeezed.contains(&ptr) {
         return Rc::clone(n);
@@ -967,6 +1058,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         mark_squeezed(cx, &out);
         cx.leave(entered);
         cx.parents.pop();
+        refresh_fixed(cx, &input, &out);
         return out;
     }
     // The stack top is the once-rewritten node during the second descend so
@@ -1028,7 +1120,24 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.stack.pop();
     cx.leave(entered);
     cx.parents.pop();
+    // The symbol table still points at the pre-transform function. Later calls
+    // in this pass have to see the body `before` just rewrote.
+    refresh_fixed(cx, &input, &out);
     out
+}
+
+/// Point `fixed` at the function `transform` just produced.
+fn refresh_fixed(cx: &mut Cx, from: &N, to: &N) {
+    if !matches!(from.data, Data::Func { .. }) || Rc::ptr_eq(from, to) {
+        return;
+    }
+    let Some(table) = cx.syms.as_mut() else { return };
+    let ptr = Rc::as_ptr(from) as usize;
+    for def in &mut table.defs {
+        if def.fixed.as_ref().is_some_and(|f| Rc::as_ptr(f) as usize == ptr) {
+            def.fixed = Some(Rc::clone(to));
+        }
+    }
 }
 
 fn set_parent(cx: &mut Cx, n: &N) {
@@ -1231,6 +1340,13 @@ fn map_list(list: &[N], cx: &mut Cx) -> (Vec<N>, bool) {
             changed = true;
         }
         out.push(m);
+        // terser `flatten_fn` splices the `var` after this statement. The anchor is
+        // the statement node `transform` was entered with, which is `n`.
+        let extra = cx.take_injected(Rc::as_ptr(n) as usize);
+        if !extra.is_empty() {
+            changed = true;
+            out.extend(extra);
+        }
     }
     (out, changed)
 }
@@ -1335,13 +1451,19 @@ fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
                 _ => body.as_slice(),
             };
             next = eval::opt_ast_lambda(original, next, cx);
-            if same_stmts(body, &next) {
+            // terser `def_optimize(AST_Function)`: `opt_AST_Lambda`, then `unsafe_arrows`.
+            let orig_kind = *kind;
+            let mut kind = orig_kind;
+            if to_arrow(cx, kind, name.as_ref(), *generator, &next) {
+                kind = ast::FuncKind::Arrow;
+            }
+            if same_stmts(body, &next) && kind == orig_kind {
                 n
             } else {
                 finish(
                     &n,
                     Data::Func {
-                        kind: *kind,
+                        kind,
                         name: name.clone(),
                         args: args.clone(),
                         body: next,
@@ -1354,6 +1476,63 @@ fn after_descend(n: N, orig: &N, cx: &Cx) -> N {
         }
         _ => n,
     }
+}
+
+/// terser `def_optimize(AST_Function)` after `opt_AST_Lambda`.
+///
+/// `unsafe_arrows` is off unless the fixture sets it. A named function, a
+/// generator, a function that uses `arguments` or `this`, and a pinned
+/// function stay ordinary functions.
+fn to_arrow(cx: &Cx, kind: ast::FuncKind, name: Option<&N>, generator: bool, body: &[N]) -> bool {
+    if !cx.opts.unsafe_arrows || cx.opts.ecma < 2015 || name.is_some() || generator {
+        return false;
+    }
+    if !matches!(kind, ast::FuncKind::Expr) {
+        return false;
+    }
+    !body_uses_arguments(body) && !body_pinned(body) && !body_any_this(body)
+}
+
+fn body_uses_arguments(body: &[N]) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::Symbol { name, .. } if name == "arguments" => true,
+            Data::Func { kind: ast::FuncKind::Arrow, body, .. } => body.iter().any(rec),
+            Data::Func { .. } => false,
+            other => {
+                let mut hit = false;
+                for c in child_refs(other) {
+                    hit = hit || rec(c);
+                }
+                hit
+            }
+        }
+    }
+    body.iter().any(rec)
+}
+
+fn body_pinned(body: &[N]) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::With { .. } => true,
+            Data::Call { expr, .. } if expr.symbol_name() == Some("eval") => true,
+            Data::Func { kind: ast::FuncKind::Arrow, body, .. } => body.iter().any(rec),
+            Data::Func { .. } => false,
+            other => child_refs(other).into_iter().any(rec),
+        }
+    }
+    body.iter().any(rec)
+}
+
+/// The `unsafe_arrows` walk aborts on any `this`, including inside nested functions.
+fn body_any_this(body: &[N]) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::This | Data::Super => true,
+            other => child_refs(other).into_iter().any(rec),
+        }
+    }
+    body.iter().any(rec)
 }
 
 /// terser `tighten-body.js` `eliminate_spurious_blocks`, then the statement joins.
