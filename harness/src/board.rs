@@ -140,6 +140,7 @@ pub fn run(args: Args) -> Result<(), String> {
         None
     };
 
+    let skip_abort = load_skip_list(&corpus.join("skip-abort.txt"))?;
     let cases = load_cases(&corpus)?;
     let mut jobs = Vec::new();
     let mut corrupt = 0u64;
@@ -153,6 +154,11 @@ pub fn run(args: Args) -> Result<(), String> {
         }
         for set_name in &case.sets {
             if !selected(case, set_name, &args, failed_keys.as_ref()) {
+                continue;
+            }
+            if skip_abort.contains(&case.id)
+                && (set_name == "roundtrip" || set_name == "mangle" || set_name == "default")
+            {
                 continue;
             }
             let bytes = loaded
@@ -265,6 +271,30 @@ pub fn run(args: Args) -> Result<(), String> {
     }
     if jobs.is_empty() {
         println!("no cases matched");
+    }
+    if !skip_abort.is_empty()
+        && (args.corpora.is_empty() || args.corpora.iter().any(|c| c == "compress"))
+        && (args.sets.is_empty()
+            || args.sets.iter().any(|s| s == "roundtrip" || s == "mangle" || s == "default"))
+        && args.case_id.is_none()
+    {
+        let mut ids: Vec<_> = skip_abort
+            .iter()
+            .filter(|id| match &args.filter {
+                Some(filter) => id.contains(filter.as_str()),
+                None => true,
+            })
+            .cloned()
+            .collect();
+        ids.sort();
+        println!();
+        println!(
+            "excluded abort (not scored, pending approval): {}",
+            ids.len()
+        );
+        for id in ids {
+            println!("  {id}");
+        }
     }
     println!("elapsed {:.3}s", started.elapsed().as_secs_f64());
 
@@ -693,6 +723,16 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex::encode(hasher.finalize())
+}
+
+fn load_skip_list(path: &Path) -> Result<HashSet<String>, String> {
+    let text = fs::read_to_string(path).map_err(|err| format!("{}: {err}", path.display()))?;
+    Ok(text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|s| s.to_string())
+        .collect())
 }
 
 fn load_cases(corpus: &Path) -> Result<Vec<Case>, String> {

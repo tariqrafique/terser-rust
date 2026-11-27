@@ -1,0 +1,13 @@
+# These inputs make terser 5.51.4's default parser allocate until the oracle
+# worker is killed (SIGABRT). experimental_typescript is off for roundtrip,
+# mangle, and default. They are not scored. Pending Tariq's approval.
+compress/typescript/type_aliases
+compress/typescript/type_body_separators
+compress/typescript/type_interface
+compress/typescript/type_numeric_keys
+compress/typescript/type_object
+compress/typescript/type_readonly
+compress/typescript/type_string_keys
+compress/typescript/type_tuples
+compress/typescript/typescript_dynamic_imports
+compress/typescript/typescript_exports
