@@ -556,6 +556,7 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         | Data::RegExp { .. }
         | Data::Hole => None,
         Data::Func { kind: FuncKind::Expr | FuncKind::Arrow, .. } => None,
+        Data::Class { stmt: false, name, extends, props } => drop_class(n, name.as_ref(), extends.as_ref(), props, cx),
         Data::Unary { op, expr, .. } => drop_unary(n, op, expr, cx, first),
         Data::Binary { op, left, right } => drop_binary(n, op, left, right, cx, first),
         Data::Assign { .. } | Data::Yield { .. } | Data::Await { .. } => Some(Rc::clone(n)),
@@ -593,6 +594,86 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         }
         _ => Some(Rc::clone(n)),
     }
+}
+
+/// terser `drop-side-effect-free.js` `AST_Class`.
+fn drop_class(n: &N, name: Option<&N>, extends: Option<&N>, props: &[N], cx: &Cx) -> Option<N> {
+    let mut effects = Vec::new();
+    // `is_self_referential() && has_side_effects()`: the class name read in a
+    // part that runs at definition time.
+    let self_name = name.and_then(|nm| match &nm.data {
+        Data::Symbol { name, .. } => Some(name.clone()),
+        _ => None,
+    });
+    if let Some(e) = extends {
+        if let Some(k) = drop_side_effect_free(e, cx, false) {
+            push_flat(&mut effects, k);
+        }
+    }
+    for p in props {
+        match &p.data {
+            // `AST_ClassStaticBlock`: any body is treated as a side effect.
+            Data::StaticBlock { body } => {
+                if !body.is_empty() {
+                    return Some(Rc::clone(n));
+                }
+            }
+            Data::Field { key, value, static_, .. } => {
+                if let ast::Key::Computed(k) = key {
+                    if let Some(k) = drop_side_effect_free(k, cx, false) {
+                        push_flat(&mut effects, k);
+                    }
+                }
+                if *static_ {
+                    if let Some(v) = value {
+                        // A static initializer that reads the class through
+                        // `this` keeps the class (`is_self_referential`).
+                        if crate::eval::contains_this(v) {
+                            return Some(Rc::clone(n));
+                        }
+                        if let Some(v) = drop_side_effect_free(v, cx, false) {
+                            push_flat(&mut effects, v);
+                        }
+                    }
+                }
+            }
+            Data::Prop { key: ast::Key::Computed(k), .. } => {
+                if let Some(k) = drop_side_effect_free(k, cx, false) {
+                    push_flat(&mut effects, k);
+                }
+            }
+            _ => {}
+        }
+    }
+    if !effects.is_empty() {
+        if let Some(sn) = &self_name {
+            let reads_self = |v: &N| reads_name(v, sn);
+            let referential = extends.is_some_and(reads_self)
+                || props.iter().any(|p| match &p.data {
+                    Data::Field { key, value, static_, .. } => {
+                        matches!(key, ast::Key::Computed(k) if reads_self(k)) || (*static_ && value.as_ref().is_some_and(reads_self))
+                    }
+                    Data::Prop { key: ast::Key::Computed(k), .. } => reads_self(k),
+                    _ => false,
+                });
+            if referential {
+                return Some(Rc::clone(n));
+            }
+        }
+    }
+    seq_from_parts(n, effects)
+}
+
+fn reads_name(n: &N, name: &str) -> bool {
+    if matches!(&n.data, Data::Symbol { name: got, kind: SymKind::Ref, .. } if got == name) {
+        return true;
+    }
+    let mut hit = false;
+    let _ = ast::map_children(n, &mut |c| {
+        hit = hit || reads_name(c, name);
+        Rc::clone(c)
+    });
+    hit
 }
 
 /// terser `drop_side_effect_free(AST_Call)`. A pure annotation keeps argument

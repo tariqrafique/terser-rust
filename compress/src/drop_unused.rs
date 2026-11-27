@@ -701,9 +701,17 @@ fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: 
         Data::Call { expr, args, optional, is_new } => Data::Call { expr: go(expr), args: args.iter().map(go).collect(), optional: *optional, is_new: *is_new },
         Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
         Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(go).collect() },
-        Data::Class { stmt, name, extends, props } => Data::Class {
-            stmt: *stmt, name: name.clone(), extends: extends.as_ref().map(go), props: props.iter().map(go).collect(),
-        },
+        Data::Class { stmt, name, extends, props } => {
+            // drop-unused.js: an `AST_ClassExpression` name nothing reads is
+            // removed (`keep_classnames` off).
+            let name = match (stmt, name) {
+                (false, Some(nm)) if def_id(table, nm).is_some_and(|id| {
+                    !props.iter().chain(extends.iter()).any(|p| name_read(std::slice::from_ref(p), &[], table, id))
+                }) => None,
+                _ => name.clone(),
+            };
+            Data::Class { stmt: *stmt, name, extends: extends.as_ref().map(go), props: props.iter().map(go).collect() }
+        }
         Data::Object { props } => Data::Object { props: props.iter().map(go).collect() },
         Data::Prop { method, key, value, static_, private, generator, async_ } => Data::Prop {
             method: *method,
