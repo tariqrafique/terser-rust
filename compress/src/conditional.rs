@@ -725,6 +725,15 @@ fn best_negation(orig: &N, alt: N, first: bool, cx: &Cx) -> N {
     }
 }
 
+/// terser `lib/compress/common.js` `best_of`. Equal sizes keep `left`.
+pub(crate) fn best_of(cx: &Cx, left: &N, right: &N) -> N {
+    if smaller_than(left, right, cx) {
+        Rc::clone(right)
+    } else {
+        Rc::clone(left)
+    }
+}
+
 fn smaller_than(orig: &N, negated: &N, cx: &Cx) -> bool {
     if first_in_statement(cx) {
         let a = atom(orig, Data::Simple { body: Rc::clone(orig) });

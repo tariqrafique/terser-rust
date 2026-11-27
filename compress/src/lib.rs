@@ -12,6 +12,7 @@ mod drop_unused;
 mod eval;
 mod sequence;
 mod hoist;
+mod object;
 mod tighten;
 mod reduce_vars;
 mod syms;
@@ -77,6 +78,16 @@ struct Opts {
     /// terser `expression`. Off unless set. Wraps the completion value in `return`
     /// for the duration of the compress passes (`process_expression`).
     expression: bool,
+    /// terser `unsafe_methods`. Off unless set. A regexp only rewrites matching keys.
+    unsafe_methods: UnsafeMethods,
+}
+
+/// terser `unsafe_methods`: `false`, `true`, or a `RegExp`.
+#[derive(Clone, Debug)]
+enum UnsafeMethods {
+    Off,
+    All,
+    Pattern { source: String, flags: String },
 }
 
 /// terser `lib/compress/index.js` `pure_getters`.
@@ -128,6 +139,7 @@ impl Opts {
             unsafe_comps: false,
             ecma: 5,
             expression: false,
+            unsafe_methods: UnsafeMethods::Off,
         }
     }
 
@@ -169,6 +181,7 @@ impl Opts {
             unsafe_comps: false,
             ecma: 5,
             expression: false,
+            unsafe_methods: UnsafeMethods::Off,
         }
     }
 
@@ -301,6 +314,9 @@ impl Opts {
         if let Some(v) = bool_key(obj, "expression") {
             opts.expression = v;
         }
+        if let Some(v) = obj.get("unsafe_methods") {
+            opts.unsafe_methods = unsafe_methods_of(v);
+        }
         opts
     }
 
@@ -331,6 +347,20 @@ impl Opts {
             || self.unsafe_opt
             || self.unsafe_math
             || self.expression
+            || !matches!(self.unsafe_methods, UnsafeMethods::Off)
+    }
+}
+
+fn unsafe_methods_of(value: &Value) -> UnsafeMethods {
+    match value {
+        Value::Bool(true) => UnsafeMethods::All,
+        Value::Bool(false) => UnsafeMethods::Off,
+        Value::Object(obj) if obj.get("__terser_type").and_then(Value::as_str) == Some("RegExp") => {
+            let source = obj.get("source").and_then(Value::as_str).unwrap_or("").to_string();
+            let flags = obj.get("flags").and_then(Value::as_str).unwrap_or("").to_string();
+            UnsafeMethods::Pattern { source, flags }
+        }
+        _ => UnsafeMethods::Off,
     }
 }
 
