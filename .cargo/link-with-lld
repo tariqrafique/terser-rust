@@ -4,7 +4,7 @@
 sysroot=$(rustc --print sysroot)
 host=$(rustc -vV | awk '/^host:/ { print $2 }')
 lld="$sysroot/lib/rustlib/$host/bin/gcc-ld/ld.lld"
-if [ -x "$lld" ]; then
+if [ -x "$lld" ] && command -v clang >/dev/null 2>&1; then
     exec clang -fuse-ld="$lld" "$@"
 fi
 exec cc "$@"
