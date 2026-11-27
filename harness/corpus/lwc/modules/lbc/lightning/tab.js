@@ -1,0 +1,177 @@
+import { registerDecorators as _registerDecorators } from "lwc";
+import _tmpl from "./tab.html";
+/*
+ * Copyright (c) 2025, Salesforce, Inc.,
+ * All rights reserved.
+ * For full license text, see the LICENSE.txt file
+ */
+import { registerComponent as _registerComponent } from 'lwc';
+import { normalizeBoolean } from 'lightning/utilsPrivate';
+import LightningShadowBaseClass from 'lightning/shadowBaseClassPrivate';
+import { findAllTabbableElements } from 'lightning/focusUtils';
+class LightningTab extends LightningShadowBaseClass {
+  constructor(...args) {
+    super(...args);
+    this._loadContent = false;
+    this._registered = false;
+    this._connected = void 0;
+    this._deRegistrationCallback = void 0;
+    this._value = void 0;
+    this._label = void 0;
+    this._title = void 0;
+    this._iconName = void 0;
+    this._iconAlernativeText = void 0;
+    this._endIconName = void 0;
+    this._endIconAlternativeText = void 0;
+    this._showErrorIndicator = void 0;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this._connected = true;
+    if (!import.meta.env.SSR && this.template['synthetic']) {
+      this.dispatchEvent(new CustomEvent('privatetabregister', {
+        cancelable: true,
+        bubbles: true,
+        composed: true,
+        detail: {
+          setDeRegistrationCallback: deRegistrationCallback => {
+            this._deRegistrationCallback = deRegistrationCallback;
+          }
+        }
+      }));
+    }
+  }
+  renderedCallback() {
+    if (!this._registered && !this.template['synthetic']) {
+      this._registered = true;
+      this.dispatchEvent(new CustomEvent('privatetabregister', {
+        cancelable: true,
+        bubbles: true,
+        composed: true,
+        detail: {
+          setDeRegistrationCallback: deRegistrationCallback => {
+            this._deRegistrationCallback = deRegistrationCallback;
+          }
+        }
+      }));
+    }
+    this.setAttribute('tabindex', this.firstElementChild && findAllTabbableElements(this.firstElementChild).length > 0 ? '-1' : '0');
+  }
+  loadContent() {
+    this._loadContent = true;
+    if (!import.meta.env.SSR) {
+      this.dispatchEvent(new CustomEvent('active'));
+    }
+  }
+  disconnectedCallback() {
+    this._connected = false;
+    if (this._deRegistrationCallback) {
+      this._deRegistrationCallback();
+    }
+  }
+  get value() {
+    return this._value;
+  }
+  set value(newValue) {
+    this._value = String(newValue);
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get label() {
+    return this._label;
+  }
+  set label(value) {
+    this._label = value;
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get title() {
+    return this._title;
+  }
+  set title(value) {
+    this._title = value;
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get iconName() {
+    return this._iconName;
+  }
+  set iconName(value) {
+    this._iconName = value;
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get iconAssistiveText() {
+    return this._iconAlernativeText;
+  }
+  set iconAssistiveText(value) {
+    this._iconAlernativeText = value;
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get endIconName() {
+    return this._endIconName;
+  }
+  set endIconName(value) {
+    this._endIconName = value;
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get endIconAlternativeText() {
+    return this._endIconAlternativeText;
+  }
+  set endIconAlternativeText(value) {
+    this._endIconAlternativeText = value;
+    this._dispatchDataChangeEventIfConnected();
+  }
+  get showErrorIndicator() {
+    return this._showErrorIndicator;
+  }
+  set showErrorIndicator(value) {
+    this._showErrorIndicator = normalizeBoolean(value);
+    this._dispatchDataChangeEventIfConnected();
+  }
+  _dispatchDataChangeEventIfConnected() {
+    if (!import.meta.env.SSR && this._connected) {
+      this.dispatchEvent(new CustomEvent('privatetabdatachange', {
+        cancelable: true,
+        bubbles: true,
+        composed: true
+      }));
+    }
+  }
+  /*LWC compiler v9.5.3*/
+}
+_registerDecorators(LightningTab, {
+  publicProps: {
+    value: {
+      config: 3
+    },
+    label: {
+      config: 3
+    },
+    title: {
+      config: 3
+    },
+    iconName: {
+      config: 3
+    },
+    iconAssistiveText: {
+      config: 3
+    },
+    endIconName: {
+      config: 3
+    },
+    endIconAlternativeText: {
+      config: 3
+    },
+    showErrorIndicator: {
+      config: 3
+    }
+  },
+  publicMethods: ["loadContent"],
+  track: {
+    _loadContent: 1
+  },
+  fields: ["_registered", "_connected", "_deRegistrationCallback", "_value", "_label", "_title", "_iconName", "_iconAlernativeText", "_endIconName", "_endIconAlternativeText", "_showErrorIndicator"]
+});
+const __lwc_component_class_internal = _registerComponent(LightningTab, {
+  tmpl: _tmpl,
+  sel: "lightning-tab",
+  apiVersion: 66
+});
+export default __lwc_component_class_internal;

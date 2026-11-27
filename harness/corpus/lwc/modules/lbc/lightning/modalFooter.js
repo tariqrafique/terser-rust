@@ -1,0 +1,108 @@
+import { registerDecorators as _registerDecorators } from "lwc";
+import _tmpl from "./modalFooter.html";
+import { registerComponent as _registerComponent } from "lwc";
+/*
+ * Copyright (c) 2025, Salesforce, Inc.,
+ * All rights reserved.
+ * For full license text, see the LICENSE.txt file
+ */
+import LightningShadowBaseClass from 'lightning/shadowBaseClassPrivate';
+import { classSet } from 'lightning/utils';
+import { modalFocusinEventHandler } from 'lightning/modalUtils';
+import orgHasWCAGResizeReflowSC from '@salesforce/accessCheck/ComponentAccessibility.orgHasWCAGResizeReflowSC';
+const footerClass = 'slds-modal__footer';
+const hideClass = 'slds-hide';
+const footerSelector = `.${footerClass}`;
+const footerSlotSelector = '[data-footer-slot]';
+class LightningModalFooter extends LightningShadowBaseClass {
+  constructor(...args) {
+    super(...args);
+    this.initialRender = true;
+    this.initialSlotRender = true;
+    this.hideFooter = false;
+    this.unregisterCallback = null;
+    this.handleModalFooterFocusin = modalFocusinEventHandler.bind(this);
+  }
+  handleDefaultSlotChange() {
+    if (this.initialSlotRender) {
+      this.initialSlotRender = false;
+    }
+    this.registerWithParent();
+    this.hideFooter = !this.isDefaultSlotPopulated;
+  }
+  get footerCssClasses() {
+    const classes = classSet(footerClass);
+    classes.add({
+      [hideClass]: this.hideFooter
+    });
+    classes.add({
+      'slds-modal__footer__reflow_resize': !!orgHasWCAGResizeReflowSC
+    });
+    return classes.toString();
+  }
+  get footerHeight() {
+    const divElem = this.template.querySelector(footerSelector);
+    const footerRect = divElem ? divElem.getBoundingClientRect() : {};
+    const {
+      height
+    } = footerRect;
+    return height || 0;
+  }
+  get defaultSlotElement() {
+    return this.template.querySelector(footerSlotSelector);
+  }
+  get isDefaultSlotPopulated() {
+    const slotElement = this.defaultSlotElement;
+    if (slotElement && slotElement.assignedNodes) {
+      return slotElement.assignedNodes().length > 0;
+    }
+    return true;
+  }
+  registerWithParent() {
+    const evtRegister = new CustomEvent('privatemodalfooterregister', {
+      bubbles: true,
+      composed: true,
+      detail: {
+        footerHeight: this.footerHeight,
+        defaultSlotIsPopulated: this.isDefaultSlotPopulated,
+        defaultSlotHasRendered: !this.initialSlotRender,
+        unRegisterCallback: unregisterCallback => {
+          this.unregisterCallback = unregisterCallback;
+        }
+      }
+    });
+    this.dispatchEvent(evtRegister);
+  }
+  initState() {
+    this.initialRender = true;
+    this.initialSlotRender = true;
+    this.hideFooter = false;
+    this.unregisterCallback = null;
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this.initState();
+  }
+  disconnectedCallback() {
+    if (this.unregisterCallback) {
+      this.unregisterCallback();
+    }
+  }
+  renderedCallback() {
+    if (this.initialRender) {
+      this.registerWithParent();
+      this.initialRender = false;
+    }
+    this.hideFooter = !this.isDefaultSlotPopulated;
+  }
+  /*LWC compiler v9.5.3*/
+}
+_registerDecorators(LightningModalFooter, {
+  fields: ["initialRender", "initialSlotRender", "hideFooter", "unregisterCallback", "handleModalFooterFocusin"]
+});
+const __lwc_component_class_internal = _registerComponent(LightningModalFooter, {
+  tmpl: _tmpl,
+  sel: "lightning-modal-footer",
+  apiVersion: 66
+});
+export default __lwc_component_class_internal;

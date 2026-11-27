@@ -1,0 +1,2750 @@
+{
+  "schema": 1,
+  "seed": 42,
+  "sample": {
+    "strategy": "all",
+    "discovered_components": 339,
+    "selected_components": 339,
+    "primary_files": 725,
+    "all_files_in_component_dirs": 2359,
+    "note": "primary_files counts <dirname>.js, <dirname>.ts, <dirname>.html, and <dirname>.css only. all_files_in_component_dirs also counts .d.ts, .map, SLDS css, meta xml, and helper modules that sit in the same directory. The reference 725 matches primary_files."
+  },
+  "sources": {
+    "lbc": {
+      "package": "lightning-base-components",
+      "version": "1.28.19-alpha",
+      "dist_shasum": "7b045bfad4bf794341758e5573eb4b71f4a1e12f",
+      "dist_sha256": "2d4681dfc2c564751594001d004cbf168280c97c3bd31b00ca2b2df5a89e1ef1"
+    },
+    "lbc-recipes": {
+      "repo": "https://github.com/salesforce/base-components-recipes.git",
+      "commit": "9c5f95d4e0cd5434a2b8373405e4f6c7657c88e8"
+    }
+  },
+  "compiler": {
+    "lwc_sha": "b9e8007f9810edb59596536b596f80ca6c0d3fab",
+    "version": "9.5.3",
+    "build_method": "npm",
+    "npm_package": "@lwc/compiler@9.5.3",
+    "npm_shasum": "01b6a2021c612c5f6a900092a70e7707ff5695e9",
+    "npm_sha256": "2586c9884df5f9e771a2d6e371ffee0c2dd63e8a1329026fa492122a02fa136c",
+    "npm_git_head": "f07d63b2b1c71e689fabc614b228a2102d8e9914",
+    "note": "packages/@lwc at b9e8007 differs from the published 9.5.3 gitHead (f07d63b) only in perf-benchmark files. Compiler sources match, so the registry tarball is the compiler from that commit. A full monorepo yarn build was not run."
+  },
+  "terser": "5.51.4",
+  "node": "v22.23.4",
+  "files": [
+    {
+      "path": "modules/lbc-recipes/c/accordion.js",
+      "sha256": "bee1f2694b177f6c2ad5c270ae3aacb5e637e70d0f824724d01e47c8cf102da4",
+      "bytes": 3665,
+      "source": "lbc-recipes/force-app/main/default/lwc/accordion/accordion.js",
+      "namespace": "c",
+      "name": "accordion"
+    },
+    {
+      "path": "modules/lbc-recipes/c/accordionBasic.js",
+      "sha256": "6463e47f8895c00d9222865ba7812e6ff93e7d051a24dc66aa00b414317f3054",
+      "bytes": 1096,
+      "source": "lbc-recipes/examples/lwc/accordionBasic/accordionBasic.js",
+      "namespace": "c",
+      "name": "accordionBasic"
+    },
+    {
+      "path": "modules/lbc-recipes/c/accordionConditional.js",
+      "sha256": "c4bd7db6054a3211b289dfe831a7fc8f17fd353ea87e36264748f59663d93657",
+      "bytes": 1227,
+      "source": "lbc-recipes/examples/lwc/accordionConditional/accordionConditional.js",
+      "namespace": "c",
+      "name": "accordionConditional"
+    },
+    {
+      "path": "modules/lbc-recipes/c/accordionMultiple.js",
+      "sha256": "deffb6e3dd5c768452195adfd3610c5ddd258cddc6abc9dd971bf8cc0ba0f4de",
+      "bytes": 1242,
+      "source": "lbc-recipes/examples/lwc/accordionMultiple/accordionMultiple.js",
+      "namespace": "c",
+      "name": "accordionMultiple"
+    },
+    {
+      "path": "modules/lbc-recipes/c/accordionSection.js",
+      "sha256": "ca5a566665dbdf86bd810efbfe1bc889667aace62630cf87d917f4e4d10e2e72",
+      "bytes": 3582,
+      "source": "lbc-recipes/force-app/main/default/lwc/accordionSection/accordionSection.js",
+      "namespace": "c",
+      "name": "accordionSection"
+    },
+    {
+      "path": "modules/lbc-recipes/c/accordionUtilsPrivate.js",
+      "sha256": "b6699105f6222bdf48d232d17d9e07601744d8db163bd611f9c44d1ff030256f",
+      "bytes": 271,
+      "source": "lbc-recipes/force-app/main/default/lwc/accordionUtilsPrivate/accordionUtilsPrivate.js",
+      "namespace": "c",
+      "name": "accordionUtilsPrivate"
+    },
+    {
+      "path": "modules/lbc-recipes/c/avatar.js",
+      "sha256": "37e28709c7d51ebebf01653b10c7138116373d58128e806e74576a8963dbb5d3",
+      "bytes": 2982,
+      "source": "lbc-recipes/force-app/main/default/lwc/avatar/avatar.js",
+      "namespace": "c",
+      "name": "avatar"
+    },
+    {
+      "path": "modules/lbc-recipes/c/badge.js",
+      "sha256": "88c3934043b621bbe98727cc830eafd9774a78e382f9b04123f6c602ceb5aea5",
+      "bytes": 1751,
+      "source": "lbc-recipes/force-app/main/default/lwc/badge/badge.js",
+      "namespace": "c",
+      "name": "badge"
+    },
+    {
+      "path": "modules/lbc-recipes/c/badgeRecipes.js",
+      "sha256": "b93746ebb5db6f7c74c797bc0b2329902ef965be10a6d3721934124a54eecc00",
+      "bytes": 1032,
+      "source": "lbc-recipes/examples/lwc/badgeRecipes/badgeRecipes.js",
+      "namespace": "c",
+      "name": "badgeRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/baseCombobox.js",
+      "sha256": "d45d0d857a6c9939181d4ddba724ce6c68764ea4478176eda7357464a70c6050",
+      "bytes": 21665,
+      "source": "lbc-recipes/force-app/main/default/lwc/baseCombobox/baseCombobox.js",
+      "namespace": "c",
+      "name": "baseCombobox"
+    },
+    {
+      "path": "modules/lbc-recipes/c/baseComboboxFormattedText.js",
+      "sha256": "f137a9f9cde6a7a195e5ca7cb0c26309230ae8644d3a3cb03e7da62da8f9c04a",
+      "bytes": 1246,
+      "source": "lbc-recipes/force-app/main/default/lwc/baseComboboxFormattedText/baseComboboxFormattedText.js",
+      "namespace": "c",
+      "name": "baseComboboxFormattedText"
+    },
+    {
+      "path": "modules/lbc-recipes/c/baseComboboxItem.js",
+      "sha256": "762c7efd9ee5429e0d8378da5faca3aaa40552ac8b7a8344d1d4611b98d9b23a",
+      "bytes": 2501,
+      "source": "lbc-recipes/force-app/main/default/lwc/baseComboboxItem/baseComboboxItem.js",
+      "namespace": "c",
+      "name": "baseComboboxItem"
+    },
+    {
+      "path": "modules/lbc-recipes/c/button.js",
+      "sha256": "04dbb95fec939fbfc905502b683622ab7a7f3d6b00e3622f624139885e967be4",
+      "bytes": 4564,
+      "source": "lbc-recipes/force-app/main/default/lwc/button/button.js",
+      "namespace": "c",
+      "name": "button"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonGroup.js",
+      "sha256": "4f95835f74a1e0a127bbc6ecfd56a8da4b866c6f0e636e13cadfa58aae97c03e",
+      "bytes": 2462,
+      "source": "lbc-recipes/force-app/main/default/lwc/buttonGroup/buttonGroup.js",
+      "namespace": "c",
+      "name": "buttonGroup"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonGroupRecipes.js",
+      "sha256": "577d3921b15eb6c36ad113f58c9d01fdab2275086480d99a1b9c52ac8f849403",
+      "bytes": 1127,
+      "source": "lbc-recipes/examples/lwc/buttonGroupRecipes/buttonGroupRecipes.js",
+      "namespace": "c",
+      "name": "buttonGroupRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonIcon.js",
+      "sha256": "da0351c6e2b4a1c6fc6cd9259b569269dc6361121fe4cae211abd853acb05245",
+      "bytes": 6270,
+      "source": "lbc-recipes/force-app/main/default/lwc/buttonIcon/buttonIcon.js",
+      "namespace": "c",
+      "name": "buttonIcon"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonIconRecipes.js",
+      "sha256": "a89297100d3ba7bb466f5ead96e1de597feab14f55eb8cc6216cdbd3e06b3b39",
+      "bytes": 609,
+      "source": "lbc-recipes/examples/lwc/buttonIconRecipes/buttonIconRecipes.js",
+      "namespace": "c",
+      "name": "buttonIconRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonIconStateful.js",
+      "sha256": "428a9928027f35b6df86f5751f9de08757812d9f53d7d28a6ff258fdd5c2353a",
+      "bytes": 3974,
+      "source": "lbc-recipes/force-app/main/default/lwc/buttonIconStateful/buttonIconStateful.js",
+      "namespace": "c",
+      "name": "buttonIconStateful"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonIconStatefulRecipes.js",
+      "sha256": "525b67b5563d6a143c203b33279f6a0adbaa824f0a09cb7f5d1e011a320552cb",
+      "bytes": 1637,
+      "source": "lbc-recipes/examples/lwc/buttonIconStatefulRecipes/buttonIconStatefulRecipes.js",
+      "namespace": "c",
+      "name": "buttonIconStatefulRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonMenu.js",
+      "sha256": "79926dcd9e936c55882479493d99ff7846d7e9262dc64c6519601e1d32c361a0",
+      "bytes": 14857,
+      "source": "lbc-recipes/force-app/main/default/lwc/buttonMenu/buttonMenu.js",
+      "namespace": "c",
+      "name": "buttonMenu"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonMenuRecipes.js",
+      "sha256": "f88640a514fa1cacaf542ebb2d7ec157d16f596cef8aa4e53946fe127a81dd08",
+      "bytes": 2119,
+      "source": "lbc-recipes/examples/lwc/buttonMenuRecipes/buttonMenuRecipes.js",
+      "namespace": "c",
+      "name": "buttonMenuRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonRecipes.js",
+      "sha256": "7b8dd76cf48b136087731ab83d5ac41837ffa581325e64b2c2ecde922d39d89b",
+      "bytes": 903,
+      "source": "lbc-recipes/examples/lwc/buttonRecipes/buttonRecipes.js",
+      "namespace": "c",
+      "name": "buttonRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonStateful.js",
+      "sha256": "c6bbfbbd384be4bbfccf700ea320d43d761b4faf6d581089d72442caba00cc78",
+      "bytes": 5055,
+      "source": "lbc-recipes/force-app/main/default/lwc/buttonStateful/buttonStateful.js",
+      "namespace": "c",
+      "name": "buttonStateful"
+    },
+    {
+      "path": "modules/lbc-recipes/c/buttonStatefulRecipes.js",
+      "sha256": "4600d011dce38c18c74baf64caaa2edd958a2283a18ad6c506740ccd59e536b3",
+      "bytes": 912,
+      "source": "lbc-recipes/examples/lwc/buttonStatefulRecipes/buttonStatefulRecipes.js",
+      "namespace": "c",
+      "name": "buttonStatefulRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/card.js",
+      "sha256": "9b231614edb0f3b270a87b8787936ecdede012c7692ba860d2d49dc44d167011",
+      "bytes": 1771,
+      "source": "lbc-recipes/force-app/main/default/lwc/card/card.js",
+      "namespace": "c",
+      "name": "card"
+    },
+    {
+      "path": "modules/lbc-recipes/c/cardRecipes.js",
+      "sha256": "26882faad22510bab24653258dd716f2440e2996bafda70496740bae511691e8",
+      "bytes": 584,
+      "source": "lbc-recipes/examples/lwc/cardRecipes/cardRecipes.js",
+      "namespace": "c",
+      "name": "cardRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/carousel.js",
+      "sha256": "9cf9dfbc03f0ffc10f0cf64d063b9640b071d9ca73d0cd4b20bb0088ba862fbb",
+      "bytes": 8906,
+      "source": "lbc-recipes/force-app/main/default/lwc/carousel/carousel.js",
+      "namespace": "c",
+      "name": "carousel"
+    },
+    {
+      "path": "modules/lbc-recipes/c/carouselImage.js",
+      "sha256": "9ffeb3a75be873a8a166d818272a92b4dbae54d062b721089ce7cd59ba9eaac2",
+      "bytes": 3815,
+      "source": "lbc-recipes/force-app/main/default/lwc/carouselImage/carouselImage.js",
+      "namespace": "c",
+      "name": "carouselImage"
+    },
+    {
+      "path": "modules/lbc-recipes/c/carouselRecipes.js",
+      "sha256": "bbffa99d4a2798dc3858d3bad78cfc4c4d7bfa49435b99d750a11751465b3607",
+      "bytes": 1034,
+      "source": "lbc-recipes/examples/lwc/carouselRecipes/carouselRecipes.js",
+      "namespace": "c",
+      "name": "carouselRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/checkboxGroup.js",
+      "sha256": "a59d33aa035cc10450a82288bc69ce98ab4b3f7253b7ca483565eaf714256aba",
+      "bytes": 5681,
+      "source": "lbc-recipes/force-app/main/default/lwc/checkboxGroup/checkboxGroup.js",
+      "namespace": "c",
+      "name": "checkboxGroup"
+    },
+    {
+      "path": "modules/lbc-recipes/c/checkboxGroupRecipes.js",
+      "sha256": "f9e9c46061799942660866c254c044f534ea9973aaab0e3763d8d564795e9b94",
+      "bytes": 1500,
+      "source": "lbc-recipes/examples/lwc/checkboxGroupRecipes/checkboxGroupRecipes.js",
+      "namespace": "c",
+      "name": "checkboxGroupRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/combobox.js",
+      "sha256": "4bea6806b97d1a90859f74e7491b34c18e1671b9b84b66830c3e845ef5910998",
+      "bytes": 9255,
+      "source": "lbc-recipes/force-app/main/default/lwc/combobox/combobox.js",
+      "namespace": "c",
+      "name": "combobox"
+    },
+    {
+      "path": "modules/lbc-recipes/c/comboboxRecipes.js",
+      "sha256": "abb80fa22a669ca1d7c81ec9dc5062e9726eba2b34103dc6c6ed1c9719fb82c3",
+      "bytes": 1234,
+      "source": "lbc-recipes/examples/lwc/comboboxRecipes/comboboxRecipes.js",
+      "namespace": "c",
+      "name": "comboboxRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/dualListbox.js",
+      "sha256": "c3c1ae5462badd43ac1857f6daa2a0bd6b822e4c9a22b43849225406648c7a7a",
+      "bytes": 23563,
+      "source": "lbc-recipes/force-app/main/default/lwc/dualListbox/dualListbox.js",
+      "namespace": "c",
+      "name": "dualListbox"
+    },
+    {
+      "path": "modules/lbc-recipes/c/dualListboxRecipes.js",
+      "sha256": "09ce8ecaa5815291617680065bcecad920b08185b209811bef17f415206dabc7",
+      "bytes": 1754,
+      "source": "lbc-recipes/examples/lwc/dualListboxRecipes/dualListboxRecipes.js",
+      "namespace": "c",
+      "name": "dualListboxRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/dynamicIcon.js",
+      "sha256": "820ff2175e62832f9fb097ddb2190e1c5abe9111ae89e8e4507727f3e5af5f4d",
+      "bytes": 2938,
+      "source": "lbc-recipes/force-app/main/default/lwc/dynamicIcon/dynamicIcon.js",
+      "namespace": "c",
+      "name": "dynamicIcon"
+    },
+    {
+      "path": "modules/lbc-recipes/c/fieldDependencyManager.js",
+      "sha256": "39d3bdfaad9f6763c7a31f5426c82ab5f72be3a25452ac0acbf2f1d5041dabbc",
+      "bytes": 5622,
+      "source": "lbc-recipes/force-app/main/default/lwc/fieldDependencyManager/fieldDependencyManager.js",
+      "namespace": "c",
+      "name": "fieldDependencyManager"
+    },
+    {
+      "path": "modules/lbc-recipes/c/fieldUtils.js",
+      "sha256": "381c63f6926b3ff9bf4ddee692952bb6aed88d3e37f505e71dd246acf3a7ea29",
+      "bytes": 10232,
+      "source": "lbc-recipes/force-app/main/default/lwc/fieldUtils/fieldUtils.js",
+      "namespace": "c",
+      "name": "fieldUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formDensityUtilsPrivate.js",
+      "sha256": "61be5316c84e306f74bb1d00a721b4d3ec834e3d9b7b4ad118efb4ab551d5d22",
+      "bytes": 4097,
+      "source": "lbc-recipes/force-app/main/default/lwc/formDensityUtilsPrivate/formDensityUtilsPrivate.js",
+      "namespace": "c",
+      "name": "formDensityUtilsPrivate"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedDateTime.js",
+      "sha256": "d3eef68e490809c16a338676ca3daeb97674a0808db013096bcb076915094286",
+      "bytes": 3455,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedDateTime/formattedDateTime.js",
+      "namespace": "c",
+      "name": "formattedDateTime"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedDateTimeRecipes.js",
+      "sha256": "7349606605364d7cbd73515ca6313a0abbe77a177de8f549383bbefc73ff2c35",
+      "bytes": 638,
+      "source": "lbc-recipes/examples/lwc/formattedDateTimeRecipes/formattedDateTimeRecipes.js",
+      "namespace": "c",
+      "name": "formattedDateTimeRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedLocation.js",
+      "sha256": "7571399df0861a7b496179bab6a36dca3144375a91bb60c8250630ee05965919",
+      "bytes": 1587,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedLocation/formattedLocation.js",
+      "namespace": "c",
+      "name": "formattedLocation"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedLocationRecipes.js",
+      "sha256": "3c34df179868b1384d96f0069c2d31953d308ccbc16b14a179144d55bcfffbdd",
+      "bytes": 637,
+      "source": "lbc-recipes/examples/lwc/formattedLocationRecipes/formattedLocationRecipes.js",
+      "namespace": "c",
+      "name": "formattedLocationRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedLookup.js",
+      "sha256": "49b2ce18fe28f69fd79ffb882d4fbd9e004f1648095a4c7ef0781921687eb931",
+      "bytes": 2345,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedLookup/formattedLookup.js",
+      "namespace": "c",
+      "name": "formattedLookup"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedLookupRecipes.js",
+      "sha256": "bd388e411b9cedbb586b2a5fc8d4f2b6a7b710148d0327ae364301a2719e4e90",
+      "bytes": 1327,
+      "source": "lbc-recipes/examples/lwc/formattedLookupRecipes/formattedLookupRecipes.js",
+      "namespace": "c",
+      "name": "formattedLookupRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedName.js",
+      "sha256": "793fa585935a6be888a6b4e7c746539c119ac62abc6d1546130c68f482828f60",
+      "bytes": 3347,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedName/formattedName.js",
+      "namespace": "c",
+      "name": "formattedName"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedNameRecipes.js",
+      "sha256": "b8469495e236d56b00978c44b88604acadf594ad60b158b38617332a08a60ffc",
+      "bytes": 621,
+      "source": "lbc-recipes/examples/lwc/formattedNameRecipes/formattedNameRecipes.js",
+      "namespace": "c",
+      "name": "formattedNameRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedNumber.js",
+      "sha256": "6c07e4829049ee0f7ad156694472e2e7e70e4388c948002505b758fb4c945465",
+      "bytes": 2802,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedNumber/formattedNumber.js",
+      "namespace": "c",
+      "name": "formattedNumber"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedNumberRecipes.js",
+      "sha256": "2c1ef2b3af87c65f4d2359de9e436e42295bd8d9b9b8c464a1c81761f57a2d7b",
+      "bytes": 629,
+      "source": "lbc-recipes/examples/lwc/formattedNumberRecipes/formattedNumberRecipes.js",
+      "namespace": "c",
+      "name": "formattedNumberRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedPhone.js",
+      "sha256": "9caa564871137e91b5f5ca62226500e4c121efe685f592c2b5a4996c1da59747",
+      "bytes": 1815,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedPhone/formattedPhone.js",
+      "namespace": "c",
+      "name": "formattedPhone"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedPhoneRecipes.js",
+      "sha256": "49afec73f48168055f6e886033d3fad2ac85fe77543d1dc4c221907e04777e65",
+      "bytes": 625,
+      "source": "lbc-recipes/examples/lwc/formattedPhoneRecipes/formattedPhoneRecipes.js",
+      "namespace": "c",
+      "name": "formattedPhoneRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedText.js",
+      "sha256": "1a34d5dacb5edd0b8da9bf8398d570546bd1ce919f9a94f5ce7934b1aaa743db",
+      "bytes": 1363,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedText/formattedText.js",
+      "namespace": "c",
+      "name": "formattedText"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedTextRecipes.js",
+      "sha256": "6b9d3adce1008ec7d5c5c7ff98ea00c93e6ce48e1245feeaf31270211fa4499e",
+      "bytes": 621,
+      "source": "lbc-recipes/examples/lwc/formattedTextRecipes/formattedTextRecipes.js",
+      "namespace": "c",
+      "name": "formattedTextRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedTime.js",
+      "sha256": "cc32381e435151882f8102e7503803a95644ff6184b8a9dd02c35bf717aa2708",
+      "bytes": 1554,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedTime/formattedTime.js",
+      "namespace": "c",
+      "name": "formattedTime"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedTimeRecipes.js",
+      "sha256": "1b52bd21e943ef3950769c73cc45992ef0bd151acba99043bd7e533ea279f518",
+      "bytes": 621,
+      "source": "lbc-recipes/examples/lwc/formattedTimeRecipes/formattedTimeRecipes.js",
+      "namespace": "c",
+      "name": "formattedTimeRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedUrl.js",
+      "sha256": "62ddd7bade8fa411580f310ec9d17b2b6f9e3da41936d5142e75993b193ffe69",
+      "bytes": 2821,
+      "source": "lbc-recipes/force-app/main/default/lwc/formattedUrl/formattedUrl.js",
+      "namespace": "c",
+      "name": "formattedUrl"
+    },
+    {
+      "path": "modules/lbc-recipes/c/formattedUrlRecipes.js",
+      "sha256": "453333f93dd6976b1c14eebad8699c8d9a088db393354db6c2e8c7d7a38d8572",
+      "bytes": 617,
+      "source": "lbc-recipes/examples/lwc/formattedUrlRecipes/formattedUrlRecipes.js",
+      "namespace": "c",
+      "name": "formattedUrlRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/icon.js",
+      "sha256": "48adfff6ce8500f709649451fb4455c4ede19d8a1851ce0047f0687b97ebcbae",
+      "bytes": 3232,
+      "source": "lbc-recipes/force-app/main/default/lwc/icon/icon.js",
+      "namespace": "c",
+      "name": "icon"
+    },
+    {
+      "path": "modules/lbc-recipes/c/iconRecipes.js",
+      "sha256": "6dec80738a5e1bcbc5c71bd4b7c66b3291d60f75dceaaaae739b26b58e3d912f",
+      "bytes": 584,
+      "source": "lbc-recipes/examples/lwc/iconRecipes/iconRecipes.js",
+      "namespace": "c",
+      "name": "iconRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/iconUtils.js",
+      "sha256": "7706d70a575d629b2e1f61100197cb02208ac89b169d81ed75b000233bde36d3",
+      "bytes": 3234,
+      "source": "lbc-recipes/force-app/main/default/lwc/iconUtils/iconUtils.js",
+      "namespace": "c",
+      "name": "iconUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/inputLocation.js",
+      "sha256": "b56e17b8f27e03e2b03aafb80e55788649af52dcb8f839891f326616e75e04ea",
+      "bytes": 8387,
+      "source": "lbc-recipes/force-app/main/default/lwc/inputLocation/inputLocation.js",
+      "namespace": "c",
+      "name": "inputLocation"
+    },
+    {
+      "path": "modules/lbc-recipes/c/inputLocationRecipes.js",
+      "sha256": "3e9438f0789fd8c48ac72eecf650ee76ab5486de7704f99a43f2c13bc7cba283",
+      "bytes": 619,
+      "source": "lbc-recipes/examples/lwc/inputLocationRecipes/inputLocationRecipes.js",
+      "namespace": "c",
+      "name": "inputLocationRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/inputUtils.js",
+      "sha256": "ac8a8bd34f8d141fe310b06fb598023bdbf748e5b6052b1a764e22b4cac2ca6a",
+      "bytes": 622,
+      "source": "lbc-recipes/force-app/main/default/lwc/inputUtils/inputUtils.js",
+      "namespace": "c",
+      "name": "inputUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/internationalizationLibrary.js",
+      "sha256": "b835e66651196f0210e29ce51d2cb74f8aab1fc5e178b7bb363e2ade4e4a1114",
+      "bytes": 1182,
+      "source": "lbc-recipes/force-app/main/default/lwc/internationalizationLibrary/internationalizationLibrary.js",
+      "namespace": "c",
+      "name": "internationalizationLibrary"
+    },
+    {
+      "path": "modules/lbc-recipes/c/iso8601Utils.js",
+      "sha256": "df7799151753ac8f3fa8c23e2333fd973a29be3ce2b92b7db8045eea145f3f3c",
+      "bytes": 1575,
+      "source": "lbc-recipes/force-app/main/default/lwc/iso8601Utils/iso8601Utils.js",
+      "namespace": "c",
+      "name": "iso8601Utils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/layout.js",
+      "sha256": "0cec0402930f2b87eb2ed328ba3dcb8ebc04e0f694990490af19e9b7a781e93c",
+      "bytes": 2464,
+      "source": "lbc-recipes/force-app/main/default/lwc/layout/layout.js",
+      "namespace": "c",
+      "name": "layout"
+    },
+    {
+      "path": "modules/lbc-recipes/c/layoutItem.js",
+      "sha256": "fbad472e4ed7eefd8323c5d90b7fe9935c9558c9c20a98d6958c4efe9bfb1fe3",
+      "bytes": 3447,
+      "source": "lbc-recipes/force-app/main/default/lwc/layoutItem/layoutItem.js",
+      "namespace": "c",
+      "name": "layoutItem"
+    },
+    {
+      "path": "modules/lbc-recipes/c/layoutRecipes.js",
+      "sha256": "7acf22cefc8d2f8ea2df23a8fccf9856fe76cde979080e55639edf9cb20a8a01",
+      "bytes": 592,
+      "source": "lbc-recipes/examples/lwc/layoutRecipes/layoutRecipes.js",
+      "namespace": "c",
+      "name": "layoutRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/layoutUtils.js",
+      "sha256": "8642b7db4ff1c6dff5f4545302b0e33ac433ef9a8795236744e8224f5a01a392",
+      "bytes": 344,
+      "source": "lbc-recipes/force-app/main/default/lwc/layoutUtils/layoutUtils.js",
+      "namespace": "c",
+      "name": "layoutUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/menuDivider.js",
+      "sha256": "803aec4a5f2a7934458d2e338cd0a6cff02854a5a899a953c77b8664b30cdcd7",
+      "bytes": 1423,
+      "source": "lbc-recipes/force-app/main/default/lwc/menuDivider/menuDivider.js",
+      "namespace": "c",
+      "name": "menuDivider"
+    },
+    {
+      "path": "modules/lbc-recipes/c/menuItem.js",
+      "sha256": "a7086ab83cc8ccc32124cec63061696fb4f823f176d829b0706f08e35ac3880b",
+      "bytes": 5425,
+      "source": "lbc-recipes/force-app/main/default/lwc/menuItem/menuItem.js",
+      "namespace": "c",
+      "name": "menuItem"
+    },
+    {
+      "path": "modules/lbc-recipes/c/menuSubheader.js",
+      "sha256": "27402e8fd8f9cfa1d7eee895719745554c04a91515cf8f2854f467efb4092af9",
+      "bytes": 994,
+      "source": "lbc-recipes/force-app/main/default/lwc/menuSubheader/menuSubheader.js",
+      "namespace": "c",
+      "name": "menuSubheader"
+    },
+    {
+      "path": "modules/lbc-recipes/c/messages.js",
+      "sha256": "27fab4cb149b682620b99f50902748b2a1e9f3a44b727f0e4e0f5800606bcb26",
+      "bytes": 1156,
+      "source": "lbc-recipes/force-app/main/default/lwc/messages/messages.js",
+      "namespace": "c",
+      "name": "messages"
+    },
+    {
+      "path": "modules/lbc-recipes/c/numberUtils.js",
+      "sha256": "6cd688b142f8152b94a8c258cc2feb6aa5754687962bbb1c5e3e27cc8fd2b397",
+      "bytes": 467,
+      "source": "lbc-recipes/force-app/main/default/lwc/numberUtils/numberUtils.js",
+      "namespace": "c",
+      "name": "numberUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/outputField.js",
+      "sha256": "522505b71465c96ce19e1d3c41a06c6b67a826e2debff79982cc4186cdbcf16d",
+      "bytes": 8477,
+      "source": "lbc-recipes/force-app/main/default/lwc/outputField/outputField.js",
+      "namespace": "c",
+      "name": "outputField"
+    },
+    {
+      "path": "modules/lbc-recipes/c/overflowLibrary.js",
+      "sha256": "3c804ab0d5b6a45eb2b8053401be37ad38097de04c422c64c748535e4d07815d",
+      "bytes": 1447,
+      "source": "lbc-recipes/force-app/main/default/lwc/overflowLibrary/overflowLibrary.js",
+      "namespace": "c",
+      "name": "overflowLibrary"
+    },
+    {
+      "path": "modules/lbc-recipes/c/pill.js",
+      "sha256": "412f8b928f161ee785473405e92442e50898f162d48fed5610631669acf4b031",
+      "bytes": 7474,
+      "source": "lbc-recipes/force-app/main/default/lwc/pill/pill.js",
+      "namespace": "c",
+      "name": "pill"
+    },
+    {
+      "path": "modules/lbc-recipes/c/pillContainer.js",
+      "sha256": "4565288d977ee6a25bd8040318ed239aba05532d6a75fe8eefd8ffdb58f7c541",
+      "bytes": 8204,
+      "source": "lbc-recipes/force-app/main/default/lwc/pillContainer/pillContainer.js",
+      "namespace": "c",
+      "name": "pillContainer"
+    },
+    {
+      "path": "modules/lbc-recipes/c/primitiveButton.js",
+      "sha256": "6f6871a45383106e13f7b9e06e0cfb2cc3a7f99e2ef14df06181d168cd42035b",
+      "bytes": 4024,
+      "source": "lbc-recipes/force-app/main/default/lwc/primitiveButton/primitiveButton.js",
+      "namespace": "c",
+      "name": "primitiveButton"
+    },
+    {
+      "path": "modules/lbc-recipes/c/primitiveIcon.js",
+      "sha256": "47496963932d8eae89e9587a2436a623eec5032f17d81df3b4b66c03182c43d3",
+      "bytes": 3558,
+      "source": "lbc-recipes/force-app/main/default/lwc/primitiveIcon/primitiveIcon.js",
+      "namespace": "c",
+      "name": "primitiveIcon"
+    },
+    {
+      "path": "modules/lbc-recipes/c/radioGroup.js",
+      "sha256": "924d8bd818d340d8f09e65f67f86fe26cfa288bb7c8de4000d8a1b4105a2a696",
+      "bytes": 5895,
+      "source": "lbc-recipes/force-app/main/default/lwc/radioGroup/radioGroup.js",
+      "namespace": "c",
+      "name": "radioGroup"
+    },
+    {
+      "path": "modules/lbc-recipes/c/radioGroupRecipes.js",
+      "sha256": "0e62e261d49f813917785199c65cd6126fc49a2fda45ca30d4d6db716f3c9f36",
+      "bytes": 1147,
+      "source": "lbc-recipes/examples/lwc/radioGroupRecipes/radioGroupRecipes.js",
+      "namespace": "c",
+      "name": "radioGroupRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordEditForm.js",
+      "sha256": "b33dd5e4ce1cd1a4be90873518d0f41ede20832a0b20f5a0fc2e042241165348",
+      "bytes": 15933,
+      "source": "lbc-recipes/force-app/main/default/lwc/recordEditForm/recordEditForm.js",
+      "namespace": "c",
+      "name": "recordEditForm"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordEditFormRecipes.js",
+      "sha256": "ef3447031b0d2cc4fce1ca35e87d16d833fd4e54329e87f013e6aaf426197cf6",
+      "bytes": 1581,
+      "source": "lbc-recipes/examples/lwc/recordEditFormRecipes/recordEditFormRecipes.js",
+      "namespace": "c",
+      "name": "recordEditFormRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordEditUtils.js",
+      "sha256": "77438a3ecb4c45240c6f2f20c3b70b2e000dc81be47d3ef02b2d0777fe0018cc",
+      "bytes": 4951,
+      "source": "lbc-recipes/force-app/main/default/lwc/recordEditUtils/recordEditUtils.js",
+      "namespace": "c",
+      "name": "recordEditUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordForm.js",
+      "sha256": "700bb51466d641a9d57b271f9dc1a62adda8a0cc2c70349460b0edc4448a79dc",
+      "bytes": 10395,
+      "source": "lbc-recipes/force-app/main/default/lwc/recordForm/recordForm.js",
+      "namespace": "c",
+      "name": "recordForm"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordFormRecipes.js",
+      "sha256": "9e8d77205ac5c506e22eeaa0f721cd8a86de0c526134c3a0916530211fe7f288",
+      "bytes": 1758,
+      "source": "lbc-recipes/examples/lwc/recordFormRecipes/recordFormRecipes.js",
+      "namespace": "c",
+      "name": "recordFormRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordUtils.js",
+      "sha256": "54e03b992f6dcf62b22770c93e7be2039c12e6c163e1c76b2fc317cd2c8c0527",
+      "bytes": 838,
+      "source": "lbc-recipes/force-app/main/default/lwc/recordUtils/recordUtils.js",
+      "namespace": "c",
+      "name": "recordUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordViewForm.js",
+      "sha256": "53354c0d7cff79faf927ad71c89da328bbbe1c9ccc7a6760cca8e7b0d2e6c2d4",
+      "bytes": 7365,
+      "source": "lbc-recipes/force-app/main/default/lwc/recordViewForm/recordViewForm.js",
+      "namespace": "c",
+      "name": "recordViewForm"
+    },
+    {
+      "path": "modules/lbc-recipes/c/recordViewFormRecipes.js",
+      "sha256": "b383ceeb1f944add07f865162ee776191b53d2c62eadd735116fd1819eada360",
+      "bytes": 1230,
+      "source": "lbc-recipes/examples/lwc/recordViewFormRecipes/recordViewFormRecipes.js",
+      "namespace": "c",
+      "name": "recordViewFormRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/relativeDateTime.js",
+      "sha256": "9db83882ae8cb90fd3bfa0878ea40450c099467a1dff641b8c5de702854e9ea9",
+      "bytes": 2332,
+      "source": "lbc-recipes/force-app/main/default/lwc/relativeDateTime/relativeDateTime.js",
+      "namespace": "c",
+      "name": "relativeDateTime"
+    },
+    {
+      "path": "modules/lbc-recipes/c/relativeDateTimeRecipes.js",
+      "sha256": "88f329e47eb7c9e71d80b5492e4e41621bc9e943ffda5845ad93ceb09584aa08",
+      "bytes": 1031,
+      "source": "lbc-recipes/examples/lwc/relativeDateTimeRecipes/relativeDateTimeRecipes.js",
+      "namespace": "c",
+      "name": "relativeDateTimeRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/resizeObserver.js",
+      "sha256": "5801433505aefe9ede53f0388d1ba31c5301ba1ef855d86dce95d4c9a99626b4",
+      "bytes": 1655,
+      "source": "lbc-recipes/force-app/main/default/lwc/resizeObserver/resizeObserver.js",
+      "namespace": "c",
+      "name": "resizeObserver"
+    },
+    {
+      "path": "modules/lbc-recipes/c/routingService.js",
+      "sha256": "28bcdce663dc3d0f24d63837490092b4f02c352ce3e078091535b40a855dbf39",
+      "bytes": 1779,
+      "source": "lbc-recipes/force-app/main/default/lwc/routingService/routingService.js",
+      "namespace": "c",
+      "name": "routingService"
+    },
+    {
+      "path": "modules/lbc-recipes/c/slider.js",
+      "sha256": "0dd88e608999c2f1bce33e2f2d1d9e921163a64285eceeffa5cd20fa9f7bcc7c",
+      "bytes": 7784,
+      "source": "lbc-recipes/force-app/main/default/lwc/slider/slider.js",
+      "namespace": "c",
+      "name": "slider"
+    },
+    {
+      "path": "modules/lbc-recipes/c/sliderRecipes.js",
+      "sha256": "182c074241a0943288b41cb85d57793faa3409fc3b167936c702f35e5c97da72",
+      "bytes": 784,
+      "source": "lbc-recipes/examples/lwc/sliderRecipes/sliderRecipes.js",
+      "namespace": "c",
+      "name": "sliderRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/spinner.js",
+      "sha256": "3a2d7c8ec48f2e15cf04c5e22e3b9522e099c73c1c896327030eb38b9f469926",
+      "bytes": 2297,
+      "source": "lbc-recipes/force-app/main/default/lwc/spinner/spinner.js",
+      "namespace": "c",
+      "name": "spinner"
+    },
+    {
+      "path": "modules/lbc-recipes/c/spinnerRecipes.js",
+      "sha256": "6ec7225d0eb22eb4c5b1e416c8e144e9ac5cfa8f70085746140e8f8de3843d11",
+      "bytes": 859,
+      "source": "lbc-recipes/examples/lwc/spinnerRecipes/spinnerRecipes.js",
+      "namespace": "c",
+      "name": "spinnerRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tab.js",
+      "sha256": "4b3a078757b8779b6de35dfdd9b0667c4b06f450e7eb951f13c8e076b28e7914",
+      "bytes": 3418,
+      "source": "lbc-recipes/force-app/main/default/lwc/tab/tab.js",
+      "namespace": "c",
+      "name": "tab"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tabBar.js",
+      "sha256": "ed00dc54cf928a2ddaefe266259879092f9b8939c9bf4c447bb28e00999da109",
+      "bytes": 12148,
+      "source": "lbc-recipes/force-app/main/default/lwc/tabBar/tabBar.js",
+      "namespace": "c",
+      "name": "tabBar"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tabOverflow.js",
+      "sha256": "058337fc0d7040b0f25d7eb8a8022ac450243299ad329c1e2c2aa411f6eff975",
+      "bytes": 1067,
+      "source": "lbc-recipes/examples/lwc/tabOverflow/tabOverflow.js",
+      "namespace": "c",
+      "name": "tabOverflow"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tabset.js",
+      "sha256": "4c652627779f373dbb842fd24890a40a32f2e4801e11215018df282083241f0c",
+      "bytes": 6500,
+      "source": "lbc-recipes/force-app/main/default/lwc/tabset/tabset.js",
+      "namespace": "c",
+      "name": "tabset"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tabsetRecipes.js",
+      "sha256": "1938cef21d92e257cc68f4742533acc22e20e3428d6cfa65e20472470d8bff4a",
+      "bytes": 592,
+      "source": "lbc-recipes/examples/lwc/tabsetRecipes/tabsetRecipes.js",
+      "namespace": "c",
+      "name": "tabsetRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/textarea.js",
+      "sha256": "f08b645aa7ceb9918005a9e16dffd45ed2d40776ada446989cc9b41140eaba8b",
+      "bytes": 8621,
+      "source": "lbc-recipes/force-app/main/default/lwc/textarea/textarea.js",
+      "namespace": "c",
+      "name": "textarea"
+    },
+    {
+      "path": "modules/lbc-recipes/c/textareaRecipes.js",
+      "sha256": "3021ec0b43965dd29c8c5ab1fd59e0767dbafe78565f9cc4ff6dd8d1f210790d",
+      "bytes": 600,
+      "source": "lbc-recipes/examples/lwc/textareaRecipes/textareaRecipes.js",
+      "namespace": "c",
+      "name": "textareaRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tile.js",
+      "sha256": "c942bc19058b280707726519acad33ab59fad51c0eb298cb59538d80becba480",
+      "bytes": 2613,
+      "source": "lbc-recipes/force-app/main/default/lwc/tile/tile.js",
+      "namespace": "c",
+      "name": "tile"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tileRecipes.js",
+      "sha256": "cbe97f9d79adda9875010fd891ec1aa77074ea259e456cbcb8df007406915c54",
+      "bytes": 1087,
+      "source": "lbc-recipes/examples/lwc/tileRecipes/tileRecipes.js",
+      "namespace": "c",
+      "name": "tileRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/touchScrollLibrary.js",
+      "sha256": "a82def39f8d64ed6201bd0902f991d8ad05627b3ab69510b42492bcccef8043b",
+      "bytes": 2534,
+      "source": "lbc-recipes/force-app/main/default/lwc/touchScrollLibrary/touchScrollLibrary.js",
+      "namespace": "c",
+      "name": "touchScrollLibrary"
+    },
+    {
+      "path": "modules/lbc-recipes/c/tree.js",
+      "sha256": "b1eadd9ae98f1eb7f0c89b7301a848e9c5af93a2308fc5cb19d498f54acd9f62",
+      "bytes": 9076,
+      "source": "lbc-recipes/force-app/main/default/lwc/tree/tree.js",
+      "namespace": "c",
+      "name": "tree"
+    },
+    {
+      "path": "modules/lbc-recipes/c/treeItem.js",
+      "sha256": "4d0ae82aa56f249fc9ff1d3c81637e87ef3b9bbd5f32a657c94216b883f407d8",
+      "bytes": 6884,
+      "source": "lbc-recipes/force-app/main/default/lwc/treeItem/treeItem.js",
+      "namespace": "c",
+      "name": "treeItem"
+    },
+    {
+      "path": "modules/lbc-recipes/c/treeRecipes.js",
+      "sha256": "a82f255d2fb3eb0effc02af259915a39ed545858754d1a577a60ef760b2604f2",
+      "bytes": 3364,
+      "source": "lbc-recipes/examples/lwc/treeRecipes/treeRecipes.js",
+      "namespace": "c",
+      "name": "treeRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/utils.js",
+      "sha256": "576979453c15c7b38835214b37777e590f23d9e07d6daaa732dc28d9ab52fa06",
+      "bytes": 344,
+      "source": "lbc-recipes/force-app/main/default/lwc/utils/utils.js",
+      "namespace": "c",
+      "name": "utils"
+    },
+    {
+      "path": "modules/lbc-recipes/c/utilsPrivate.js",
+      "sha256": "54a7343400f769627f6a4e345bbc09894cf418251ef3087ea031116ac9b37807",
+      "bytes": 3736,
+      "source": "lbc-recipes/force-app/main/default/lwc/utilsPrivate/utilsPrivate.js",
+      "namespace": "c",
+      "name": "utilsPrivate"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalNavigation.js",
+      "sha256": "7bfac45c114c452ba8b7de5adcb2d6b41d1be22f57bbcb3e2e10f9bd5c9ae15a",
+      "bytes": 3704,
+      "source": "lbc-recipes/force-app/main/default/lwc/verticalNavigation/verticalNavigation.js",
+      "namespace": "c",
+      "name": "verticalNavigation"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalNavigationItem.js",
+      "sha256": "a5339a15b23180a347f64b4ac544466c3706cb6a4fab1b072bbf4ee052bdc7cd",
+      "bytes": 2086,
+      "source": "lbc-recipes/force-app/main/default/lwc/verticalNavigationItem/verticalNavigationItem.js",
+      "namespace": "c",
+      "name": "verticalNavigationItem"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalNavigationItemBadge.js",
+      "sha256": "5ffc477e843eedd6189e138e187d7296260a38f04118be6e409ba850e1c64cad",
+      "bytes": 2481,
+      "source": "lbc-recipes/force-app/main/default/lwc/verticalNavigationItemBadge/verticalNavigationItemBadge.js",
+      "namespace": "c",
+      "name": "verticalNavigationItemBadge"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalNavigationItemIcon.js",
+      "sha256": "6e71e42b2da1ada6e3a8a1d2b2d5491f9d0d0d9df469264db92040913ec13a59",
+      "bytes": 2166,
+      "source": "lbc-recipes/force-app/main/default/lwc/verticalNavigationItemIcon/verticalNavigationItemIcon.js",
+      "namespace": "c",
+      "name": "verticalNavigationItemIcon"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalNavigationOverflow.js",
+      "sha256": "803af07d6540197f5ee6367167e9b24920aa599164af50fb57752b6447857f57",
+      "bytes": 1995,
+      "source": "lbc-recipes/force-app/main/default/lwc/verticalNavigationOverflow/verticalNavigationOverflow.js",
+      "namespace": "c",
+      "name": "verticalNavigationOverflow"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalNavigationSection.js",
+      "sha256": "425f8cb5b75252e5c4a4c9be21a623a4f8e3bd729b36823992ef360b87bc836c",
+      "bytes": 1267,
+      "source": "lbc-recipes/force-app/main/default/lwc/verticalNavigationSection/verticalNavigationSection.js",
+      "namespace": "c",
+      "name": "verticalNavigationSection"
+    },
+    {
+      "path": "modules/lbc-recipes/c/verticalRecipes.js",
+      "sha256": "e68f6c4dc25f2d47fc95246268028955e423de3ad0d284bd6924a8277b54a95d",
+      "bytes": 2511,
+      "source": "lbc-recipes/examples/lwc/verticalRecipes/verticalRecipes.js",
+      "namespace": "c",
+      "name": "verticalRecipes"
+    },
+    {
+      "path": "modules/lbc-recipes/c/viewSource.js",
+      "sha256": "9e8a6c86ced1ce2e6c9fc34a42b85bcd849029a3830385a96b6e87600ccf4cae",
+      "bytes": 1003,
+      "source": "lbc-recipes/examples/lwc/viewSource/viewSource.js",
+      "namespace": "c",
+      "name": "viewSource"
+    },
+    {
+      "path": "modules/lbc-recipes/force/ldsAdaptersUiapi.js",
+      "sha256": "0a19b6c5be96892fe249e313f0430fa0e87f8b3e6ab7fa26c47e9d2504b11717",
+      "bytes": 19978,
+      "source": "lbc-recipes/force-app/test/force/ldsAdaptersUiapi/ldsAdaptersUiapi.js",
+      "namespace": "force",
+      "name": "ldsAdaptersUiapi"
+    },
+    {
+      "path": "modules/lbc-recipes/force/mockDataLibrary.js",
+      "sha256": "800f06884a6e637624df0a7279f89a31d1d6357a0f4cb39b4b03182a94373a9c",
+      "bytes": 287,
+      "source": "lbc-recipes/force-app/test/force/mockDataLibrary/mockDataLibrary.js",
+      "namespace": "force",
+      "name": "mockDataLibrary"
+    },
+    {
+      "path": "modules/lbc-recipes/force/wireServiceMocks.js",
+      "sha256": "e5282063faaa933dcaadbe8a5a1c5391359c6e92f995607aa04162957b4e16a0",
+      "bytes": 2919,
+      "source": "lbc-recipes/force-app/test/force/wireServiceMocks/wireServiceMocks.js",
+      "namespace": "force",
+      "name": "wireServiceMocks"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/configProvider.js",
+      "sha256": "ec39ebae131486eeb982c0e8eda57b9a0308f889a3a0b010cdf5512059798637",
+      "bytes": 1455,
+      "source": "lbc-recipes/force-app/test/lightning/configProvider/configProvider.js",
+      "namespace": "lightning",
+      "name": "configProvider"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/formattedAddress.js",
+      "sha256": "133212b585b681217354dc6f0844653a9ba77ea0376415d549b1b3c438617fa6",
+      "bytes": 1760,
+      "source": "lbc-recipes/force-app/stubs/lightning/formattedAddress/formattedAddress.js",
+      "namespace": "lightning",
+      "name": "formattedAddress"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/iconSvgTemplates.js",
+      "sha256": "8d42be795faf17de8e1ec3d6ec986f476b772047b99eb5d559217685d4fe5880",
+      "bytes": 563,
+      "source": "lbc-recipes/force-app/test/lightning/iconSvgTemplates/iconSvgTemplates.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplates"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/input.js",
+      "sha256": "4a1fba7b1923eb5008f08216875926002fb857ad1635751c851e1d7bc1e2d699",
+      "bytes": 4896,
+      "source": "lbc-recipes/force-app/stubs/lightning/input/input.js",
+      "namespace": "lightning",
+      "name": "input"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/testUtils.js",
+      "sha256": "b4217e33af1df72559f56f7b331242a3c8f2d25111f9a0c2911959ce0ada0780",
+      "bytes": 3151,
+      "source": "lbc-recipes/force-app/test/lightning/testUtils/testUtils.js",
+      "namespace": "lightning",
+      "name": "testUtils"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/testUtilsButtonGroup.js",
+      "sha256": "1db5ee9c11f3f58e2543380d62ea46219bfff249ff45f6711dc0089c0a499bfa",
+      "bytes": 9688,
+      "source": "lbc-recipes/force-app/test/lightning/testUtilsButtonGroup/testUtilsButtonGroup.js",
+      "namespace": "lightning",
+      "name": "testUtilsButtonGroup"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/uiObjectInfoApi.js",
+      "sha256": "1b4a84c6db26c4e53b55e23c7fc043cbbe339ff7aa5938a5f3adc6f2fc65615b",
+      "bytes": 332,
+      "source": "lbc-recipes/force-app/stubs/lightning/uiObjectInfoApi/uiObjectInfoApi.js",
+      "namespace": "lightning",
+      "name": "uiObjectInfoApi"
+    },
+    {
+      "path": "modules/lbc-recipes/lightning/uiRecordApi.js",
+      "sha256": "edd42550a1eabac0247bdd22c1b74daafb5d52d340fd9b3d579759548b115fe1",
+      "bytes": 528,
+      "source": "lbc-recipes/force-app/stubs/lightning/uiRecordApi/uiRecordApi.js",
+      "namespace": "lightning",
+      "name": "uiRecordApi"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/accordionChild.js",
+      "sha256": "6e398a7f9961fa0124342082fa6996441efe36fa086106cac8cc9fba6a09daf3",
+      "bytes": 1105,
+      "source": "lbc-recipes/force-app/test/lightningtest/accordionChild/accordionChild.js",
+      "namespace": "lightningtest",
+      "name": "accordionChild"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/accordionTest.js",
+      "sha256": "388da6a73b8d3fcb8a6de94a370e754863adfc36d980bee994a1a925313bcbd1",
+      "bytes": 1367,
+      "source": "lbc-recipes/force-app/test/lightningtest/accordionTest/accordionTest.js",
+      "namespace": "lightningtest",
+      "name": "accordionTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/buttonGroupTest.js",
+      "sha256": "74ef296ff2f66f4574c019a46d9bd338b185211c1e2335c38a5de364374db7b6",
+      "bytes": 1152,
+      "source": "lbc-recipes/force-app/test/lightningtest/buttonGroupTest/buttonGroupTest.js",
+      "namespace": "lightningtest",
+      "name": "buttonGroupTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/buttonMenuTest.js",
+      "sha256": "28955596efb757de604b9934d683deb708ff487efea341ad76a67678171cb1b1",
+      "bytes": 1190,
+      "source": "lbc-recipes/force-app/test/lightningtest/buttonMenuTest/buttonMenuTest.js",
+      "namespace": "lightningtest",
+      "name": "buttonMenuTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/cardTest.js",
+      "sha256": "7ebd18c784efc68f6f859b3715641b15ddb8ed41853aa10014dcf2b2e0513d2a",
+      "bytes": 585,
+      "source": "lbc-recipes/force-app/test/lightningtest/cardTest/cardTest.js",
+      "namespace": "lightningtest",
+      "name": "cardTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/carouselTest.js",
+      "sha256": "d7328c1d67acda9806e148e6fb466c36acc5cc7459b8be1b3a6bbe2d24ac8cd6",
+      "bytes": 1023,
+      "source": "lbc-recipes/force-app/test/lightningtest/carouselTest/carouselTest.js",
+      "namespace": "lightningtest",
+      "name": "carouselTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/layoutTest.js",
+      "sha256": "e9e0eb8e6b7597de9e6cf48dc068310bdfe999bffa8b2f35c85fc6a9aa3c117e",
+      "bytes": 847,
+      "source": "lbc-recipes/force-app/test/lightningtest/layoutTest/layoutTest.js",
+      "namespace": "lightningtest",
+      "name": "layoutTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/mockRecordEditHolder.js",
+      "sha256": "557d2376fc7738a84ff84d4a303040aaf1ec63a5869d2194dd289e58ac359c36",
+      "bytes": 2586,
+      "source": "lbc-recipes/force-app/test/lightningtest/mockRecordEditHolder/mockRecordEditHolder.js",
+      "namespace": "lightningtest",
+      "name": "mockRecordEditHolder"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/mockRecordViewHolder.js",
+      "sha256": "42335791d94713eea78645a55296df94055b695c68a0669c273c5acbd65324ee",
+      "bytes": 2249,
+      "source": "lbc-recipes/force-app/test/lightningtest/mockRecordViewHolder/mockRecordViewHolder.js",
+      "namespace": "lightningtest",
+      "name": "mockRecordViewHolder"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/mockTileHolder.js",
+      "sha256": "4deef27d52cb2fcdd922a9abe555eb9d7c78f2d7cec5322178ad28fd1dee90cd",
+      "bytes": 1144,
+      "source": "lbc-recipes/force-app/test/lightningtest/mockTileHolder/mockTileHolder.js",
+      "namespace": "lightningtest",
+      "name": "mockTileHolder"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/pillTest.js",
+      "sha256": "e2084b8abefc5bda52af0effe46fbb69b72436e6fbf5130de043b36869489c85",
+      "bytes": 585,
+      "source": "lbc-recipes/force-app/test/lightningtest/pillTest/pillTest.js",
+      "namespace": "lightningtest",
+      "name": "pillTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/recordViewHolder.js",
+      "sha256": "6d2c970175aea1832268e3b6a20016e702978f833613a7ac3e115c4b204bd9de",
+      "bytes": 618,
+      "source": "lbc-recipes/force-app/test/lightningtest/recordViewHolder/recordViewHolder.js",
+      "namespace": "lightningtest",
+      "name": "recordViewHolder"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/registerWireMocks.js",
+      "sha256": "7c3816d7a5d5d19e81e629e5387eaafe49ae39b05e43f53ceee4f30597599b06",
+      "bytes": 388,
+      "source": "lbc-recipes/force-app/test/lightningtest/registerWireMocks/registerWireMocks.js",
+      "namespace": "lightningtest",
+      "name": "registerWireMocks"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/tabsetA11yTest.js",
+      "sha256": "1bd70dcb220dd44a44251962a10f30fadeed1829ad9b6992583abfaec6cc2411",
+      "bytes": 1064,
+      "source": "lbc-recipes/force-app/test/lightningtest/tabsetA11yTest/tabsetA11yTest.js",
+      "namespace": "lightningtest",
+      "name": "tabsetA11yTest"
+    },
+    {
+      "path": "modules/lbc-recipes/lightningtest/verticalNavigationTest.js",
+      "sha256": "6987d229739410bd7c0c6d4eb91bf028d74d98e803e5db7d46fdb47dde9bb188",
+      "bytes": 1461,
+      "source": "lbc-recipes/force-app/test/lightningtest/verticalNavigationTest/verticalNavigationTest.js",
+      "namespace": "lightningtest",
+      "name": "verticalNavigationTest"
+    },
+    {
+      "path": "modules/lbc/lightning/accordion.js",
+      "sha256": "a287365d5816a5256ba27521d0fb87a3c278e47ecd54aed7a240701cfc11ec35",
+      "bytes": 4285,
+      "source": "lbc/src/lightning/accordion/accordion.js",
+      "namespace": "lightning",
+      "name": "accordion"
+    },
+    {
+      "path": "modules/lbc/lightning/accordionSection.js",
+      "sha256": "739a91d609154d5faa056a0bc7cb8b649e43cb98c14255e4a833cf3d199fff91",
+      "bytes": 5504,
+      "source": "lbc/src/lightning/accordionSection/accordionSection.js",
+      "namespace": "lightning",
+      "name": "accordionSection"
+    },
+    {
+      "path": "modules/lbc/lightning/accordionUtilsPrivate.js",
+      "sha256": "c8bf1f2992d599f957321937b65e2448df493a44f957ab56da2894c920403816",
+      "bytes": 183,
+      "source": "lbc/src/lightning/accordionUtilsPrivate/accordionUtilsPrivate.js",
+      "namespace": "lightning",
+      "name": "accordionUtilsPrivate"
+    },
+    {
+      "path": "modules/lbc/lightning/alert.js",
+      "sha256": "1ed98a47c33898b9f757e803bcd3db888c5c046d06f234a855e5a1e2c45982bb",
+      "bytes": 1960,
+      "source": "lbc/src/lightning/alert/alert.js",
+      "namespace": "lightning",
+      "name": "alert"
+    },
+    {
+      "path": "modules/lbc/lightning/ariaObserver.js",
+      "sha256": "f80ff061e9a829e9d9bd369d22ca8e3116a0fa7cacbe7dac2d960dc8db9ba3b1",
+      "bytes": 9324,
+      "source": "lbc/src/lightning/ariaObserver/ariaObserver.js",
+      "namespace": "lightning",
+      "name": "ariaObserver"
+    },
+    {
+      "path": "modules/lbc/lightning/avatar.js",
+      "sha256": "c693625bea68efa79143f64fde5b7fd151644529105e5fcadfc5a2b67d6347e2",
+      "bytes": 3596,
+      "source": "lbc/src/lightning/avatar/avatar.js",
+      "namespace": "lightning",
+      "name": "avatar"
+    },
+    {
+      "path": "modules/lbc/lightning/badge.js",
+      "sha256": "e234b499af4f782b823352e9ca32d48464de00fad16aa354e1d7e382665e0612",
+      "bytes": 1852,
+      "source": "lbc/src/lightning/badge/badge.js",
+      "namespace": "lightning",
+      "name": "badge"
+    },
+    {
+      "path": "modules/lbc/lightning/barcodeScanner.js",
+      "sha256": "14c8007756615081953c5bd4bb2889f528927757ff0c30f6cf441c4b135782fb",
+      "bytes": 5797,
+      "source": "lbc/src/lightning/barcodeScanner/barcodeScanner.js",
+      "namespace": "lightning",
+      "name": "barcodeScanner"
+    },
+    {
+      "path": "modules/lbc/lightning/baseCombobox.js",
+      "sha256": "4232d4a11afa6767336c96b98890d7afb7f99f5c41640370ce631edbc429986f",
+      "bytes": 32093,
+      "source": "lbc/src/lightning/baseCombobox/baseCombobox.js",
+      "namespace": "lightning",
+      "name": "baseCombobox"
+    },
+    {
+      "path": "modules/lbc/lightning/baseComboboxFormattedText.js",
+      "sha256": "3d93ff370044151f6aae74384f213f3a21dcc39bf60dce1513ef4ec5b9107056",
+      "bytes": 1253,
+      "source": "lbc/src/lightning/baseComboboxFormattedText/baseComboboxFormattedText.js",
+      "namespace": "lightning",
+      "name": "baseComboboxFormattedText"
+    },
+    {
+      "path": "modules/lbc/lightning/baseComboboxItem.js",
+      "sha256": "551bd2342bac95a83147e5ea66c8f5ef8d0fde9aea62389df7990d744cf99127",
+      "bytes": 2551,
+      "source": "lbc/src/lightning/baseComboboxItem/baseComboboxItem.js",
+      "namespace": "lightning",
+      "name": "baseComboboxItem"
+    },
+    {
+      "path": "modules/lbc/lightning/baseFormattedText.js",
+      "sha256": "515d23f79750a52ed10010cf105a012b886ce15939725113aff99cf0f32e12db",
+      "bytes": 1673,
+      "source": "lbc/src/lightning/baseFormattedText/baseFormattedText.js",
+      "namespace": "lightning",
+      "name": "baseFormattedText"
+    },
+    {
+      "path": "modules/lbc/lightning/breadcrumb.js",
+      "sha256": "4163ec3835cf93edd1a79212e0a7c84ad1d8bc79275221bbf7f46a2780436c1d",
+      "bytes": 2097,
+      "source": "lbc/src/lightning/breadcrumb/breadcrumb.js",
+      "namespace": "lightning",
+      "name": "breadcrumb"
+    },
+    {
+      "path": "modules/lbc/lightning/breadcrumbs.js",
+      "sha256": "e620a4667acb2e0566151ecdcfe0c1f47621c088c871557ff0b4b8be953f0153",
+      "bytes": 1094,
+      "source": "lbc/src/lightning/breadcrumbs/breadcrumbs.js",
+      "namespace": "lightning",
+      "name": "breadcrumbs"
+    },
+    {
+      "path": "modules/lbc/lightning/button.js",
+      "sha256": "dcbdd87ce8ad09e273c0d010f5a5e3bf8eb488ff54baccbe87505e270d7dc913",
+      "bytes": 6067,
+      "source": "lbc/src/lightning/button/button.js",
+      "namespace": "lightning",
+      "name": "button"
+    },
+    {
+      "path": "modules/lbc/lightning/buttonGroup.js",
+      "sha256": "e78a16e312d4e2a7b4fffac733b6e7e8c83ed5adba57878576765ccf85e98957",
+      "bytes": 1422,
+      "source": "lbc/src/lightning/buttonGroup/buttonGroup.js",
+      "namespace": "lightning",
+      "name": "buttonGroup"
+    },
+    {
+      "path": "modules/lbc/lightning/buttonIcon.js",
+      "sha256": "8865f7008603f675ab57cf25d7d95d47347480a8d56a4c467626e2e0eee6b091",
+      "bytes": 7751,
+      "source": "lbc/src/lightning/buttonIcon/buttonIcon.js",
+      "namespace": "lightning",
+      "name": "buttonIcon"
+    },
+    {
+      "path": "modules/lbc/lightning/buttonIconStateful.js",
+      "sha256": "ed6dea45610e07c8ec4f6b2cbdf9f8ed475681829183764b478a105532d9c63a",
+      "bytes": 4695,
+      "source": "lbc/src/lightning/buttonIconStateful/buttonIconStateful.js",
+      "namespace": "lightning",
+      "name": "buttonIconStateful"
+    },
+    {
+      "path": "modules/lbc/lightning/buttonMenu.js",
+      "sha256": "98d30e88f770413e9827589dc50eae8c0c682c2215cde23d61a648f4539c98cd",
+      "bytes": 19370,
+      "source": "lbc/src/lightning/buttonMenu/buttonMenu.js",
+      "namespace": "lightning",
+      "name": "buttonMenu"
+    },
+    {
+      "path": "modules/lbc/lightning/buttonStateful.js",
+      "sha256": "3ac022ee94953858e8a0f448e964acea0323c30741de6227d8df27f1253a2243",
+      "bytes": 5293,
+      "source": "lbc/src/lightning/buttonStateful/buttonStateful.js",
+      "namespace": "lightning",
+      "name": "buttonStateful"
+    },
+    {
+      "path": "modules/lbc/lightning/calendar.js",
+      "sha256": "d3617bf8fb1029f2688576a96827d77714077aa40f5216f1cb8e497d65bdff41",
+      "bytes": 18200,
+      "source": "lbc/src/lightning/calendar/calendar.js",
+      "namespace": "lightning",
+      "name": "calendar"
+    },
+    {
+      "path": "modules/lbc/lightning/card.js",
+      "sha256": "46e3daf2c89746c4ab4a7a8d6944957334e980f22d0638563b4c84216c6342f0",
+      "bytes": 3567,
+      "source": "lbc/src/lightning/card/card.js",
+      "namespace": "lightning",
+      "name": "card"
+    },
+    {
+      "path": "modules/lbc/lightning/carousel.js",
+      "sha256": "01e484afbbf90cbac65d31a517f44776219e908cd02284391983a2b275f9f90d",
+      "bytes": 12466,
+      "source": "lbc/src/lightning/carousel/carousel.js",
+      "namespace": "lightning",
+      "name": "carousel"
+    },
+    {
+      "path": "modules/lbc/lightning/carouselImage.js",
+      "sha256": "a0ace723e692c1586271b1809a2831d1a770018e5dd120c695e4cfb454cf31fb",
+      "bytes": 4482,
+      "source": "lbc/src/lightning/carouselImage/carouselImage.js",
+      "namespace": "lightning",
+      "name": "carouselImage"
+    },
+    {
+      "path": "modules/lbc/lightning/checkboxGroup.js",
+      "sha256": "2d5789c27bc3539bc9ccdb133b58ca0046765518b092b58dfdfc425137704600",
+      "bytes": 6684,
+      "source": "lbc/src/lightning/checkboxGroup/checkboxGroup.js",
+      "namespace": "lightning",
+      "name": "checkboxGroup"
+    },
+    {
+      "path": "modules/lbc/lightning/colorPickerCustom.js",
+      "sha256": "4ef150f4b0b3db5a42bcfb9036dc54c8470f2b154c28f1e840d828b689918ac0",
+      "bytes": 13111,
+      "source": "lbc/src/lightning/colorPickerCustom/colorPickerCustom.js",
+      "namespace": "lightning",
+      "name": "colorPickerCustom"
+    },
+    {
+      "path": "modules/lbc/lightning/colorPickerPanel.js",
+      "sha256": "f3c97d89594e32795c79f68c2410043f31f40ea9dba7acb15de110737054ac07",
+      "bytes": 3716,
+      "source": "lbc/src/lightning/colorPickerPanel/colorPickerPanel.js",
+      "namespace": "lightning",
+      "name": "colorPickerPanel"
+    },
+    {
+      "path": "modules/lbc/lightning/colorSwatch.js",
+      "sha256": "8be663b98fc6c9d3af4c3c93c507f7f4f8638a94126426ca1bfc2b19bcd316c9",
+      "bytes": 1599,
+      "source": "lbc/src/lightning/colorSwatch/colorSwatch.js",
+      "namespace": "lightning",
+      "name": "colorSwatch"
+    },
+    {
+      "path": "modules/lbc/lightning/combobox.js",
+      "sha256": "9f1fe312b866de29a0020501a7e7c47c1f89d1662d4b3e6ca7e40b0f10e24427",
+      "bytes": 11577,
+      "source": "lbc/src/lightning/combobox/combobox.js",
+      "namespace": "lightning",
+      "name": "combobox"
+    },
+    {
+      "path": "modules/lbc/lightning/configProvider.js",
+      "sha256": "ddd2b98ef3e798ea8da07fbdc2704164bd4cc2266b902dabb8c4c180aca82829",
+      "bytes": 1800,
+      "source": "lbc/src/lightning/configProvider/configProvider.js",
+      "namespace": "lightning",
+      "name": "configProvider"
+    },
+    {
+      "path": "modules/lbc/lightning/confirm.js",
+      "sha256": "c2da7f1719df520e1471a1fbf255b01b775aa6c462e076ee2aa7ca8197746420",
+      "bytes": 2048,
+      "source": "lbc/src/lightning/confirm/confirm.js",
+      "namespace": "lightning",
+      "name": "confirm"
+    },
+    {
+      "path": "modules/lbc/lightning/context.js",
+      "sha256": "2111e469a140d788ba0d36e3983927d5e1586da5b8dc9d82498f3b419166b174",
+      "bytes": 2606,
+      "source": "lbc/src/lightning/context/context.js",
+      "namespace": "lightning",
+      "name": "context"
+    },
+    {
+      "path": "modules/lbc/lightning/datatable.js",
+      "sha256": "7edebe0789fd4d9bed59a77a6adcc8769639759c6edf5d5edbddfd99048ba908",
+      "bytes": 56870,
+      "source": "lbc/src/lightning/datatable/datatable.js",
+      "namespace": "lightning",
+      "name": "datatable"
+    },
+    {
+      "path": "modules/lbc/lightning/datatableKeyboardMixins.js",
+      "sha256": "9e65816399e4fab11902d4db53b957ddec4bf465efc7115314195628ed5c0268",
+      "bytes": 173,
+      "source": "lbc/src/lightning/datatableKeyboardMixins/datatableKeyboardMixins.js",
+      "namespace": "lightning",
+      "name": "datatableKeyboardMixins"
+    },
+    {
+      "path": "modules/lbc/lightning/datepicker.js",
+      "sha256": "59c1f7280e8f268591c0faf2ef0b20689b3a84da65239bc7ab0d64bbf12699e8",
+      "bytes": 24595,
+      "source": "lbc/src/lightning/datepicker/datepicker.js",
+      "namespace": "lightning",
+      "name": "datepicker"
+    },
+    {
+      "path": "modules/lbc/lightning/datetimepicker.js",
+      "sha256": "da395c1b0c9fd069fc30861426b35fac3708beac781c17473b0370aad54a14b1",
+      "bytes": 18429,
+      "source": "lbc/src/lightning/datetimepicker/datetimepicker.js",
+      "namespace": "lightning",
+      "name": "datetimepicker"
+    },
+    {
+      "path": "modules/lbc/lightning/dialog.js",
+      "sha256": "7fc06a9ca9ab7874ba97472edc7ed153d5326e63a2dd689dd9faa4341e74cbb1",
+      "bytes": 5462,
+      "source": "lbc/src/lightning/dialog/dialog.js",
+      "namespace": "lightning",
+      "name": "dialog"
+    },
+    {
+      "path": "modules/lbc/lightning/dualListbox.js",
+      "sha256": "73c76256d9d5c02d90c3657f76fac5741c5c38f21bc42d50c9f72fdf4e61f054",
+      "bytes": 33617,
+      "source": "lbc/src/lightning/dualListbox/dualListbox.js",
+      "namespace": "lightning",
+      "name": "dualListbox"
+    },
+    {
+      "path": "modules/lbc/lightning/dynamicIcon.js",
+      "sha256": "053c1df1e5b882492bfc5a709e15297a6f51657a7a50d5f277ea442146ed51b4",
+      "bytes": 2961,
+      "source": "lbc/src/lightning/dynamicIcon/dynamicIcon.js",
+      "namespace": "lightning",
+      "name": "dynamicIcon"
+    },
+    {
+      "path": "modules/lbc/lightning/f6Controller.js",
+      "sha256": "ed5714ee485d8de1417455f6754aeb140d88cc30ba679d4f646d0d31727e6943",
+      "bytes": 8062,
+      "source": "lbc/src/lightning/f6Controller/f6Controller.js",
+      "namespace": "lightning",
+      "name": "f6Controller"
+    },
+    {
+      "path": "modules/lbc/lightning/features.js",
+      "sha256": "873e67bad94f178ea67134907ecddcdd143b5d454dec084c3f1903d26f1d9d40",
+      "bytes": 917,
+      "source": "lbc/src/lightning/features/features.js",
+      "namespace": "lightning",
+      "name": "features"
+    },
+    {
+      "path": "modules/lbc/lightning/fileDownload.js",
+      "sha256": "9b1c47194cc56c39fbdc55e3255e2af575e36b81d96d07885ba9966e103c4f1e",
+      "bytes": 449,
+      "source": "lbc/src/lightning/fileDownload/fileDownload.js",
+      "namespace": "lightning",
+      "name": "fileDownload"
+    },
+    {
+      "path": "modules/lbc/lightning/focusTrap.js",
+      "sha256": "65ad11d56b05bed6dab659a1e49ecddec21420fef7ec3689609d4abc54f54424",
+      "bytes": 2324,
+      "source": "lbc/src/lightning/focusTrap/focusTrap.js",
+      "namespace": "lightning",
+      "name": "focusTrap"
+    },
+    {
+      "path": "modules/lbc/lightning/focusUtils.js",
+      "sha256": "052d2724685b14cfe99b7bdd88b93eee68ba5818124c843d927164b7757dae55",
+      "bytes": 255,
+      "source": "lbc/src/lightning/focusUtils/focusUtils.js",
+      "namespace": "lightning",
+      "name": "focusUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedAddress.js",
+      "sha256": "e3c1199b2bb1b9e11811c192e93cb7b45b1fc8eb178cb696cb94706d6ffebdc0",
+      "bytes": 4654,
+      "source": "lbc/src/lightning/formattedAddress/formattedAddress.js",
+      "namespace": "lightning",
+      "name": "formattedAddress"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedDateTime.js",
+      "sha256": "d046afa76f855b80999465be8deea0c2ed215e766d552cbf1e631e1361c2a4da",
+      "bytes": 2621,
+      "source": "lbc/src/lightning/formattedDateTime/formattedDateTime.js",
+      "namespace": "lightning",
+      "name": "formattedDateTime"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedEmail.js",
+      "sha256": "5d7368871f677c8e14866d625e55a3946d7f8697223abbd35740e03ca2248b34",
+      "bytes": 2204,
+      "source": "lbc/src/lightning/formattedEmail/formattedEmail.js",
+      "namespace": "lightning",
+      "name": "formattedEmail"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedLocation.js",
+      "sha256": "61524d214b2e9c94a476a38c65ae4586889bb70e8ba5c87b3e266ca7adc466bf",
+      "bytes": 1066,
+      "source": "lbc/src/lightning/formattedLocation/formattedLocation.js",
+      "namespace": "lightning",
+      "name": "formattedLocation"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedLookup.js",
+      "sha256": "7b11f572c5594377557905047f59857fd1da11d462933f5f2f8331fc46c54332",
+      "bytes": 4256,
+      "source": "lbc/src/lightning/formattedLookup/formattedLookup.js",
+      "namespace": "lightning",
+      "name": "formattedLookup"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedName.js",
+      "sha256": "cdeaa1085eec9ed66e027e7735bca64e8811df1ba7ebc8607842acd5b62d2175",
+      "bytes": 3416,
+      "source": "lbc/src/lightning/formattedName/formattedName.js",
+      "namespace": "lightning",
+      "name": "formattedName"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedNumber.js",
+      "sha256": "296c1ad51b70430fac5decf5f7a7ac32901421ea49240a863be229adba577b89",
+      "bytes": 1858,
+      "source": "lbc/src/lightning/formattedNumber/formattedNumber.js",
+      "namespace": "lightning",
+      "name": "formattedNumber"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedPhone.js",
+      "sha256": "257aff0d45d854d874e9c7479055670e907635e4806a141067b767eb0d0b21de",
+      "bytes": 1945,
+      "source": "lbc/src/lightning/formattedPhone/formattedPhone.js",
+      "namespace": "lightning",
+      "name": "formattedPhone"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedRichText.js",
+      "sha256": "649371f2fac96568ca4010b95c57a1f1eb7a60ff780e806ac845572972715832",
+      "bytes": 10354,
+      "source": "lbc/src/lightning/formattedRichText/formattedRichText.js",
+      "namespace": "lightning",
+      "name": "formattedRichText"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedRichTextRenderer.js",
+      "sha256": "4e0afd43adba0917e3b6e6c8770d9017d1519620280e70600aec6822cd26e3c4",
+      "bytes": 7519,
+      "source": "lbc/src/lightning/formattedRichTextRenderer/formattedRichTextRenderer.js",
+      "namespace": "lightning",
+      "name": "formattedRichTextRenderer"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedText.js",
+      "sha256": "dc5b101cacfdfe100f53cc7aaa926c2aa5650df3d426b20fca854273b3158abd",
+      "bytes": 1354,
+      "source": "lbc/src/lightning/formattedText/formattedText.js",
+      "namespace": "lightning",
+      "name": "formattedText"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedTime.js",
+      "sha256": "fbbb7115d9fa367a558a2c82cb064cb07f1a318bf28d34e88bf9ab6b8816cb79",
+      "bytes": 1808,
+      "source": "lbc/src/lightning/formattedTime/formattedTime.js",
+      "namespace": "lightning",
+      "name": "formattedTime"
+    },
+    {
+      "path": "modules/lbc/lightning/formattedUrl.js",
+      "sha256": "24bb4b19279b2d3db45284db1a2f2a0da2556eceb4b8822b410b7608cebb36a9",
+      "bytes": 3011,
+      "source": "lbc/src/lightning/formattedUrl/formattedUrl.js",
+      "namespace": "lightning",
+      "name": "formattedUrl"
+    },
+    {
+      "path": "modules/lbc/lightning/groupedCombobox.js",
+      "sha256": "148f5d144b3ff976a98fdab9933b68a92955c3b23b5e94435812ae819810f3e9",
+      "bytes": 12134,
+      "source": "lbc/src/lightning/groupedCombobox/groupedCombobox.js",
+      "namespace": "lightning",
+      "name": "groupedCombobox"
+    },
+    {
+      "path": "modules/lbc/lightning/helptext.js",
+      "sha256": "43305b7696d24c1b61cbe236e985f9e8aa45ba079542e4b9959d35af668a763b",
+      "bytes": 2810,
+      "source": "lbc/src/lightning/helptext/helptext.js",
+      "namespace": "lightning",
+      "name": "helptext"
+    },
+    {
+      "path": "modules/lbc/lightning/i18nCldrOptions.js",
+      "sha256": "f73fed5531eb39f2bba236f0460760d874e42dc05c0e19ace94a6a3d75fbe5ba",
+      "bytes": 3262,
+      "source": "lbc/src/lightning/i18nCldrOptions/i18nCldrOptions.js",
+      "namespace": "lightning",
+      "name": "i18nCldrOptions"
+    },
+    {
+      "path": "modules/lbc/lightning/i18nService.js",
+      "sha256": "42a48b7b1ffada53dfb71b090d70f1bd78648752895ad0fcd5d2bb1184c54719",
+      "bytes": 38937,
+      "source": "lbc/src/lightning/i18nService/i18nService.js",
+      "namespace": "lightning",
+      "name": "i18nService"
+    },
+    {
+      "path": "modules/lbc/lightning/icon.js",
+      "sha256": "9fba1a496a8c0a8087a81a6f6d2e132df004931b543af182918cef7f011439db",
+      "bytes": 4411,
+      "source": "lbc/src/lightning/icon/icon.js",
+      "namespace": "lightning",
+      "name": "icon"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplates.js",
+      "sha256": "9bac16e304c6901c1efe7d43307eb63dc2ec49424b98f25aea8ab2b5882c9123",
+      "bytes": 475,
+      "source": "lbc/src/lightning/iconSvgTemplates/iconSvgTemplates.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplates"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesAction.js",
+      "sha256": "0945dd39912275fde520be1af5195647cd833847fc810a23ac642ccd7e037290",
+      "bytes": 488,
+      "source": "lbc/src/lightning/iconSvgTemplatesAction/iconSvgTemplatesAction.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesAction"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesActionRtl.js",
+      "sha256": "ee022296ff2a1010b39c3e112efbe2f8b90a32bcb1a39b5cb1ae654771f9d510",
+      "bytes": 495,
+      "source": "lbc/src/lightning/iconSvgTemplatesActionRtl/iconSvgTemplatesActionRtl.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesActionRtl"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesCustom.js",
+      "sha256": "82be97b2d02b28858ed1c165880b5ffa2166e349a4047982d12aee23b40a523b",
+      "bytes": 488,
+      "source": "lbc/src/lightning/iconSvgTemplatesCustom/iconSvgTemplatesCustom.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesCustom"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesCustomRtl.js",
+      "sha256": "7b6706fddc7e6efb25c6cb3cee3eb771130d6c7773d4bee09956699c350b0af0",
+      "bytes": 495,
+      "source": "lbc/src/lightning/iconSvgTemplatesCustomRtl/iconSvgTemplatesCustomRtl.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesCustomRtl"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesDoctype.js",
+      "sha256": "f920ab3e21895ba3dd2edb71dca60db17a43969796b57b874107ee5ecef5edef",
+      "bytes": 490,
+      "source": "lbc/src/lightning/iconSvgTemplatesDoctype/iconSvgTemplatesDoctype.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesDoctype"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesDoctypeRtl.js",
+      "sha256": "77389b0c5d27ade97def7412f37f2d5077e09f960dacdcc75a3f4005907d3b32",
+      "bytes": 497,
+      "source": "lbc/src/lightning/iconSvgTemplatesDoctypeRtl/iconSvgTemplatesDoctypeRtl.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesDoctypeRtl"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesRtl.js",
+      "sha256": "7522c2a738d023f9754cf300122241546c3a376d2673f1676c13cb7c2e9efc26",
+      "bytes": 482,
+      "source": "lbc/src/lightning/iconSvgTemplatesRtl/iconSvgTemplatesRtl.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesRtl"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesStandard.js",
+      "sha256": "32e1f5360c456ade104005d34a5ebb96a732eef861a58d4dd44e5e40a7e44850",
+      "bytes": 492,
+      "source": "lbc/src/lightning/iconSvgTemplatesStandard/iconSvgTemplatesStandard.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesStandard"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesStandardRtl.js",
+      "sha256": "64cc5606664dd66797520c335eef6a79b5b915abac118da8c7ba46aec544fb96",
+      "bytes": 499,
+      "source": "lbc/src/lightning/iconSvgTemplatesStandardRtl/iconSvgTemplatesStandardRtl.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesStandardRtl"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesUtility.js",
+      "sha256": "afc80ac197e086a462d515aa4ff3049a07bb274d04b64fbaeb4fb42dd3b6d463",
+      "bytes": 490,
+      "source": "lbc/src/lightning/iconSvgTemplatesUtility/iconSvgTemplatesUtility.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesUtility"
+    },
+    {
+      "path": "modules/lbc/lightning/iconSvgTemplatesUtilityRtl.js",
+      "sha256": "36a2aea0ba2fa1a46d40fb2f52a6df763d23e9d33a72db953e97ae701973a79d",
+      "bytes": 497,
+      "source": "lbc/src/lightning/iconSvgTemplatesUtilityRtl/iconSvgTemplatesUtilityRtl.js",
+      "namespace": "lightning",
+      "name": "iconSvgTemplatesUtilityRtl"
+    },
+    {
+      "path": "modules/lbc/lightning/iconUtils.js",
+      "sha256": "5f12da7f5e087f5e8e2aa69b7e0bf6ba032d9318d06d953c8c83664cd5912bd7",
+      "bytes": 3196,
+      "source": "lbc/src/lightning/iconUtils/iconUtils.js",
+      "namespace": "lightning",
+      "name": "iconUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/input.js",
+      "sha256": "9bb35adbbb727fbdb2a1f158c5f5170038cd48b861b84eb446d8efa7e55a131f",
+      "bytes": 47189,
+      "source": "lbc/src/lightning/input/input.js",
+      "namespace": "lightning",
+      "name": "input"
+    },
+    {
+      "path": "modules/lbc/lightning/inputAddress.js",
+      "sha256": "3c4e1d5507e4797567f4fe5f09511fff6452c439176ee70f84b86b1e7d25fa1d",
+      "bytes": 18465,
+      "source": "lbc/src/lightning/inputAddress/inputAddress.js",
+      "namespace": "lightning",
+      "name": "inputAddress"
+    },
+    {
+      "path": "modules/lbc/lightning/inputLocation.js",
+      "sha256": "6edf6f9eb976b6e678714f6f89eb409a9a00738031b96f824f8ff498585c8c7d",
+      "bytes": 9763,
+      "source": "lbc/src/lightning/inputLocation/inputLocation.js",
+      "namespace": "lightning",
+      "name": "inputLocation"
+    },
+    {
+      "path": "modules/lbc/lightning/inputName.js",
+      "sha256": "2f8968d10425c110479c291ae2b8805d95d00a76d1ac2ad4af2d72b0ead5e57f",
+      "bytes": 12345,
+      "source": "lbc/src/lightning/inputName/inputName.js",
+      "namespace": "lightning",
+      "name": "inputName"
+    },
+    {
+      "path": "modules/lbc/lightning/inputUtils.js",
+      "sha256": "4a61b417b822733fef708843f69c497c6ec07bb55b0f41b69166236574d76f38",
+      "bytes": 634,
+      "source": "lbc/src/lightning/inputUtils/inputUtils.js",
+      "namespace": "lightning",
+      "name": "inputUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/interactiveDialogBase.js",
+      "sha256": "ba8f2a9a3876764853e99d8b9e5974283b2d2cf01e5f53452cf515e0771969b5",
+      "bytes": 5201,
+      "source": "lbc/src/lightning/interactiveDialogBase/interactiveDialogBase.js",
+      "namespace": "lightning",
+      "name": "interactiveDialogBase"
+    },
+    {
+      "path": "modules/lbc/lightning/internalLocalizationService.js",
+      "sha256": "3f92f33e4f1ddb70593e3b4f0da9ae42e2c1d0d687a2e41486e71c2a1dc0b0fc",
+      "bytes": 295,
+      "source": "lbc/src/lightning/internalLocalizationService/internalLocalizationService.js",
+      "namespace": "lightning",
+      "name": "internalLocalizationService"
+    },
+    {
+      "path": "modules/lbc/lightning/internationalizationLibrary.js",
+      "sha256": "2529a84b00fa3f0ce6cdce6ef75df606d3fad5b467aadf445491ca5ce9666457",
+      "bytes": 1247,
+      "source": "lbc/src/lightning/internationalizationLibrary/internationalizationLibrary.js",
+      "namespace": "lightning",
+      "name": "internationalizationLibrary"
+    },
+    {
+      "path": "modules/lbc/lightning/iso8601Utils.js",
+      "sha256": "606bdc0b79322c8f22f88cc2567032cd3484ba4fce61bb0c4d6c9af7944d4481",
+      "bytes": 2523,
+      "source": "lbc/src/lightning/iso8601Utils/iso8601Utils.js",
+      "namespace": "lightning",
+      "name": "iso8601Utils"
+    },
+    {
+      "path": "modules/lbc/lightning/layout.js",
+      "sha256": "dfc30946166043f4657d94d4605bc49e4d2714d3e59a25762799e865fe721e52",
+      "bytes": 2556,
+      "source": "lbc/src/lightning/layout/layout.js",
+      "namespace": "lightning",
+      "name": "layout"
+    },
+    {
+      "path": "modules/lbc/lightning/layoutItem.js",
+      "sha256": "66d9e811c9997f572390b91b104e963e9dfe2fe09d1981f1f051580a93c7f3a5",
+      "bytes": 3535,
+      "source": "lbc/src/lightning/layoutItem/layoutItem.js",
+      "namespace": "lightning",
+      "name": "layoutItem"
+    },
+    {
+      "path": "modules/lbc/lightning/layoutUtils.js",
+      "sha256": "765c4b1190e1cae3c9cd7246d6536fbedbe01ceb45d16d5f4123f19de1ceed9e",
+      "bytes": 256,
+      "source": "lbc/src/lightning/layoutUtils/layoutUtils.js",
+      "namespace": "lightning",
+      "name": "layoutUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/lookupAddress.js",
+      "sha256": "86a3cc68adcadf89b759ae82c41a3160057c8c72f65dcb8de02fde5cb4651601",
+      "bytes": 11296,
+      "source": "lbc/src/lightning/lookupAddress/lookupAddress.js",
+      "namespace": "lightning",
+      "name": "lookupAddress"
+    },
+    {
+      "path": "modules/lbc/lightning/mapUtils.js",
+      "sha256": "a0a03b8f9dc8ad9c0b347e084578c2e43bd4b2f0d2c1c81351efbc7f8f7df7ee",
+      "bytes": 875,
+      "source": "lbc/src/lightning/mapUtils/mapUtils.js",
+      "namespace": "lightning",
+      "name": "mapUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/mediaUtils.js",
+      "sha256": "d98b679e99126bb501fa3aed4d9697b2d741759c75f431d77c06f54e9c3c2140",
+      "bytes": 6747,
+      "source": "lbc/src/lightning/mediaUtils/mediaUtils.js",
+      "namespace": "lightning",
+      "name": "mediaUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/menuDivider.js",
+      "sha256": "2562ba8529176b2c67dffa92987da69281d5c00a0bc8b282ac2d44c0fd2f2cbe",
+      "bytes": 1477,
+      "source": "lbc/src/lightning/menuDivider/menuDivider.js",
+      "namespace": "lightning",
+      "name": "menuDivider"
+    },
+    {
+      "path": "modules/lbc/lightning/menuItem.js",
+      "sha256": "75eb06efab9a25d6536ce010092e31a921419c3e75c31c07c67b8dabc2b27397",
+      "bytes": 8284,
+      "source": "lbc/src/lightning/menuItem/menuItem.js",
+      "namespace": "lightning",
+      "name": "menuItem"
+    },
+    {
+      "path": "modules/lbc/lightning/menuSubheader.js",
+      "sha256": "2af57ee07c04bb6ef16a147a32c51f9b99c44201720b156e1c7f571779cbbeb7",
+      "bytes": 945,
+      "source": "lbc/src/lightning/menuSubheader/menuSubheader.js",
+      "namespace": "lightning",
+      "name": "menuSubheader"
+    },
+    {
+      "path": "modules/lbc/lightning/messageDispatcher.js",
+      "sha256": "fd493abb7be3b9f9d6b0c428381e14545d3e05d8077d4c62d6e81844e0e96e24",
+      "bytes": 2195,
+      "source": "lbc/src/lightning/messageDispatcher/messageDispatcher.js",
+      "namespace": "lightning",
+      "name": "messageDispatcher"
+    },
+    {
+      "path": "modules/lbc/lightning/mixinBuilder.js",
+      "sha256": "773f557939e1ae93bc45461c3cbd05346ebbe74b565301fe6923f8f7c88ab6b2",
+      "bytes": 455,
+      "source": "lbc/src/lightning/mixinBuilder/mixinBuilder.js",
+      "namespace": "lightning",
+      "name": "mixinBuilder"
+    },
+    {
+      "path": "modules/lbc/lightning/modal.js",
+      "sha256": "cb94d5bb7376d9a7da0ee438ecf746f365d8cc5319d2faa58bac602f055f083a",
+      "bytes": 2656,
+      "source": "lbc/src/lightning/modal/modal.js",
+      "namespace": "lightning",
+      "name": "modal"
+    },
+    {
+      "path": "modules/lbc/lightning/modalBase.js",
+      "sha256": "9b47ff30b43b17c00a21f4517a58f037968d00009069e1d62403f899e28663f3",
+      "bytes": 25844,
+      "source": "lbc/src/lightning/modalBase/modalBase.js",
+      "namespace": "lightning",
+      "name": "modalBase"
+    },
+    {
+      "path": "modules/lbc/lightning/modalBody.js",
+      "sha256": "4b6a7262ab81e699e9ea5d20d0d245b2f511a4f5ebb653314ac5992004023e18",
+      "bytes": 6786,
+      "source": "lbc/src/lightning/modalBody/modalBody.js",
+      "namespace": "lightning",
+      "name": "modalBody"
+    },
+    {
+      "path": "modules/lbc/lightning/modalFooter.js",
+      "sha256": "d0f1425a5341e5e4f680a9b548fd4a6b934d2c4a4a08ee8385fea34dfa4a9dd5",
+      "bytes": 3455,
+      "source": "lbc/src/lightning/modalFooter/modalFooter.js",
+      "namespace": "lightning",
+      "name": "modalFooter"
+    },
+    {
+      "path": "modules/lbc/lightning/modalHeader.js",
+      "sha256": "6ba8279406288c6d85a73df17fe15281efd2283b9a1cf12b76a16b8b6842180b",
+      "bytes": 4190,
+      "source": "lbc/src/lightning/modalHeader/modalHeader.js",
+      "namespace": "lightning",
+      "name": "modalHeader"
+    },
+    {
+      "path": "modules/lbc/lightning/modalUtils.js",
+      "sha256": "186858d33ac2d657f1c811894c50c9fd89f543b598147ffbe9f8a20d05e01e4f",
+      "bytes": 1445,
+      "source": "lbc/src/lightning/modalUtils/modalUtils.js",
+      "namespace": "lightning",
+      "name": "modalUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/multiColumnSortingModal.js",
+      "sha256": "7ec6504bc88a9dc1ef1c2d8dc06bd90114fda99565299187ff88764facfe8cac",
+      "bytes": 12792,
+      "source": "lbc/src/lightning/multiColumnSortingModal/multiColumnSortingModal.js",
+      "namespace": "lightning",
+      "name": "multiColumnSortingModal"
+    },
+    {
+      "path": "modules/lbc/lightning/navigation.js",
+      "sha256": "553bdfedb764d9ff64597cc658b751bfcb2675a7c238802f037330e3dfe2bf4a",
+      "bytes": 196,
+      "source": "lbc/src/lightning/navigation/navigation.js",
+      "namespace": "lightning",
+      "name": "navigation"
+    },
+    {
+      "path": "modules/lbc/lightning/numberUtils.js",
+      "sha256": "97900a85eddb6c6b4df745db04283227d7d53aa74fe63eafca5f5e255bcc1330",
+      "bytes": 6987,
+      "source": "lbc/src/lightning/numberUtils/numberUtils.js",
+      "namespace": "lightning",
+      "name": "numberUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/overflowLibrary.js",
+      "sha256": "24623113d5c94890cccd462124bbd59afc348807437efe2cbd257db957911558",
+      "bytes": 1359,
+      "source": "lbc/src/lightning/overflowLibrary/overflowLibrary.js",
+      "namespace": "lightning",
+      "name": "overflowLibrary"
+    },
+    {
+      "path": "modules/lbc/lightning/overlay.js",
+      "sha256": "640f85733b2427e3fa8681c317ae82d1bc0177a6b4b24425c83c66584643a86e",
+      "bytes": 3030,
+      "source": "lbc/src/lightning/overlay/overlay.js",
+      "namespace": "lightning",
+      "name": "overlay"
+    },
+    {
+      "path": "modules/lbc/lightning/overlayBase.js",
+      "sha256": "26140fd19d846fcbe7e839a51b03d761c689c91a3782c6e04a44811199e7cd20",
+      "bytes": 4071,
+      "source": "lbc/src/lightning/overlayBase/overlayBase.js",
+      "namespace": "lightning",
+      "name": "overlayBase"
+    },
+    {
+      "path": "modules/lbc/lightning/overlayContainer.js",
+      "sha256": "eca3af8f2ef8df13cd24e0c8ccb937fee8d930a02d01d4ca2e172a6aac2312e5",
+      "bytes": 8995,
+      "source": "lbc/src/lightning/overlayContainer/overlayContainer.js",
+      "namespace": "lightning",
+      "name": "overlayContainer"
+    },
+    {
+      "path": "modules/lbc/lightning/overlayManager.js",
+      "sha256": "ab6fbc116a3f8ceecf76fc505070a3af93f4542be77ba43449e1c810d1a27178",
+      "bytes": 8819,
+      "source": "lbc/src/lightning/overlayManager/overlayManager.js",
+      "namespace": "lightning",
+      "name": "overlayManager"
+    },
+    {
+      "path": "modules/lbc/lightning/overlayPositionUtils.js",
+      "sha256": "cc71d4dabb15c4de45a5ecec7d61961b8f867f7bef65902f70555b9d0a73298a",
+      "bytes": 3237,
+      "source": "lbc/src/lightning/overlayPositionUtils/overlayPositionUtils.js",
+      "namespace": "lightning",
+      "name": "overlayPositionUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/overlayUtils.js",
+      "sha256": "4f5d9b4a991d1094a01d358b6e6cd41746887c34822de5aa880f39ee54b407ad",
+      "bytes": 1494,
+      "source": "lbc/src/lightning/overlayUtils/overlayUtils.js",
+      "namespace": "lightning",
+      "name": "overlayUtils"
+    },
+    {
+      "path": "modules/lbc/lightning/picklist.js",
+      "sha256": "79e78dd4fa170c8e58f25c3ecbeda22d77de2e5c8795e13519da2fe7139b5dee",
+      "bytes": 10702,
+      "source": "lbc/src/lightning/picklist/picklist.js",
+      "namespace": "lightning",
+      "name": "picklist"
+    },
+    {
+      "path": "modules/lbc/lightning/pill.js",
+      "sha256": "1e1a740cb9b5ce0e61e845e9d09b63be006e37f587a619d100aa76919fd7118e",
+      "bytes": 8084,
+      "source": "lbc/src/lightning/pill/pill.js",
+      "namespace": "lightning",
+      "name": "pill"
+    },
+    {
+      "path": "modules/lbc/lightning/pillContainer.js",
+      "sha256": "652c9e28d953db8b44b6081fc771300d6c7b929959ab9ea76aed1ef963e41b03",
+      "bytes": 9289,
+      "source": "lbc/src/lightning/pillContainer/pillContainer.js",
+      "namespace": "lightning",
+      "name": "pillContainer"
+    },
+    {
+      "path": "modules/lbc/lightning/popup.js",
+      "sha256": "a33d60bb3bbb9620b1b6733973611a33544d38559da0914ca8335054f68d563f",
+      "bytes": 7355,
+      "source": "lbc/src/lightning/popup/popup.js",
+      "namespace": "lightning",
+      "name": "popup"
+    },
+    {
+      "path": "modules/lbc/lightning/positionLibrary.js",
+      "sha256": "97563bfb52955f0a8c01177c76ca734f543342f7d25ad2d9fd0e9c9ab52069f9",
+      "bytes": 11129,
+      "source": "lbc/src/lightning/positionLibrary/positionLibrary.js",
+      "namespace": "lightning",
+      "name": "positionLibrary"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveBubble.js",
+      "sha256": "06b308df4b128db3d3f7ef668c8c0fc74c8b36690a7f7b15b46454f4f30b80c2",
+      "bytes": 5312,
+      "source": "lbc/src/lightning/primitiveBubble/primitiveBubble.js",
+      "namespace": "lightning",
+      "name": "primitiveBubble"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveButton.js",
+      "sha256": "710f9020dd7c448538be092cc9e58eb0b02cf7c0d08bac28c5c2de33dd0b2926",
+      "bytes": 8621,
+      "source": "lbc/src/lightning/primitiveButton/primitiveButton.js",
+      "namespace": "lightning",
+      "name": "primitiveButton"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCellActions.js",
+      "sha256": "4440998075e5d65fb2abdf2c24eae87a9eb7a280e5490875c346a14751293885",
+      "bytes": 4234,
+      "source": "lbc/src/lightning/primitiveCellActions/primitiveCellActions.js",
+      "namespace": "lightning",
+      "name": "primitiveCellActions"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCellButton.js",
+      "sha256": "822bf51c9c78faa6f15b8cffc68c6d891cdad5a041c9cebac72196fc76fb82bc",
+      "bytes": 4352,
+      "source": "lbc/src/lightning/primitiveCellButton/primitiveCellButton.js",
+      "namespace": "lightning",
+      "name": "primitiveCellButton"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCellCheckbox.js",
+      "sha256": "cc63ec2b9c5e47a41c32d23b244bceff111f35548b38bb97e76b942d0d6cba2e",
+      "bytes": 4808,
+      "source": "lbc/src/lightning/primitiveCellCheckbox/primitiveCellCheckbox.js",
+      "namespace": "lightning",
+      "name": "primitiveCellCheckbox"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCellEditableButton.js",
+      "sha256": "502e237312311ac60668f4ff288b9d8bc8ce1cedb608d7006053751cf12b5c76",
+      "bytes": 1905,
+      "source": "lbc/src/lightning/primitiveCellEditableButton/primitiveCellEditableButton.js",
+      "namespace": "lightning",
+      "name": "primitiveCellEditableButton"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCellFactory.js",
+      "sha256": "56a475db6cf2ef99db51cbdcd01294da06501227dca4e15ee8ab2967805e1321",
+      "bytes": 12827,
+      "source": "lbc/src/lightning/primitiveCellFactory/primitiveCellFactory.js",
+      "namespace": "lightning",
+      "name": "primitiveCellFactory"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveColorpickerButton.js",
+      "sha256": "977342774160ba06c908e1d852cabaa13bb6152df506cb6c552be03d5b04f35f",
+      "bytes": 3633,
+      "source": "lbc/src/lightning/primitiveColorpickerButton/primitiveColorpickerButton.js",
+      "namespace": "lightning",
+      "name": "primitiveColorpickerButton"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveColumnSorter.js",
+      "sha256": "ee8bc4915faaf27c8b667c8c2355a5e37ccb16e8e8b6e7ede6a6e87b4a6368c1",
+      "bytes": 3882,
+      "source": "lbc/src/lightning/primitiveColumnSorter/primitiveColumnSorter.js",
+      "namespace": "lightning",
+      "name": "primitiveColumnSorter"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCoordinateItem.js",
+      "sha256": "bbd398c58f2186d0b616b72c70a97b937d954aee52b1c8c0db0ffd8e324068cf",
+      "bytes": 2189,
+      "source": "lbc/src/lightning/primitiveCoordinateItem/primitiveCoordinateItem.js",
+      "namespace": "lightning",
+      "name": "primitiveCoordinateItem"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveCustomCell.js",
+      "sha256": "7590f7de31ca1b21007be6c80bccef062ad0d1a21fc88fd7a865deb3a38c432e",
+      "bytes": 4302,
+      "source": "lbc/src/lightning/primitiveCustomCell/primitiveCustomCell.js",
+      "namespace": "lightning",
+      "name": "primitiveCustomCell"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableCell.js",
+      "sha256": "a9dd26f975984031189d3c6cf790ff483fdb58889dcf0c970a8663d28b1a6144",
+      "bytes": 8146,
+      "source": "lbc/src/lightning/primitiveDatatableCell/primitiveDatatableCell.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableCell"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableIeditInputWrapper.js",
+      "sha256": "0ebf2ae3ee6f77fc4f65ad627d98033380f44a1874e7fe64ccc255a61695227c",
+      "bytes": 958,
+      "source": "lbc/src/lightning/primitiveDatatableIeditInputWrapper/primitiveDatatableIeditInputWrapper.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableIeditInputWrapper"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableIeditPanel.js",
+      "sha256": "bdb5d2b7ab2639b865e6e0c157fd3d030c9c889e64893dc5e700d8c5f0d5a7da",
+      "bytes": 7001,
+      "source": "lbc/src/lightning/primitiveDatatableIeditPanel/primitiveDatatableIeditPanel.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableIeditPanel"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableIeditTypeFactory.js",
+      "sha256": "3e0ba77bf71ea3c5573723cc7216ad8de71326aa49a875cf983ac04e5f6d62c2",
+      "bytes": 5014,
+      "source": "lbc/src/lightning/primitiveDatatableIeditTypeFactory/primitiveDatatableIeditTypeFactory.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableIeditTypeFactory"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableLoadingIndicator.js",
+      "sha256": "695dfdd279a88bf319b6779d5ec2503fcee5e380277925ddc3998b1746bbad51",
+      "bytes": 831,
+      "source": "lbc/src/lightning/primitiveDatatableLoadingIndicator/primitiveDatatableLoadingIndicator.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableLoadingIndicator"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableStatusBar.js",
+      "sha256": "16307ca73227e143ad0089c1ab123b336b19eb0bff3d709df3478c9fa27c2d7d",
+      "bytes": 3005,
+      "source": "lbc/src/lightning/primitiveDatatableStatusBar/primitiveDatatableStatusBar.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableStatusBar"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableTooltip.js",
+      "sha256": "a0af518e83efbda217b6f2a7e2cb370e4c987ff08ce4b4d12aef09299586d8dd",
+      "bytes": 7218,
+      "source": "lbc/src/lightning/primitiveDatatableTooltip/primitiveDatatableTooltip.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableTooltip"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveDatatableTooltipBubble.js",
+      "sha256": "ec0b337de2c1f47c1da1124c1fe4fbd48b1d2369983f8896f2798213316e6fac",
+      "bytes": 4817,
+      "source": "lbc/src/lightning/primitiveDatatableTooltipBubble/primitiveDatatableTooltipBubble.js",
+      "namespace": "lightning",
+      "name": "primitiveDatatableTooltipBubble"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveFigure.js",
+      "sha256": "2824ca2f43723c2faf540ebff11451b90f41a1d147cd71a9a82a230ffa3d8173",
+      "bytes": 5398,
+      "source": "lbc/src/lightning/primitiveFigure/primitiveFigure.js",
+      "namespace": "lightning",
+      "name": "primitiveFigure"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveFileDroppableZone.js",
+      "sha256": "e0d785a8d7d91c24bb4accb030afad83c94d19bcb1287fb844f4975c245adc49",
+      "bytes": 2410,
+      "source": "lbc/src/lightning/primitiveFileDroppableZone/primitiveFileDroppableZone.js",
+      "namespace": "lightning",
+      "name": "primitiveFileDroppableZone"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveHeaderActions.js",
+      "sha256": "eb825d0ac0fbff99517608ff700b882f56a1bbbbc8edf1a93f5f12c8a938a25f",
+      "bytes": 4152,
+      "source": "lbc/src/lightning/primitiveHeaderActions/primitiveHeaderActions.js",
+      "namespace": "lightning",
+      "name": "primitiveHeaderActions"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveHeaderFactory.js",
+      "sha256": "e1d9521f002580e15c4e87e1e027e10f5820b1269182489235f1cdfab90523aa",
+      "bytes": 11557,
+      "source": "lbc/src/lightning/primitiveHeaderFactory/primitiveHeaderFactory.js",
+      "namespace": "lightning",
+      "name": "primitiveHeaderFactory"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveIcon.js",
+      "sha256": "9e3b9ccaaa0d6a01f5fe8b2a81b5b41626f673580a3260da7ec90db587439e1b",
+      "bytes": 4619,
+      "source": "lbc/src/lightning/primitiveIcon/primitiveIcon.js",
+      "namespace": "lightning",
+      "name": "primitiveIcon"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveIframe.js",
+      "sha256": "f2f52382be7a48b22051941645f2797e2ac219e276b5594f8122b125fcebc093",
+      "bytes": 2034,
+      "source": "lbc/src/lightning/primitiveIframe/primitiveIframe.js",
+      "namespace": "lightning",
+      "name": "primitiveIframe"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputCheckbox.js",
+      "sha256": "87e24e239254d5cd245fb4e6f94257adb015435db0099af05346690e6346b104",
+      "bytes": 6953,
+      "source": "lbc/src/lightning/primitiveInputCheckbox/primitiveInputCheckbox.js",
+      "namespace": "lightning",
+      "name": "primitiveInputCheckbox"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputCheckboxButton.js",
+      "sha256": "70dac09d929cd0b8c4aa63051a46f16d11dcc24ddecb7828c19ebf97c17f229e",
+      "bytes": 5701,
+      "source": "lbc/src/lightning/primitiveInputCheckboxButton/primitiveInputCheckboxButton.js",
+      "namespace": "lightning",
+      "name": "primitiveInputCheckboxButton"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputColor.js",
+      "sha256": "269f62e7381bfd02241db91cff27785bf8a930ba0d74ba20ffdffcec2de77b3e",
+      "bytes": 5947,
+      "source": "lbc/src/lightning/primitiveInputColor/primitiveInputColor.js",
+      "namespace": "lightning",
+      "name": "primitiveInputColor"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputFile.js",
+      "sha256": "0a665419b735226d1deb944acedbcc7dd9350ead92aa42f9c8d934d9a70a02c3",
+      "bytes": 5404,
+      "source": "lbc/src/lightning/primitiveInputFile/primitiveInputFile.js",
+      "namespace": "lightning",
+      "name": "primitiveInputFile"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputRadio.js",
+      "sha256": "5d702ea96dd6a756f8dcdfe789230d14102fc4dccc4a6a0ba94ec6d7c8960251",
+      "bytes": 3898,
+      "source": "lbc/src/lightning/primitiveInputRadio/primitiveInputRadio.js",
+      "namespace": "lightning",
+      "name": "primitiveInputRadio"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputSimple.js",
+      "sha256": "ef21ac33110ac62043bcf1f89a639bcac2f6e69bce3e67dd10fdd682d56c4eeb",
+      "bytes": 18697,
+      "source": "lbc/src/lightning/primitiveInputSimple/primitiveInputSimple.js",
+      "namespace": "lightning",
+      "name": "primitiveInputSimple"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveInputToggle.js",
+      "sha256": "f44d2e71c0b8521b81aa9378056d8028f78f15386606fd4585ed982d7136ed63",
+      "bytes": 5631,
+      "source": "lbc/src/lightning/primitiveInputToggle/primitiveInputToggle.js",
+      "namespace": "lightning",
+      "name": "primitiveInputToggle"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveModal.js",
+      "sha256": "0f9f92e5e6aa743c2507ac0a157c925d0972b1d9f9ed4ff0d9bfc676cd002070",
+      "bytes": 535,
+      "source": "lbc/src/lightning/primitiveModal/primitiveModal.js",
+      "namespace": "lightning",
+      "name": "primitiveModal"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveOverlay.js",
+      "sha256": "a567904da591a1dc284d3c4522dd78d7b30bbe05383e58b6d8dc47b503f27fa8",
+      "bytes": 1605,
+      "source": "lbc/src/lightning/primitiveOverlay/primitiveOverlay.js",
+      "namespace": "lightning",
+      "name": "primitiveOverlay"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveResizeHandler.js",
+      "sha256": "565270bdfb8c4c2df485a3e61bab7a966ee3be061fe0c39801e1ad37bb089d62",
+      "bytes": 6238,
+      "source": "lbc/src/lightning/primitiveResizeHandler/primitiveResizeHandler.js",
+      "namespace": "lightning",
+      "name": "primitiveResizeHandler"
+    },
+    {
+      "path": "modules/lbc/lightning/primitiveTreegridCellToggle.js",
+      "sha256": "712e2346cbc47e9d3a894fd73b242675d19fa2fa79a779cbf2246ab9ff1928d0",
+      "bytes": 5022,
+      "source": "lbc/src/lightning/primitiveTreegridCellToggle/primitiveTreegridCellToggle.js",
+      "namespace": "lightning",
+      "name": "primitiveTreegridCellToggle"
+    },
+    {
+      "path": "modules/lbc/lightning/progressBar.js",
+      "sha256": "53f8659162d21e3ca2bf26ae95d020d756ea1896ad7a65adab4fc99c6816cc3c",
+      "bytes": 3041,
+      "source": "lbc/src/lightning/progressBar/progressBar.js",
+      "namespace": "lightning",
+      "name": "progressBar"
+    },
+    {
+      "path": "modules/lbc/lightning/progressIndicator.js",
+      "sha256": "65abaa7a31659182b8ca6358019978cea9ed679fb79608f2f555d998444fdfa6",
+      "bytes": 6649,
+      "source": "lbc/src/lightning/progressIndicator/progressIndicator.js",
+      "namespace": "lightning",
+      "name": "progressIndicator"
+    },
+    {
+      "path": "modules/lbc/lightning/progressRing.js",
+      "sha256": "452c989e431f60ef6bf747a1d7ec4e660b2f44c137680e8e29e516ca30091d44",
+      "bytes": 6057,
+      "source": "lbc/src/lightning/progressRing/progressRing.js",
+      "namespace": "lightning",
+      "name": "progressRing"
+    },
+    {
+      "path": "modules/lbc/lightning/progressStep.js",
+      "sha256": "c33225c4f68dfb883b11fe5a0c568b7e01147ce048e200f3bdaaa61cd27f53de",
+      "bytes": 7210,
+      "source": "lbc/src/lightning/progressStep/progressStep.js",
+      "namespace": "lightning",
+      "name": "progressStep"
+    },
+    {
+      "path": "modules/lbc/lightning/prompt.js",
+      "sha256": "4536105638e764b64c65e3126736a8e025c646e7b064ed2893b40410c1bea190",
+      "bytes": 2432,
+      "source": "lbc/src/lightning/prompt/prompt.js",
+      "namespace": "lightning",
+      "name": "prompt"
+    },
+    {
+      "path": "modules/lbc/lightning/purifyLib.js",
+      "sha256": "0e049731b0929f1bf1f0ffcf92f74a03925b3d8ba51e79fa0b38360aa1830664",
+      "bytes": 661,
+      "source": "lbc/src/lightning/purifyLib/purifyLib.js",
+      "namespace": "lightning",
+      "name": "purifyLib"
+    },
+    {
+      "path": "modules/lbc/lightning/radioGroup.js",
+      "sha256": "40d1d49d32bc3df5b371a1ec96b4f60b1a0b33175db01688627535e052a81f98",
+      "bytes": 6931,
+      "source": "lbc/src/lightning/radioGroup/radioGroup.js",
+      "namespace": "lightning",
+      "name": "radioGroup"
+    },
+    {
+      "path": "modules/lbc/lightning/relativeDateTime.js",
+      "sha256": "0653ac477f28624c5c4a697a4ff1130d6d28f4c45092eff0a4875f5dc444dd7d",
+      "bytes": 2324,
+      "source": "lbc/src/lightning/relativeDateTime/relativeDateTime.js",
+      "namespace": "lightning",
+      "name": "relativeDateTime"
+    },
+    {
+      "path": "modules/lbc/lightning/resizeObserver.js",
+      "sha256": "892987ea0262113e075469e94aa7a939d12b6c5ccb4b0b6d69f0aebe2647dbec",
+      "bytes": 1630,
+      "source": "lbc/src/lightning/resizeObserver/resizeObserver.js",
+      "namespace": "lightning",
+      "name": "resizeObserver"
+    },
+    {
+      "path": "modules/lbc/lightning/routingService.js",
+      "sha256": "bf5a62ca15e0bbd61e2fa9ce766fcebc50c30439ee3d8cc5af144ebfff9a9cec",
+      "bytes": 2465,
+      "source": "lbc/src/lightning/routingService/routingService.js",
+      "namespace": "lightning",
+      "name": "routingService"
+    },
+    {
+      "path": "modules/lbc/lightning/select.js",
+      "sha256": "5513b42be50f605906a7074d9f0edc947cb0d6eb12770bfc8dd0a1e833017699",
+      "bytes": 10566,
+      "source": "lbc/src/lightning/select/select.js",
+      "namespace": "lightning",
+      "name": "select"
+    },
+    {
+      "path": "modules/lbc/lightning/shadowBaseClassPrivate.js",
+      "sha256": "10be77143b92522c65a2105727f47c7a161f7aabe2220a9b7b39d1d8b9597268",
+      "bytes": 683,
+      "source": "lbc/src/lightning/shadowBaseClassPrivate/shadowBaseClassPrivate.js",
+      "namespace": "lightning",
+      "name": "shadowBaseClassPrivate"
+    },
+    {
+      "path": "modules/lbc/lightning/showToastEvent.js",
+      "sha256": "50fa25c0144fde421e24c368bc116feacae64638bb647228d4df3b2e8ec4c116",
+      "bytes": 652,
+      "source": "lbc/src/lightning/showToastEvent/showToastEvent.js",
+      "namespace": "lightning",
+      "name": "showToastEvent"
+    },
+    {
+      "path": "modules/lbc/lightning/slider.js",
+      "sha256": "d7cc91e77382eb2878a72a438dcd183da24173029648a82d17721d77e563c355",
+      "bytes": 8331,
+      "source": "lbc/src/lightning/slider/slider.js",
+      "namespace": "lightning",
+      "name": "slider"
+    },
+    {
+      "path": "modules/lbc/lightning/spinner.js",
+      "sha256": "d442650476b677ca5d0168fcf0ee58fa36c1c0743dcc9976b65ff17d974171de",
+      "bytes": 3562,
+      "source": "lbc/src/lightning/spinner/spinner.js",
+      "namespace": "lightning",
+      "name": "spinner"
+    },
+    {
+      "path": "modules/lbc/lightning/stackedTab.js",
+      "sha256": "6add8e6bde34a3ac5e53d707c52a25ad8dbdb84b2480b84070d8d612609f68e4",
+      "bytes": 1002,
+      "source": "lbc/src/lightning/stackedTab/stackedTab.js",
+      "namespace": "lightning",
+      "name": "stackedTab"
+    },
+    {
+      "path": "modules/lbc/lightning/stackedTabset.js",
+      "sha256": "117b4628ed7063cdd1100d667f47981c5a05aa6d672e40a21f42a876b30f1fff",
+      "bytes": 594,
+      "source": "lbc/src/lightning/stackedTabset/stackedTabset.js",
+      "namespace": "lightning",
+      "name": "stackedTabset"
+    },
+    {
+      "path": "modules/lbc/lightning/staticMap.js",
+      "sha256": "c5392fd9e780c64cc573527bb46940263bd196dc80d26dbd90f9bd7db66a99f1",
+      "bytes": 5659,
+      "source": "lbc/src/lightning/staticMap/staticMap.js",
+      "namespace": "lightning",
+      "name": "staticMap"
+    },
+    {
+      "path": "modules/lbc/lightning/tab.js",
+      "sha256": "8ded8f17824540c19535de8d6fba166989eaa932ba665d3797e741db03156737",
+      "bytes": 4822,
+      "source": "lbc/src/lightning/tab/tab.js",
+      "namespace": "lightning",
+      "name": "tab"
+    },
+    {
+      "path": "modules/lbc/lightning/tabBar.js",
+      "sha256": "e653ecc7ed96061e189a5b126e553b5abd17d89952324dc1fc4eee9989392bc1",
+      "bytes": 14896,
+      "source": "lbc/src/lightning/tabBar/tabBar.js",
+      "namespace": "lightning",
+      "name": "tabBar"
+    },
+    {
+      "path": "modules/lbc/lightning/tabset.js",
+      "sha256": "0fb4b5cedfb13c74a1593a7285854d3d739a7a63a70aeacee6e83d6799369e0b",
+      "bytes": 11472,
+      "source": "lbc/src/lightning/tabset/tabset.js",
+      "namespace": "lightning",
+      "name": "tabset"
+    },
+    {
+      "path": "modules/lbc/lightning/textarea.js",
+      "sha256": "0b533ba8ceab6316ced2270f7149043484fd2f4f2cf00321fd54e39c972538c4",
+      "bytes": 17488,
+      "source": "lbc/src/lightning/textarea/textarea.js",
+      "namespace": "lightning",
+      "name": "textarea"
+    },
+    {
+      "path": "modules/lbc/lightning/tile.js",
+      "sha256": "8688e75765d8f4532892adabed6d2aa4466c8b42b5496b85a6e182138aa0dd8d",
+      "bytes": 2811,
+      "source": "lbc/src/lightning/tile/tile.js",
+      "namespace": "lightning",
+      "name": "tile"
+    },
+    {
+      "path": "modules/lbc/lightning/timepicker.js",
+      "sha256": "bd6870da1b8d30d411441efc7be0a02148392c256586937839a51d9758189148",
+      "bytes": 15211,
+      "source": "lbc/src/lightning/timepicker/timepicker.js",
+      "namespace": "lightning",
+      "name": "timepicker"
+    },
+    {
+      "path": "modules/lbc/lightning/toast.js",
+      "sha256": "21e60f806e7ab942f74bfc2cbd27570c41f65956fb1241e12338c852e6b93f51",
+      "bytes": 11200,
+      "source": "lbc/src/lightning/toast/toast.js",
+      "namespace": "lightning",
+      "name": "toast"
+    },
+    {
+      "path": "modules/lbc/lightning/toastContainer.js",
+      "sha256": "5867dee0ca4883d9b9e5749108bbb9731d4ef1ef353c95a2f5fff8011104775f",
+      "bytes": 11270,
+      "source": "lbc/src/lightning/toastContainer/toastContainer.js",
+      "namespace": "lightning",
+      "name": "toastContainer"
+    },
+    {
+      "path": "modules/lbc/lightning/tooltipLibrary.js",
+      "sha256": "c5fb5516a6ad1095f26e2cce7858c97afc76c29d0dcfbb13b350dca0401a84aa",
+      "bytes": 13922,
+      "source": "lbc/src/lightning/tooltipLibrary/tooltipLibrary.js",
+      "namespace": "lightning",
+      "name": "tooltipLibrary"
+    },
+    {
+      "path": "modules/lbc/lightning/touchScrollLibrary.js",
+      "sha256": "e5b32b3d19d4b722910460986a017f055f4abd7c27a4cb6bd2ab9eb544a7a1f8",
+      "bytes": 2703,
+      "source": "lbc/src/lightning/touchScrollLibrary/touchScrollLibrary.js",
+      "namespace": "lightning",
+      "name": "touchScrollLibrary"
+    },
+    {
+      "path": "modules/lbc/lightning/tree.js",
+      "sha256": "7e3ee5471e2336a33e619cd8411f4c96462c72c4fbec7217f0a1fca78a5f9fa6",
+      "bytes": 10580,
+      "source": "lbc/src/lightning/tree/tree.js",
+      "namespace": "lightning",
+      "name": "tree"
+    },
+    {
+      "path": "modules/lbc/lightning/treeGrid.js",
+      "sha256": "88a18dac6a4c2632f4d80246ef9a8fdb9c25cc9ac396ddfa5f826d3fc27ff4fd",
+      "bytes": 10600,
+      "source": "lbc/src/lightning/treeGrid/treeGrid.js",
+      "namespace": "lightning",
+      "name": "treeGrid"
+    },
+    {
+      "path": "modules/lbc/lightning/treeItem.js",
+      "sha256": "dbc8d4d567599156847ee45ce2a544fd2305d3aa6dbeb737a6339d1aece708cf",
+      "bytes": 6830,
+      "source": "lbc/src/lightning/treeItem/treeItem.js",
+      "namespace": "lightning",
+      "name": "treeItem"
+    },
+    {
+      "path": "modules/lbc/lightning/utils.js",
+      "sha256": "c87bb459f5101815cc90d598da215be033add2c43d8f120022a5b3c4b63f301a",
+      "bytes": 334,
+      "source": "lbc/src/lightning/utils/utils.js",
+      "namespace": "lightning",
+      "name": "utils"
+    },
+    {
+      "path": "modules/lbc/lightning/utilsInternal.js",
+      "sha256": "44c18e69576759f579dd58593df1892a5bcecbc00cd52c76e3a6eeeb879d1f78",
+      "bytes": 156,
+      "source": "lbc/src/lightning/utilsInternal/utilsInternal.js",
+      "namespace": "lightning",
+      "name": "utilsInternal"
+    },
+    {
+      "path": "modules/lbc/lightning/utilsPrivate.js",
+      "sha256": "d0f46c3e7a9d0fd2938794ae3cabbd053b59ac7dc17b9f3918f5208125eeb179",
+      "bytes": 8883,
+      "source": "lbc/src/lightning/utilsPrivate/utilsPrivate.js",
+      "namespace": "lightning",
+      "name": "utilsPrivate"
+    },
+    {
+      "path": "modules/lbc/lightning/verticalNavigation.js",
+      "sha256": "cca6295f3a29788bb94fa9302f8ec6de458cb611ce9f33c89a21df8c4ef95ce5",
+      "bytes": 4649,
+      "source": "lbc/src/lightning/verticalNavigation/verticalNavigation.js",
+      "namespace": "lightning",
+      "name": "verticalNavigation"
+    },
+    {
+      "path": "modules/lbc/lightning/verticalNavigationItem.js",
+      "sha256": "416378c03a4747b62a5e0d432ab3f54f50fc0c3adff5fc5789753943ced210b5",
+      "bytes": 2698,
+      "source": "lbc/src/lightning/verticalNavigationItem/verticalNavigationItem.js",
+      "namespace": "lightning",
+      "name": "verticalNavigationItem"
+    },
+    {
+      "path": "modules/lbc/lightning/verticalNavigationItemBadge.js",
+      "sha256": "2b155c7c0ff76ed386b0f89bf339fb1f76869b90959145eed90c01bdcd0a867a",
+      "bytes": 3064,
+      "source": "lbc/src/lightning/verticalNavigationItemBadge/verticalNavigationItemBadge.js",
+      "namespace": "lightning",
+      "name": "verticalNavigationItemBadge"
+    },
+    {
+      "path": "modules/lbc/lightning/verticalNavigationItemIcon.js",
+      "sha256": "9d1aeef57618d5c20ecf878546d643fb68e63029651f29bcd0e0ba493cb4bf29",
+      "bytes": 2785,
+      "source": "lbc/src/lightning/verticalNavigationItemIcon/verticalNavigationItemIcon.js",
+      "namespace": "lightning",
+      "name": "verticalNavigationItemIcon"
+    },
+    {
+      "path": "modules/lbc/lightning/verticalNavigationOverflow.js",
+      "sha256": "c8b8519d211799261dc678deed441d0055441cd9e8296ff3cffc5079d8a37337",
+      "bytes": 2214,
+      "source": "lbc/src/lightning/verticalNavigationOverflow/verticalNavigationOverflow.js",
+      "namespace": "lightning",
+      "name": "verticalNavigationOverflow"
+    },
+    {
+      "path": "modules/lbc/lightning/verticalNavigationSection.js",
+      "sha256": "f31e4d7ae3b36206e61faeef02bc4c0f5957b400e5ae783e99ca78627e1b2ae1",
+      "bytes": 1608,
+      "source": "lbc/src/lightning/verticalNavigationSection/verticalNavigationSection.js",
+      "namespace": "lightning",
+      "name": "verticalNavigationSection"
+    }
+  ]
+}

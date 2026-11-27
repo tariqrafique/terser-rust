@@ -1,0 +1,946 @@
+import { registerDecorators as _registerDecorators } from "lwc";
+import _tmpl from "./dualListbox.html";
+import { registerComponent as _registerComponent } from "lwc";
+/*
+ * Copyright (c) 2025, Salesforce, Inc.,
+ * All rights reserved.
+ * For full license text, see the LICENSE.txt file
+ */
+import labelComponentAssistiveText from '@salesforce/label/LightningDualListbox.componentAssistiveText';
+import labelComponentAssistiveTextTypeahead from '@salesforce/label/LightningDualListbox.componentAssistiveTextTypeahead';
+import labelDownButtonAssistiveText from '@salesforce/label/LightningDualListbox.downButtonAssistiveText';
+import labelMaxError from '@salesforce/label/LightningDualListbox.maxError';
+import labelMaxHelp from '@salesforce/label/LightningDualListbox.maxHelp';
+import labelMinErrorPlural from '@salesforce/label/LightningDualListbox.minErrorPlural';
+import labelMinErrorSingular from '@salesforce/label/LightningDualListbox.minErrorSingular';
+import labelMinHelp from '@salesforce/label/LightningDualListbox.minHelp';
+import labelMinRequiredErrorPlural from '@salesforce/label/LightningDualListbox.minRequiredErrorPlural';
+import labelMinRequiredErrorSingular from '@salesforce/label/LightningDualListbox.minRequiredErrorSingular';
+import labelOptionLockAssistiveText from '@salesforce/label/LightningDualListbox.optionLockAssistiveText';
+import labelRequired from '@salesforce/label/LightningControl.required';
+import labelRequiredError from '@salesforce/label/LightningDualListbox.requiredError';
+import labelRequiredOptionError from '@salesforce/label/LightningDualListbox.requiredOptionError';
+import labelUpButtonAssistiveText from '@salesforce/label/LightningDualListbox.upButtonAssistiveText';
+import labelMoveSelectionToAssistiveText from '@salesforce/label/LightningDualListbox.moveSelectionToAssistiveText';
+import labelMoveToAssistiveText from '@salesforce/label/LightningDualListbox.moveToAssistiveText';
+import labelLoadingText from '@salesforce/label/LightningCombobox.loadingText';
+import labelMovedOptionsSingular from '@salesforce/label/LightningDualListbox.movedOptionsSingular';
+import labelMovedOptionsPlural from '@salesforce/label/LightningDualListbox.movedOptionsPlural';
+import labelVerticallyMovedOptionsText from '@salesforce/label/LightningDualListbox.verticallyMovedOptions';
+import labelHelpTextAlternativeText from '@salesforce/label/LightningInput.helptextAlternativeText';
+import orgHasA11yResizeReflowPhase3 from '@salesforce/accessCheck/A11yResizeReflow.orgHasA11yResizeReflowPhase3';
+import LightningShadowBaseClass from 'lightning/shadowBaseClassPrivate';
+import { handleKeyDownOnOption } from './keyboard';
+import { features } from 'lightning/features';
+import { classSet, formatLabel } from 'lightning/utils';
+import { assert, normalizeBoolean, getRealDOMId, classListMutation, reflectAttribute, isRTL } from 'lightning/utilsPrivate';
+import { privateContext } from 'lightning/utilsInternal';
+import { InteractingState, FieldConstraintApi, normalizeVariant, VARIANT } from 'lightning/inputUtils';
+import resizeReflowStyles from './dualListbox.lbc.resizereflow.css';
+import emptyStylesheet from './dualListbox.lbc.empty.css';
+const {
+  setContext,
+  assertContext
+} = privateContext;
+const MIN_INNER_WIDTH_PX_OUTSIDE_RESIZE_REFLOW_1366_AT_200_PERCENT = 684;
+const i18n = {
+  componentAssistiveText: labelComponentAssistiveText,
+  componentAssistiveTextTypeahead: labelComponentAssistiveTextTypeahead,
+  downButtonAssistiveText: labelDownButtonAssistiveText,
+  maxError: labelMaxError,
+  maxHelp: labelMaxHelp,
+  minErrorPlural: labelMinErrorPlural,
+  minErrorSingular: labelMinErrorSingular,
+  minHelp: labelMinHelp,
+  minRequiredErrorPlural: labelMinRequiredErrorPlural,
+  minRequiredErrorSingular: labelMinRequiredErrorSingular,
+  optionLockAssistiveText: labelOptionLockAssistiveText,
+  required: labelRequired,
+  requiredError: labelRequiredError,
+  requiredOptionError: labelRequiredOptionError,
+  upButtonAssistiveText: labelUpButtonAssistiveText,
+  moveSelectionToAssistiveText: labelMoveSelectionToAssistiveText,
+  moveToAssistiveText: labelMoveToAssistiveText,
+  loadingText: labelLoadingText,
+  movedOptionsSingular: labelMovedOptionsSingular,
+  movedOptionsPlural: labelMovedOptionsPlural,
+  helpTextAlternativeText: labelHelpTextAlternativeText,
+  verticallyMovedOptionsText: labelVerticallyMovedOptionsText
+};
+class LightningDualListbox extends LightningShadowBaseClass {
+  get messageWhenRangeOverflow() {
+    return this._messageWhenRangeOverflow || this._overflowMessage;
+  }
+  set messageWhenRangeOverflow(message) {
+    this._messageWhenRangeOverflow = message;
+  }
+  get messageWhenRangeUnderflow() {
+    return this._messageWhenRangeUnderflow || this._underflowMessage;
+  }
+  set messageWhenRangeUnderflow(message) {
+    this._messageWhenRangeUnderflow = message;
+  }
+  get disabled() {
+    return this._disabled || false;
+  }
+  set disabled(value) {
+    this._disabled = normalizeBoolean(value);
+  }
+  get required() {
+    return this._required;
+  }
+  set required(value) {
+    this._required = normalizeBoolean(value);
+  }
+  get value() {
+    return this._selectedValues;
+  }
+  set value(newValue) {
+    this.updateHighlightedOptions(newValue);
+    this._selectedValues = newValue || [];
+    if (this._connected) {
+      this.addRequiredOptionsToValue();
+    }
+  }
+  get requiredOptions() {
+    return this._requiredOptions;
+  }
+  set requiredOptions(newValue) {
+    this._requiredOptions = newValue || [];
+    if (this._connected) {
+      this.addRequiredOptionsToValue();
+    }
+  }
+  get variant() {
+    return this._variant || VARIANT.STANDARD;
+  }
+  set variant(value) {
+    this._variant = normalizeVariant(value);
+    this.updateClassList();
+    reflectAttribute(this, 'variant', this._variant);
+  }
+  get size() {
+    return this._size;
+  }
+  set size(value) {
+    this._size = value;
+  }
+  get disableReordering() {
+    return this._disableReordering;
+  }
+  set disableReordering(value) {
+    this._disableReordering = normalizeBoolean(value);
+  }
+  get showActivityIndicator() {
+    return this._showActivityIndicator;
+  }
+  set showActivityIndicator(value) {
+    this._showActivityIndicator = normalizeBoolean(value);
+  }
+  focus() {
+    const firstOption = !import.meta.env.SSR ? this.template.querySelector(`div[data-index='0']`) : null;
+    if (firstOption) {
+      firstOption.focus();
+      this.updateSelectedOptions(firstOption, true, false);
+    }
+  }
+  get validity() {
+    return this._constraint.validity;
+  }
+  checkValidity() {
+    return this._constraint.checkValidity();
+  }
+  reportValidity() {
+    return this._constraint.reportValidity(message => {
+      this.errorMessage = message;
+    });
+  }
+  setCustomValidity(message) {
+    this._constraint.setCustomValidity(message);
+  }
+  showHelpMessageIfInvalid() {
+    this.reportValidity();
+  }
+  constructor() {
+    super();
+    this.sourceLabel = void 0;
+    this.selectedLabel = void 0;
+    this.label = void 0;
+    this.options = void 0;
+    this.min = 0;
+    this.max = void 0;
+    this.name = void 0;
+    this._showActivityIndicator = false;
+    this._requiredOptions = [];
+    this._selectedValues = [];
+    this._variant = void 0;
+    this._disabled = void 0;
+    this._disableReordering = false;
+    this._required = false;
+    this._addButtonLabel = void 0;
+    this._removeButtonLabel = void 0;
+    this._upButtonLabel = void 0;
+    this._downButtonLabel = void 0;
+    this._size = void 0;
+    this.errorMessage = '';
+    this.highlightedOptions = [];
+    this.focusableInSource = void 0;
+    this.focusableInSelected = void 0;
+    this.highlightedOptionsLabel = [];
+    this._isFocused = false;
+    this._messageToDisplay = '';
+    this.isFocusOnList = false;
+    this.messageWhenValueMissing = i18n.requiredError;
+    this._messageWhenRangeOverflow = void 0;
+    this._messageWhenRangeUnderflow = void 0;
+    this._connected = void 0;
+    this.keyboardInterface = void 0;
+    this.interactingState = void 0;
+    this.optionToFocus = void 0;
+    this.uniqueId = void 0;
+    this.shiftIndex = void 0;
+    this.selectedList = void 0;
+    this.lastSelected = void 0;
+    this._constraintApi = void 0;
+    this.lastShift = void 0;
+    this.fieldLevelHelp = void 0;
+    setContext(this);
+  }
+  connectedCallback() {
+    assertContext(this);
+    super.connectedCallback();
+    this.classList.add('slds-form-element');
+    this.updateClassList();
+    this.keyboardInterface = this.selectKeyboardInterface();
+    this._connected = true;
+    this.addRequiredOptionsToValue();
+    this.interactingState = new InteractingState({
+      debounceInteraction: true
+    });
+    this.interactingState.onenter(() => {
+      if (!import.meta.env.SSR) {
+        this.dispatchEvent(new CustomEvent('focus'));
+      }
+    });
+    this.interactingState.onleave(() => {
+      this.showHelpMessageIfInvalid();
+      if (!import.meta.env.SSR) {
+        this.dispatchEvent(new CustomEvent('blur'));
+      }
+      const {
+        enableDualListboxA11yReqOptionErrFix: enableFocusFix
+      } = features;
+      if (enableFocusFix && !this._isFocused || !enableFocusFix) {
+        this.optionToFocus = null;
+      }
+    });
+  }
+  updateClassList() {
+    classListMutation(this.classList, {
+      'slds-form-element_stacked': this.variant === VARIANT.LABEL_STACKED,
+      'slds-form-element_horizontal': this.variant === VARIANT.LABEL_INLINE
+    });
+  }
+  renderedCallback() {
+    this.assertRequiredAttributes();
+    if (this.disabled) {
+      return;
+    }
+    if (this.optionToFocus) {
+      const option = !import.meta.env.SSR ? this.template.querySelector(`div[data-value='${this.optionToFocus.replace(/'/g, "\\'")}']`) : null;
+      if (option) {
+        this.isFocusOnList = true;
+        option.focus();
+      }
+    }
+  }
+  get computedA11yAriaLiveKbText() {
+    return !import.meta.env.SSR && features.enableDualListboxSingleCharTypeahead ? `${i18n.componentAssistiveText} ${i18n.componentAssistiveTextTypeahead}` : i18n.componentAssistiveText;
+  }
+  get computedUniqueId() {
+    return this.uniqueId;
+  }
+  get computedSourceListId() {
+    return !import.meta.env.SSR ? getRealDOMId(this.template.querySelector('[data-source-list]')) : 'source-list';
+  }
+  get computedSelectedListId() {
+    return !import.meta.env.SSR ? getRealDOMId(this.template.querySelector('[data-selected-list]')) : 'selected-list';
+  }
+  get ariaDisabled() {
+    return String(this.disabled);
+  }
+  get computedSourceList() {
+    let sourceListOptions = [];
+    if (this.options) {
+      const required = this.requiredOptions;
+      const values = this.value;
+      sourceListOptions = this.options.filter(option => values.indexOf(option.value) === -1 && required.indexOf(option.value) === -1);
+    }
+    return this.computeListOptions(sourceListOptions, this.focusableInSource);
+  }
+  get computedSelectedList() {
+    const selectedListOptions = [];
+    if (this.options) {
+      const optionsMap = {};
+      this.options.forEach(option => {
+        optionsMap[option.value] = {
+          ...option
+        };
+      });
+      this.value.forEach(optionValue => {
+        const option = optionsMap[optionValue];
+        if (option) {
+          option.isSelected = true;
+        }
+      });
+      this.requiredOptions.forEach(optionValue => {
+        const option = optionsMap[optionValue];
+        if (option) {
+          option.isLocked = true;
+          option.draggable = false;
+        }
+      });
+      this.value.forEach(optionValue => {
+        const option = optionsMap[optionValue];
+        if (option) {
+          selectedListOptions.push(option);
+        }
+      });
+    }
+    return this.computeListOptions(selectedListOptions, this.focusableInSelected);
+  }
+  get optionalSelectedItems() {
+    return this.computedSelectedList.filter(opt => !this.isOptionRequiredOrLocked(opt));
+  }
+  isOptionDisabled(elm) {
+    return !!(elm?.getAttribute('aria-disabled') === 'true');
+  }
+  isOptionRequiredOrLocked(option) {
+    return !!(this.requiredOptions.includes(option.value) || option.isLocked);
+  }
+  computeListOptions(options, focusableOptionValue) {
+    if (options.length > 0) {
+      let focusableOption;
+      let firstFocusableOption;
+      if (features.enableDisabledOptDualListbox) {
+        focusableOption = options.find(option => {
+          return option.value === focusableOptionValue;
+        });
+        firstFocusableOption = options[0];
+      } else {
+        focusableOption = options.find(option => {
+          return option.value === focusableOptionValue && !this.isOptionRequiredOrLocked(option);
+        });
+        firstFocusableOption = options.find(option => !this.isOptionRequiredOrLocked(option));
+      }
+      const focusableValue = focusableOption ? focusableOption.value : firstFocusableOption?.value;
+      return options.map(option => {
+        return this.computeOptionProperties(option, focusableValue);
+      });
+    }
+    return [];
+  }
+  computeOptionProperties(option, focusableValue) {
+    const isSelected = this.highlightedOptions.indexOf(option.value) > -1;
+    const classList = classSet('slds-listbox__option slds-listbox__option_plain slds-media slds-media_small slds-media_inline').add({
+      'slds-is-selected': isSelected
+    }).toString();
+    return {
+      ...option,
+      tabIndex: !this.disabled && option.value === focusableValue ? '0' : '-1',
+      selected: isSelected ? 'true' : 'false',
+      classList
+    };
+  }
+  get computedLeftColumnClass() {
+    return classSet('slds-dueling-list__column slds-dueling-list__column_responsive').add({
+      'slds-is-relative': this.showActivityIndicator
+    }).toString();
+  }
+  get computedActionsColumnClass() {
+    return classSet('slds-dueling-list__column').add({
+      'slds-dueling-list__column-actions': orgHasA11yResizeReflowPhase3
+    }).add({
+      'slds-dueling-list__column-actions-rtl': orgHasA11yResizeReflowPhase3 && isRTL()
+    }).toString();
+  }
+  get computedColumnStyle() {
+    if (this.isNumber(this.size)) {
+      const newHeight = parseInt(this.size, 10) * 2.25 + 1;
+      return `height:${newHeight}rem`;
+    }
+    return '';
+  }
+  get isLabelHidden() {
+    return this.variant === VARIANT.LABEL_HIDDEN;
+  }
+  get computedGroupLabelClass() {
+    return classSet('slds-form-element__label slds-form-element__legend').add({
+      'slds-assistive-text': this.isLabelHidden
+    }).toString();
+  }
+  get computedListboxContainerClass() {
+    return classSet('slds-dueling-list__options').add({
+      'slds-is-disabled': this.disabled
+    }).toString();
+  }
+  get computedLockAssistiveText() {
+    return formatLabel(this.i18n.optionLockAssistiveText, this.selectedLabel);
+  }
+  get i18n() {
+    return i18n;
+  }
+  getRightButtonAssistiveText() {
+    return formatLabel(i18n.moveSelectionToAssistiveText, this.selectedLabel);
+  }
+  get addButtonDescription() {
+    return this.getRightButtonAssistiveText();
+  }
+  getRightButtonAssistiveLabel() {
+    return formatLabel(i18n.moveToAssistiveText, this.selectedLabel);
+  }
+  get addButtonLabel() {
+    if (this._addButtonLabel) {
+      return this._addButtonLabel;
+    }
+    if (features.enableNoDescribedbyTooltip) {
+      return this.addButtonDescription;
+    }
+    return this.getRightButtonAssistiveLabel();
+  }
+  set addButtonLabel(value) {
+    this._addButtonLabel = value;
+  }
+  getLeftButtonAssistiveText() {
+    return formatLabel(i18n.moveSelectionToAssistiveText, this.sourceLabel);
+  }
+  get removeButtonDescription() {
+    return this.getLeftButtonAssistiveText();
+  }
+  getLeftButtonAssistiveLabel() {
+    return formatLabel(i18n.moveToAssistiveText, this.sourceLabel);
+  }
+  get removeButtonLabel() {
+    if (this._removeButtonLabel) {
+      return this._removeButtonLabel;
+    }
+    if (features.enableNoDescribedbyTooltip) {
+      return this.removeButtonDescription;
+    }
+    return this.getLeftButtonAssistiveLabel();
+  }
+  set removeButtonLabel(value) {
+    this._removeButtonLabel = value;
+  }
+  get upButtonLabel() {
+    return this._upButtonLabel || this.i18n.upButtonAssistiveText;
+  }
+  set upButtonLabel(value) {
+    this._upButtonLabel = value;
+  }
+  get downButtonLabel() {
+    return this._downButtonLabel || this.i18n.downButtonAssistiveText;
+  }
+  set downButtonLabel(value) {
+    this._downButtonLabel = value;
+  }
+  get moveButtonLeftDisabled() {
+    if (features.enableDualListboxButtonDisablingFix) {
+      return this.disabled || this.showActivityIndicator || !this.optionalSelectedItems?.length;
+    }
+    return this.disabled || this.showActivityIndicator;
+  }
+  get moveButtonRightDisabled() {
+    if (features.enableDualListboxButtonDisablingFix) {
+      return this.disabled || this.showActivityIndicator || !this.computedSourceList?.length;
+    }
+    return this.disabled || this.showActivityIndicator;
+  }
+  get reorderButtonsDisabled() {
+    if (features.enableDualListboxButtonDisablingFix) {
+      return this.disabled || this.optionalSelectedItems?.length <= 1;
+    }
+    return this.disabled;
+  }
+  get isResizeReflowEnabled() {
+    return orgHasA11yResizeReflowPhase3 ? '' : null;
+  }
+  handleOptionClick(event) {
+    this.interactingState.interacting();
+    if (this.disabled || this.isOptionDisabled(event.currentTarget)) {
+      return;
+    }
+    const selectMultiple = event.metaKey || event.ctrlKey || event.shiftKey;
+    const option = event.currentTarget;
+    if (event.shiftKey) {
+      this.selectAllFromLastSelectedToOption(option, false);
+      return;
+    }
+    const selected = selectMultiple && option.getAttribute('aria-selected') === 'true';
+    this.updateSelectedOptions(option, !selected, selectMultiple);
+    this.shiftIndex = -1;
+  }
+  handleFocus(event) {
+    if (features.enableDualListboxA11yReqOptionErrFix) {
+      this._isFocused = true;
+    }
+    this.interactingState.enter();
+    const element = event.target;
+    if (element.role === 'option') {
+      if (!this.isFocusOnList) {
+        this.isFocusOnList = true;
+        this.updateSelectedOptions(element, true, false);
+      }
+    }
+  }
+  handleBlur(event) {
+    if (features.enableDualListboxA11yReqOptionErrFix) {
+      this._isFocused = false;
+    }
+    this.interactingState.leave();
+    const element = event.target;
+    if (element.role !== 'option') {
+      this.isFocusOnList = false;
+    }
+  }
+  handleRightButtonClick() {
+    this.interactingState.interacting();
+    this.moveOptionsBetweenLists(true);
+  }
+  handleLeftButtonClick() {
+    this.interactingState.interacting();
+    this.moveOptionsBetweenLists(false);
+  }
+  getSavedPageScrollForReorder() {
+    if (import.meta.env.SSR || typeof window === 'undefined') {
+      return null;
+    }
+    if (!orgHasA11yResizeReflowPhase3 || window.innerWidth >= MIN_INNER_WIDTH_PX_OUTSIDE_RESIZE_REFLOW_1366_AT_200_PERCENT) {
+      return null;
+    }
+    return {
+      x: window.scrollX,
+      y: window.scrollY
+    };
+  }
+  handleUpButtonClick() {
+    this.interactingState.interacting();
+    this.changeOrderOfOptionsInList(true, this.getSavedPageScrollForReorder());
+  }
+  handleDownButtonClick() {
+    this.interactingState.interacting();
+    this.changeOrderOfOptionsInList(false, this.getSavedPageScrollForReorder());
+  }
+  handleOptionKeyDown(event) {
+    this.interactingState.interacting();
+    if (this.disabled) {
+      return;
+    }
+    handleKeyDownOnOption(event, this.keyboardInterface);
+  }
+  moveOptionsBetweenLists(addToSelect, retainFocus) {
+    const isValidList = addToSelect ? this.selectedList === this.computedSourceListId : this.selectedList === this.computedSelectedListId;
+    if (!isValidList) {
+      return;
+    }
+    const toMove = this.highlightedOptions;
+    const values = this.computedSelectedList.map(option => option.value);
+    const required = this.requiredOptions;
+    let newValues = [];
+    if (addToSelect) {
+      newValues = values.concat(toMove);
+    } else {
+      newValues = values.filter(value => toMove.indexOf(value) === -1 || required.indexOf(value) > -1);
+    }
+    this.movedOptions(addToSelect);
+    const listName = addToSelect ? this.selectedLabel : this.sourceLabel;
+    const oldSelectedValues = this._selectedValues;
+    this._selectedValues = newValues;
+    const invalidMove = this.validity.valueMissing || this.validity.rangeOverflow && this.selectedList === this.computedSourceListId || this.validity.rangeUnderflow && this.selectedList === this.computedSelectedListId;
+    if (invalidMove || toMove.length === 0) {
+      this.showHelpMessageIfInvalid();
+      this._selectedValues = oldSelectedValues;
+      return;
+    }
+    if (this.highlightedOptions.length) {
+      const strToFormat = this.highlightedOptions.length > 1 ? i18n.movedOptionsPlural : i18n.movedOptionsSingular;
+      this._messageToDisplay = formatLabel(strToFormat, this.highlightedOptionsLabel.join(', '), listName);
+    } else {
+      this._messageToDisplay = '';
+    }
+    if (retainFocus) {
+      const listId = addToSelect ? this.computedSelectedListId : this.computedSourceListId;
+      this.selectedList = listId;
+      this.updateFocusableOption(listId, toMove[0]);
+    } else {
+      this.interactingState.leave();
+      this.isFocusOnList = false;
+      this.highlightedOptions = [];
+      this.highlightedOptionsLabel = [];
+      this.optionToFocus = null;
+    }
+    this.dispatchChangeEvent(newValues);
+  }
+  changeOrderOfOptionsInList(moveUp, savedPageScroll) {
+    const values = this.computedSelectedList.map(option => option.value);
+    const toMove = values.filter(option => this.highlightedOptions.indexOf(option) > -1);
+    const inValidSelection = !toMove.length || this.selectedList !== this.computedSelectedListId;
+    if (inValidSelection) {
+      return;
+    }
+    let start = moveUp ? 0 : toMove.length - 1;
+    let index = values.indexOf(toMove[start]);
+    const nextItemIndex = moveUp ? index - 1 : index + 1;
+    const previousItem = this.computedSelectedList[nextItemIndex];
+    const isPreviousItemLocked = !!previousItem?.isLocked;
+    const inValidMove = moveUp && index === 0 || !moveUp && index === values.length - 1 || isPreviousItemLocked;
+    if (inValidMove) {
+      return;
+    }
+    const indexSwap = (i, j, arr) => [arr[i], arr[j]] = [arr[j], arr[i]];
+    if (moveUp) {
+      while (start < toMove.length) {
+        index = values.indexOf(toMove[start]);
+        indexSwap(index, index - 1, values);
+        start++;
+      }
+    } else {
+      while (start > -1) {
+        index = values.indexOf(toMove[start]);
+        indexSwap(index, index + 1, values);
+        start--;
+      }
+    }
+    this._selectedValues = values;
+    this.updateFocusableOption(this.selectedList, toMove[0]);
+    this.optionToFocus = null;
+    this.dispatchChangeEvent(values);
+    this.selectedUpDownMovedOptions();
+    if (savedPageScroll) {
+      const {
+        x,
+        y
+      } = savedPageScroll;
+      if (!import.meta.env.SSR && typeof window !== 'undefined' && Number.isFinite(x) && Number.isFinite(y)) {
+        requestAnimationFrame(() => {
+          window.scrollTo(x, y);
+        });
+      }
+    }
+  }
+  selectAllFromLastSelectedToOption(option, all) {
+    const listId = option.getAttribute('data-type');
+    this.updateCurrentSelectedList(listId, true);
+    const options = this.getElementsOfList(listId);
+    const end = all ? 0 : this.getOptionIndex(option);
+    this.lastSelected = this.lastSelected < 0 ? end : this.lastSelected;
+    const start = all ? options.length : this.lastSelected;
+    let val, select;
+    this.highlightedOptions = [];
+    this.highlightedOptionsLabel = [];
+    for (let i = 0; i < options.length; i++) {
+      select = (i - start) * (i - end) <= 0;
+      if (select && !this.isOptionDisabled(options[i])) {
+        val = options[i].getAttribute('data-value');
+        this.highlightedOptions.push(val);
+      }
+    }
+  }
+  updateSelectedOptions(option, select, isMultiple) {
+    const value = option.getAttribute('data-value');
+    const listId = this.getListId(option);
+    const optionIndex = this.getOptionIndex(option);
+    if (this.isOptionDisabled(option)) {
+      if (features.enableDisabledOptDualListbox) {
+        this.updateFocusableOption(listId, value);
+      }
+      return;
+    }
+    const errorMessageElement = this.template.querySelector('.slds-has-error.slds-form-element__help');
+    if (errorMessageElement) {
+      const liElement = option.closest('div');
+      if (liElement && !liElement.hasAttribute('aria-describedby')) {
+        liElement.setAttribute('aria-describedby', errorMessageElement.id);
+      }
+    }
+    this.updateCurrentSelectedList(listId, isMultiple);
+    if (select) {
+      if (this.highlightedOptions.indexOf(value) === -1) {
+        this.highlightedOptions.push(value);
+      }
+    } else {
+      this.highlightedOptions.splice(this.highlightedOptions.indexOf(value), 1);
+    }
+    this.updateFocusableOption(listId, value);
+    this.lastSelected = optionIndex;
+  }
+  addRequiredOptionsToValue() {
+    if (!this.options || !this.options.length || !this._requiredOptions || !this._requiredOptions.length) {
+      return;
+    }
+    const numOfSelectedValues = this._selectedValues.length;
+    const allValues = this.options.map(option => option.value);
+    const requiredValues = this._requiredOptions.filter(option => allValues.includes(option));
+    this._selectedValues = [...new Set([...requiredValues, ...this._selectedValues])];
+    if (numOfSelectedValues !== this._selectedValues.length) {
+      this.dispatchChangeEvent(this._selectedValues);
+    }
+  }
+  get _constraint() {
+    if (!this._constraintApi) {
+      this._constraintApi = new FieldConstraintApi(() => this, {
+        valueMissing: () => !this.disabled && this.required && this.computedSelectedList.length < 1,
+        rangeUnderflow: () => this.computedSelectedList.length < this.min,
+        rangeOverflow: () => this.computedSelectedList.length > this.max
+      });
+    }
+    return this._constraintApi;
+  }
+  get _overflowMessage() {
+    const minHelpMsg = this.min > 0 ? formatLabel(this.i18n.minHelp, this.min) : '';
+    return formatLabel(this.i18n.maxError, this.max) + minHelpMsg;
+  }
+  get _underflowMessage() {
+    const maxHelpMsg = this.max ? formatLabel(this.i18n.maxHelp, this.max) : '';
+    const minRequiredError = this.min > 1 ? formatLabel(this.i18n.minRequiredErrorPlural, this.min) : this.i18n.minRequiredErrorSingular;
+    const minError = this.min > 1 ? formatLabel(this.i18n.minErrorPlural, this.min) : this.i18n.minErrorSingular;
+    return this.required ? minRequiredError + maxHelpMsg : minError + maxHelpMsg;
+  }
+  updateCurrentSelectedList(currentList, isMultiple) {
+    if (this.selectedList !== currentList || !isMultiple) {
+      if (this.selectedList) {
+        this.highlightedOptions = [];
+        this.highlightedOptionsLabel = [];
+        this.lastSelected = -1;
+      }
+      this.selectedList = currentList;
+    }
+  }
+  dispatchChangeEvent(values) {
+    if (!import.meta.env.SSR) {
+      this.dispatchEvent(new CustomEvent('change', {
+        composed: true,
+        bubbles: true,
+        detail: {
+          value: values
+        }
+      }));
+    }
+  }
+  assertRequiredAttributes() {
+    assert(!!this.label, `<lightning-dual-listbox> Missing required "label" attribute.`);
+    assert(!!this.sourceLabel, `<lightning-dual-listbox> Missing required "sourceLabel" attribute.`);
+    assert(!!this.selectedLabel, `<lightning-dual-listbox> Missing required "selectedLabel" attribute.`);
+    assert(!!this.options, `<lightning-dual-listbox> Missing required "options" attribute.`);
+  }
+  getElementsOfList(listId) {
+    const elements = !import.meta.env.SSR ? this.template.querySelectorAll(`div[data-type='${listId}']`) : null;
+    return elements ? elements : [];
+  }
+  selectKeyboardInterface() {
+    const that = this;
+    that.shiftIndex = -1;
+    that.lastShift = null;
+    return {
+      getShiftIndex() {
+        return that.shiftIndex;
+      },
+      setShiftIndex(value) {
+        that.shiftIndex = value;
+      },
+      getLastShift() {
+        return that.lastShift;
+      },
+      setLastShift(value) {
+        that.lastShift = value;
+      },
+      getElementsOfList(listId) {
+        return that.getElementsOfList(listId);
+      },
+      selectAllOptions(option) {
+        that.selectAllFromLastSelectedToOption(option, true);
+      },
+      updateSelectedOptions(option, select, isMultiple) {
+        that.updateSelectedOptions(option, select, isMultiple);
+      },
+      moveOptionsBetweenLists(addToSelect) {
+        that.moveOptionsBetweenLists(addToSelect, true);
+      },
+      focusOptionByFirstChar(curOptionIdx, typedChar) {
+        const listId = that.getListId(curOptionIdx);
+        const options = that.getElementsOfList(listId);
+        if (!options || !options.length) {
+          return;
+        }
+        const startIdx = parseInt(curOptionIdx.getAttribute('data-index'), 10);
+        const char = typedChar.toLowerCase();
+        for (let i = startIdx + 1; i < options.length; i++) {
+          const label = options[i].textContent.trim().toLowerCase();
+          if (label.startsWith(char) && !that.isOptionDisabled(options[i])) {
+            options[i].focus();
+            return;
+          }
+        }
+        for (let i = 0; i <= startIdx; i++) {
+          const label = options[i].textContent.trim().toLowerCase();
+          if (label.startsWith(char) && !that.isOptionDisabled(options[i])) {
+            options[i].focus();
+            return;
+          }
+        }
+      }
+    };
+  }
+  getOptionIndex(optionElement) {
+    return parseInt(optionElement.getAttribute('data-index'), 10);
+  }
+  getListId(optionElement) {
+    return getRealDOMId(optionElement.parentElement.parentElement);
+  }
+  updateFocusableOption(listId, value) {
+    if (listId === this.computedSourceListId) {
+      this.focusableInSource = value;
+    } else if (listId === this.computedSelectedListId) {
+      this.focusableInSelected = value;
+    }
+    this.optionToFocus = value;
+  }
+  isNumber(value) {
+    return value !== '' && value !== null && isFinite(value);
+  }
+  updateHighlightedOptions(newValue) {
+    let isSame = false;
+    if (newValue && newValue.length && this._selectedValues && this._selectedValues.length) {
+      isSame = newValue.length === this._selectedValues.length && newValue.every(option => this._selectedValues.includes(option));
+    }
+    if (!isSame) {
+      this.highlightedOptions = [];
+      this.highlightedOptionsLabel = [];
+    }
+  }
+  movedOptions(addToSelect) {
+    for (let i = 0; i < this.highlightedOptions.length; i++) {
+      const selectedOption = addToSelect ? this.computedSourceList.filter(item => item.value === this.highlightedOptions[i]) : this.computedSelectedList.filter(item => item.value === this.highlightedOptions[i]);
+      this.highlightedOptionsLabel.push(selectedOption[0].label);
+    }
+  }
+  get helptextAlternativeText() {
+    return formatLabel(i18n.helpTextAlternativeText, this.label);
+  }
+  selectedUpDownMovedOptions() {
+    const strMessage = [];
+    for (let i = 0; i < this.computedSelectedList.length; i++) {
+      const highlightedOption = this.highlightedOptions.indexOf(this.computedSelectedList[i].value);
+      if (highlightedOption !== -1) {
+        strMessage.push(formatLabel(i18n.verticallyMovedOptionsText, this.computedSelectedList[i].label, i + 1));
+      }
+    }
+    if (strMessage.length === 0) {
+      this._messageToDisplay = '';
+    } else {
+      this._messageToDisplay = strMessage.join(', ');
+    }
+  }
+  /*LWC compiler v9.5.3*/
+}
+LightningDualListbox.stylesheets = [orgHasA11yResizeReflowPhase3 && resizeReflowStyles || emptyStylesheet];
+LightningDualListbox.validationOptOut = ['class'];
+_registerDecorators(LightningDualListbox, {
+  publicProps: {
+    sourceLabel: {
+      config: 0
+    },
+    selectedLabel: {
+      config: 0
+    },
+    label: {
+      config: 0
+    },
+    options: {
+      config: 0
+    },
+    min: {
+      config: 0
+    },
+    max: {
+      config: 0
+    },
+    name: {
+      config: 0
+    },
+    messageWhenValueMissing: {
+      config: 0
+    },
+    messageWhenRangeOverflow: {
+      config: 3
+    },
+    messageWhenRangeUnderflow: {
+      config: 3
+    },
+    disabled: {
+      config: 3
+    },
+    required: {
+      config: 3
+    },
+    value: {
+      config: 3
+    },
+    requiredOptions: {
+      config: 3
+    },
+    variant: {
+      config: 3
+    },
+    size: {
+      config: 3
+    },
+    fieldLevelHelp: {
+      config: 0
+    },
+    disableReordering: {
+      config: 3
+    },
+    showActivityIndicator: {
+      config: 3
+    },
+    validity: {
+      config: 1
+    },
+    addButtonLabel: {
+      config: 3
+    },
+    removeButtonLabel: {
+      config: 3
+    },
+    upButtonLabel: {
+      config: 3
+    },
+    downButtonLabel: {
+      config: 3
+    }
+  },
+  publicMethods: ["focus", "checkValidity", "reportValidity", "setCustomValidity", "showHelpMessageIfInvalid"],
+  track: {
+    _requiredOptions: 1,
+    _selectedValues: 1,
+    _variant: 1,
+    _disabled: 1,
+    _addButtonLabel: 1,
+    _removeButtonLabel: 1,
+    _upButtonLabel: 1,
+    _downButtonLabel: 1,
+    _size: 1,
+    highlightedOptions: 1,
+    focusableInSource: 1,
+    focusableInSelected: 1,
+    highlightedOptionsLabel: 1
+  },
+  fields: ["_showActivityIndicator", "_disableReordering", "_required", "errorMessage", "_isFocused", "_messageToDisplay", "isFocusOnList", "_messageWhenRangeOverflow", "_messageWhenRangeUnderflow", "_connected", "keyboardInterface", "interactingState", "optionToFocus", "uniqueId", "shiftIndex", "selectedList", "lastSelected", "_constraintApi", "lastShift"]
+});
+const __lwc_component_class_internal = _registerComponent(LightningDualListbox, {
+  tmpl: _tmpl,
+  sel: "lightning-dual-listbox",
+  apiVersion: 66
+});
+export default __lwc_component_class_internal;

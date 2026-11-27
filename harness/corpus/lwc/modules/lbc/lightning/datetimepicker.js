@@ -1,0 +1,635 @@
+import { registerDecorators as _registerDecorators } from "lwc";
+import _tmpl from "./datetimepicker.html";
+import { registerComponent as _registerComponent } from "lwc";
+/*
+ * Copyright (c) 2025, Salesforce, Inc.,
+ * All rights reserved.
+ * For full license text, see the LICENSE.txt file
+ */
+import labelDate from '@salesforce/label/LightningDateTimePicker.dateLabel';
+import labelRangeOverflow from '@salesforce/label/LightningDateTimePicker.rangeOverflow';
+import labelRangeUnderflow from '@salesforce/label/LightningDateTimePicker.rangeUnderflow';
+import labelTime from '@salesforce/label/LightningDateTimePicker.timeLabel';
+import labelHelpTextAlternativeText from '@salesforce/label/LightningInput.helptextAlternativeText';
+import labelValueMissingWithDateFormat from '@salesforce/label/LightningDateTimePicker.valueMissingWithDateFormat';
+import labelCustomErrorWithDateFormat from '@salesforce/label/LightningDateTimePicker.customErrorWithDateFormat';
+import sfTimeZone from '@salesforce/i18n/timeZone';
+import LightningShadowBaseClass from 'lightning/shadowBaseClassPrivate';
+import { classSet, formatLabel } from 'lightning/utils';
+import { normalizeBoolean, synchronizeAttrs, computeAriaInvalid, reflectAttribute } from 'lightning/utilsPrivate';
+import { privateContext } from 'lightning/utilsInternal';
+import { features } from 'lightning/features';
+const {
+  setContext,
+  assertContext
+} = privateContext;
+import { getCurrentTimeString, normalizeISODateTime, normalizeFormattedDateTime, isAuraL10NAvailable, normalizeISODate } from 'lightning/internationalizationLibrary';
+import { TIME_SEPARATOR } from 'lightning/iso8601Utils';
+import { generateUniqueId, InteractingState, normalizeVariant, VARIANT } from 'lightning/inputUtils';
+const i18n = {
+  date: labelDate,
+  rangeOverflow: labelRangeOverflow,
+  rangeUnderflow: labelRangeUnderflow,
+  time: labelTime,
+  helpTextAlternativeText: labelHelpTextAlternativeText,
+  valueMissingWithDateFormat: labelValueMissingWithDateFormat,
+  customErrorWithDateFormat: labelCustomErrorWithDateFormat
+};
+const DATE_EXAMPLE = '2024-12-31';
+class LightningDateTimePicker extends LightningShadowBaseClass {
+  set timeAriaControls(val) {
+    this._timeAriaControls = val;
+    this.synchronizeA11y();
+  }
+  get timeAriaControls() {
+    return this._timeAriaControls;
+  }
+  set timeAriaDetails(val) {
+    this._timeAriaDetails = val;
+    this.synchronizeA11y();
+  }
+  get timeAriaDetails() {
+    return this._timeAriaDetails;
+  }
+  set timeAriaLabelledBy(val) {
+    this._timeAriaLabelledBy = val;
+    this.synchronizeA11y();
+  }
+  get timeAriaLabelledBy() {
+    return this._timeAriaLabelledBy;
+  }
+  set timeAriaDescribedBy(val) {
+    this._timeAriaDescribedBy = val;
+    this.synchronizeA11y();
+  }
+  get timeAriaDescribedBy() {
+    return this._timeAriaDescribedBy;
+  }
+  get messageWhenValueMissing() {
+    if (this._messageWhenValueMissing) {
+      return formatLabel(this.i18n.customErrorWithDateFormat, this._messageWhenValueMissing, this.dateFormatExample);
+    }
+    return formatLabel(this.i18n.valueMissingWithDateFormat, this.dateFormatExample);
+  }
+  set messageWhenValueMissing(message) {
+    this._messageWhenValueMissing = message;
+  }
+  get messageWhenBadInput() {
+    if (this._messageWhenBadInput) {
+      return formatLabel(this.i18n.customErrorWithDateFormat, this._messageWhenBadInput, this.dateFormatExample);
+    } else if (this.hasBadDateInput) {
+      return this.getDatepicker().messageWhenBadInput;
+    } else if (this.hasBadTimeInput) {
+      return this.getTimepicker().messageWhenBadInput;
+    }
+    return null;
+  }
+  set messageWhenBadInput(message) {
+    this._messageWhenBadInput = message;
+  }
+  get messageWhenRangeOverflow() {
+    if (this._messageWhenRangeOverflow) {
+      return formatLabel(this.i18n.customErrorWithDateFormat, this._messageWhenRangeOverflow, this.dateFormatExample);
+    }
+    return formatLabel(i18n.rangeOverflow, this.formattedMax);
+  }
+  set messageWhenRangeOverflow(message) {
+    this._messageWhenRangeOverflow = message;
+  }
+  get messageWhenRangeUnderflow() {
+    if (this._messageWhenRangeUnderflow) {
+      return formatLabel(this.i18n.customErrorWithDateFormat, this._messageWhenRangeUnderflow, this.dateFormatExample);
+    }
+    return formatLabel(i18n.rangeUnderflow, this.formattedMin);
+  }
+  set messageWhenRangeUnderflow(message) {
+    this._messageWhenRangeUnderflow = message;
+  }
+  get max() {
+    return this.maxValue;
+  }
+  set max(newValue) {
+    this.maxValue = newValue;
+    this.calculateFormattedMaxValue();
+  }
+  get min() {
+    return this.minValue;
+  }
+  set min(newValue) {
+    this.minValue = newValue;
+    this.calculateFormattedMinValue();
+  }
+  get value() {
+    return this._value;
+  }
+  set value(newValue) {
+    if (this.connected) {
+      this.setDateAndTimeValues(newValue);
+    } else {
+      this._initialValue = newValue;
+    }
+  }
+  get timezone() {
+    return this._timezone;
+  }
+  set timezone(newValue) {
+    this._timezone = newValue;
+    if (this.connected) {
+      this.updateValuesForTimezone();
+    }
+  }
+  get normalizedTimezone() {
+    if (this.timezone) {
+      return this.timezone;
+    } else if (isAuraL10NAvailable) {
+      return sfTimeZone;
+    }
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+  get disabled() {
+    return this._disabled;
+  }
+  set disabled(value) {
+    this._disabled = normalizeBoolean(value);
+  }
+  get readOnly() {
+    return this._readonly;
+  }
+  set readOnly(value) {
+    this._readonly = normalizeBoolean(value);
+  }
+  get required() {
+    return this._required;
+  }
+  set required(value) {
+    this._required = normalizeBoolean(value);
+  }
+  set fieldLevelHelp(value) {
+    this._fieldLevelHelp = value;
+  }
+  get fieldLevelHelp() {
+    return this._fieldLevelHelp;
+  }
+  get variant() {
+    return this._variant || VARIANT.STANDARD;
+  }
+  set variant(value) {
+    this._variant = normalizeVariant(value);
+    reflectAttribute(this, 'variant', this._variant);
+  }
+  get childVariant() {
+    return this._variant === VARIANT.LABEL_HIDDEN ? this._variant : VARIANT.STANDARD;
+  }
+  focus() {
+    if (this.connected) {
+      this.getDatepicker().focus();
+    }
+  }
+  blur() {
+    if (this.connected) {
+      this.getDatepicker().blur();
+      this.getTimepicker().blur();
+    }
+  }
+  hasBadInput() {
+    return this.connected && (this.hasBadDateInput || this.hasBadTimeInput);
+  }
+  get hasBadDateInput() {
+    return this.getDatepicker()?.hasBadInput();
+  }
+  get hasMissingDateTimeInput() {
+    return this.required && (!this._dateValue || !this._timeValue);
+  }
+  get hasBadTimeInput() {
+    const timeBadInput = this.getTimepicker()?.hasBadInput();
+    const timeMissing = this.required && this._dateValue && !this._timeValue;
+    return timeMissing || timeBadInput;
+  }
+  showHelpMessage(message) {
+    if (!this.connected) {
+      return;
+    }
+    if (!message) {
+      this.clearHelpMessage();
+      return;
+    }
+    if (this.hasMissingDateTimeInput) {
+      this.clearHelpMessage();
+      reflectAttribute(this.getDatepicker(), 'invalid', true);
+      reflectAttribute(this.getTimeCombobox(), 'invalid', true);
+    }
+    if (this.hasBadDateInput && !this._messageWhenBadInput) {
+      this.clearHelpMessage();
+      reflectAttribute(this.getDatepicker(), 'invalid', this.hasBadDateInput);
+      this.getDatepicker().showHelpMessage(message);
+      return;
+    }
+    if (this.hasBadTimeInput && !this._messageWhenBadInput) {
+      this.clearHelpMessage();
+      reflectAttribute(this.getTimepicker(), 'invalid', this.hasBadTimeInput);
+      reflectAttribute(this.getTimeCombobox(), 'invalid', true);
+      this.getTimepicker().showHelpMessage(message);
+      return;
+    }
+    this.classList.add('slds-has-error');
+    this._customErrorMessage = message;
+  }
+  clearHelpMessage() {
+    this.classList.remove('slds-has-error');
+    this._customErrorMessage = '';
+    this.getDatepicker().showHelpMessage('');
+    this.getDatepicker().removeAttribute('invalid');
+    this.getTimepicker().showHelpMessage('');
+    this.getTimepicker().removeAttribute('invalid');
+    this.getTimeCombobox().removeAttribute('invalid');
+  }
+  get isLabelHidden() {
+    return this.variant === VARIANT.LABEL_HIDDEN;
+  }
+  get computedLabelClass() {
+    return classSet('slds-form-element__legend slds-form-element__label').add({
+      'slds-assistive-text': this.isLabelHidden
+    }).toString();
+  }
+  get dateFormatExample() {
+    return normalizeISODate(DATE_EXAMPLE, this.dateStyle).displayValue;
+  }
+  get i18n() {
+    return i18n;
+  }
+  get customErrorMessage() {
+    return this._customErrorMessage;
+  }
+  get dateMin() {
+    return this._dateMin;
+  }
+  get dateMax() {
+    return this._dateMax;
+  }
+  get errorMessageElement() {
+    return !import.meta.env.SSR ? this.template.querySelector('[data-error-message]') : null;
+  }
+  get hasExternalLabel() {
+    return this.variant === VARIANT.LABEL_HIDDEN && this.timeAriaLabelledBy && this.timeAriaLabelledBy.length && this.dateAriaLabelledBy && this.dateAriaLabelledBy.length;
+  }
+  constructor() {
+    super();
+    this._rendered = false;
+    this._messageWhenValueMissing = void 0;
+    this.connected = false;
+    this._disabled = false;
+    this._readonly = false;
+    this._required = false;
+    this._fieldLevelHelp = void 0;
+    this._variant = void 0;
+    this._value = null;
+    this._customErrorMessage = '';
+    this._timezone = null;
+    this._dateMin = void 0;
+    this._dateMax = void 0;
+    this.label = void 0;
+    this.name = void 0;
+    this.placeholder = '';
+    this.dateStyle = void 0;
+    this.timeStyle = void 0;
+    this.timeAriaLabel = void 0;
+    this.ariaDisabled = void 0;
+    this.rootAriaNode = void 0;
+    this.timeStepMinutes = void 0;
+    this.autocomplete = 'off';
+    this.dateAriaControls = void 0;
+    this.dateAriaDetails = void 0;
+    this.dateAriaLabel = void 0;
+    this.dateAriaLabelledBy = void 0;
+    this.dateAriaDescribedBy = void 0;
+    this.dateAccessKey = void 0;
+    this.timeAccessKey = void 0;
+    this.dateAriaErrorMessage = void 0;
+    this.timeAriaErrorMessage = void 0;
+    if (features.enableAssertContext260) {
+      setContext(this);
+    }
+    this.uniqueId = generateUniqueId();
+  }
+  synchronizeA11y() {
+    if (import.meta.env.SSR) {
+      return;
+    }
+    const datepicker = this.template.querySelector('lightning-datepicker');
+    const timepicker = this.template.querySelector('lightning-timepicker');
+    if (datepicker) {
+      synchronizeAttrs(datepicker, {
+        ariaLabelledByElement: this.dateAriaLabelledBy,
+        ariaDescribedByElements: this.dateAriaDescribedBy,
+        ariaControlsElement: this.dateAriaControls,
+        ariaDetailsElements: this.dateAriaDetails,
+        'aria-label': this.dateAriaLabel,
+        ariaErrorMessageElement: this.dateAriaErrorMessage,
+        parentErrorMessageElement: this.errorMessageElement
+      });
+    }
+    if (timepicker) {
+      synchronizeAttrs(timepicker, {
+        ariaLabelledByElement: this.timeAriaLabelledBy,
+        ariaDescribedByElements: this.timeAriaDescribedBy,
+        ariaControlsElement: this.timeAriaControls,
+        ariaDetailsElements: this.timeAriaDetails,
+        'aria-label': this.timeAriaLabel,
+        ariaErrorMessageElement: this.timeAriaErrorMessage
+      });
+    }
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this.connected = true;
+    this.updateValuesForTimezone(this._initialValue);
+    this.interactingState = new InteractingState({
+      debounceInteraction: true
+    });
+    this.interactingState.onenter(() => {
+      this.dispatchEvent(new CustomEvent('focus'));
+    });
+    this.interactingState.onleave(() => {
+      this.dispatchEvent(new CustomEvent('blur'));
+    });
+  }
+  renderedCallback() {
+    if (!this._rendered) {
+      this.updateValuesForTimezone(this.value);
+      this._rendered = true;
+    }
+    this.synchronizeA11y();
+  }
+  disconnectedCallback() {
+    this._rendered = false;
+    this.connected = false;
+  }
+  getTimepicker() {
+    return this._rendered ? this.template.querySelector('lightning-timepicker') : null;
+  }
+  getTimeCombobox() {
+    return this._rendered ? this.getTimepicker().shadowRoot.querySelector('lightning-base-combobox') : null;
+  }
+  getDatepicker() {
+    return this._rendered ? this.template.querySelector('lightning-datepicker') : null;
+  }
+  handleDatepickerFocus() {
+    this._dateFocus = true;
+    this.interactingState.enter();
+  }
+  handleTimepickerFocus() {
+    this._timeFocus = true;
+    this.interactingState.enter();
+  }
+  handleDatepickerBlur() {
+    this._dateFocus = false;
+    if (!this._timeFocus) {
+      this.interactingState.leave();
+    }
+  }
+  handleTimepickerBlur() {
+    this._timeFocus = false;
+    if (!this._dateFocus) {
+      this.interactingState.leave();
+    }
+  }
+  handleDateChange(event) {
+    event.stopPropagation();
+    if (!event.detail) {
+      return;
+    }
+    this._dateValue = event.detail.value;
+    if (this._dateValue) {
+      this._timeValue = this._timeValue || getCurrentTimeString(this.normalizedTimezone);
+      this.setTimepickerValue(this._timeValue);
+    }
+    this.updateValue();
+  }
+  handleTimeChange(event) {
+    event.stopPropagation();
+    if (!event.detail) {
+      return;
+    }
+    this._timeValue = event.detail.value;
+    this.updateValue();
+  }
+  updateValue() {
+    const dateValue = this._dateValue;
+    const timeValue = this._timeValue;
+    if (dateValue && timeValue) {
+      const dateTimeString = dateValue + TIME_SEPARATOR + timeValue;
+      this._value = normalizeFormattedDateTime(dateTimeString, this.normalizedTimezone);
+      this.dispatchChangeEvent();
+    } else if (!dateValue) {
+      this._value = null;
+      this.dispatchChangeEvent();
+    }
+  }
+  dispatchChangeEvent() {
+    this.dispatchEvent(new CustomEvent('change', {
+      composed: true,
+      bubbles: true,
+      detail: {
+        value: this._value
+      }
+    }));
+  }
+  updateValuesForTimezone(datetimeValue) {
+    this.setDateAndTimeValues(datetimeValue || this._value);
+    this.calculateFormattedMinValue();
+    this.calculateFormattedMaxValue();
+  }
+  setDateAndTimeValues(value) {
+    const normalizedValue = normalizeISODateTime(value, this.normalizedTimezone).isoValue;
+    const isDateOnly = normalizedValue && value.indexOf(TIME_SEPARATOR) < 0;
+    if (isDateOnly) {
+      this._dateValue = value;
+      this._value = this._dateValue;
+      this.setDatepickerValue(value);
+      return;
+    }
+    const dateAndTime = this.separateDateTime(normalizedValue);
+    this._dateValue = dateAndTime && dateAndTime[0];
+    this._timeValue = dateAndTime && dateAndTime[1];
+    this._value = value;
+    this.setDatepickerValue(this._dateValue);
+    this.setTimepickerValue(this._timeValue);
+  }
+  setDatepickerValue(value) {
+    if (features.enableAssertContext260) {
+      assertContext(this);
+    }
+    const datepicker = this.getDatepicker();
+    if (datepicker) {
+      datepicker.value = value;
+    }
+  }
+  setTimepickerValue(value) {
+    const timepicker = this.getTimepicker();
+    if (timepicker) {
+      timepicker.value = value;
+    }
+  }
+  calculateFormattedMinValue() {
+    if (!this.min) {
+      return;
+    }
+    const normalizedDate = normalizeISODateTime(this.min, this.normalizedTimezone);
+    this._dateMin = this.separateDateTime(normalizedDate.isoValue)[0];
+    this.formattedMin = normalizedDate.displayValue;
+  }
+  calculateFormattedMaxValue() {
+    if (!this.max) {
+      return;
+    }
+    const normalizedDate = normalizeISODateTime(this.max, this.normalizedTimezone);
+    this._dateMax = this.separateDateTime(normalizedDate.isoValue)[0];
+    this.formattedMax = normalizedDate.displayValue;
+  }
+  separateDateTime(isoString) {
+    return typeof isoString === 'string' ? isoString.split(TIME_SEPARATOR) : null;
+  }
+  get computedDateAriaInvalid() {
+    return computeAriaInvalid(this._customErrorMessage, this._dateValue) || undefined;
+  }
+  get computedTimeAriaInvalid() {
+    return computeAriaInvalid(this._customErrorMessage, this._timeValue) || undefined;
+  }
+  get helptextAlternativeText() {
+    return formatLabel(i18n.helpTextAlternativeText, this.label);
+  }
+  /*LWC compiler v9.5.3*/
+}
+LightningDateTimePicker.delegatesFocus = true;
+_registerDecorators(LightningDateTimePicker, {
+  publicProps: {
+    label: {
+      config: 0
+    },
+    name: {
+      config: 0
+    },
+    placeholder: {
+      config: 0
+    },
+    dateStyle: {
+      config: 0
+    },
+    timeStyle: {
+      config: 0
+    },
+    timeAriaLabel: {
+      config: 0
+    },
+    ariaDisabled: {
+      config: 0
+    },
+    rootAriaNode: {
+      config: 0
+    },
+    timeStepMinutes: {
+      config: 0
+    },
+    autocomplete: {
+      config: 0
+    },
+    timeAriaControls: {
+      config: 3
+    },
+    timeAriaDetails: {
+      config: 3
+    },
+    timeAriaLabelledBy: {
+      config: 3
+    },
+    timeAriaDescribedBy: {
+      config: 3
+    },
+    dateAriaControls: {
+      config: 0
+    },
+    dateAriaDetails: {
+      config: 0
+    },
+    dateAriaLabel: {
+      config: 0
+    },
+    dateAriaLabelledBy: {
+      config: 0
+    },
+    dateAriaDescribedBy: {
+      config: 0
+    },
+    dateAccessKey: {
+      config: 0
+    },
+    timeAccessKey: {
+      config: 0
+    },
+    dateAriaErrorMessage: {
+      config: 0
+    },
+    timeAriaErrorMessage: {
+      config: 0
+    },
+    messageWhenValueMissing: {
+      config: 3
+    },
+    messageWhenBadInput: {
+      config: 3
+    },
+    messageWhenRangeOverflow: {
+      config: 3
+    },
+    messageWhenRangeUnderflow: {
+      config: 3
+    },
+    max: {
+      config: 3
+    },
+    min: {
+      config: 3
+    },
+    value: {
+      config: 3
+    },
+    timezone: {
+      config: 3
+    },
+    disabled: {
+      config: 3
+    },
+    readOnly: {
+      config: 3
+    },
+    required: {
+      config: 3
+    },
+    fieldLevelHelp: {
+      config: 3
+    },
+    variant: {
+      config: 3
+    }
+  },
+  publicMethods: ["focus", "blur", "hasBadInput", "showHelpMessage", "getTimeCombobox", "getDatepicker"],
+  track: {
+    _disabled: 1,
+    _readonly: 1,
+    _required: 1,
+    _fieldLevelHelp: 1,
+    _variant: 1,
+    _value: 1,
+    _customErrorMessage: 1,
+    _timezone: 1,
+    _dateMin: 1,
+    _dateMax: 1
+  },
+  fields: ["_rendered", "_messageWhenValueMissing", "connected"]
+});
+const __lwc_component_class_internal = _registerComponent(LightningDateTimePicker, {
+  tmpl: _tmpl,
+  sel: "lightning-datetimepicker",
+  apiVersion: 66
+});
+export default __lwc_component_class_internal;

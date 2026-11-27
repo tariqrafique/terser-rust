@@ -1,0 +1,181 @@
+import { registerDecorators as _registerDecorators } from "lwc";
+import _tmpl from "./primitiveBubble.html";
+/*
+ * Copyright (c) 2025, Salesforce, Inc.,
+ * All rights reserved.
+ * For full license text, see the LICENSE.txt file
+ */
+import { registerComponent as _registerComponent } from 'lwc';
+import LightningShadowBaseClass from 'lightning/shadowBaseClassPrivate';
+import { classSet } from 'lightning/utils';
+const DEFAULT_ALIGN = {
+  horizontal: 'left',
+  vertical: 'bottom'
+};
+const POPOVER_MIN_HEIGHT = 32;
+const DEFAULT_INVISIBLE_DIV_STYLES = {
+  height: '1rem',
+  position: 'absolute',
+  left: '0',
+  marginLeft: '0'
+};
+class LightningPrimitiveBubble extends LightningShadowBaseClass {
+  constructor(...args) {
+    super(...args);
+    this.state = {
+      visible: false,
+      hidden: true,
+      contentId: ''
+    };
+    this.disableVisibilityChangeOnLeave = void 0;
+    this.divEl = void 0;
+  }
+  get contentId() {
+    return this.state.contentId;
+  }
+  set contentId(value) {
+    this.state.contentId = value;
+    if (this.state.inDOM) {
+      this.divEl.setAttribute('id', this.state.contentId);
+    }
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    this.setAttribute('role', 'tooltip');
+    this.setAttribute('aria-hidden', true);
+    this.setAttribute('class', 'slds-scope');
+    this.state.inDOM = true;
+  }
+  disconnectedCallback() {
+    this.state.inDOM = false;
+  }
+  renderedCallback() {
+    this.setContentManually();
+    this.setIdManually();
+    this.createInvisibleDivManually();
+  }
+  set content(value) {
+    this.state.content = value;
+    if (this.state.inDOM) {
+      this.setContentManually();
+    }
+  }
+  get content() {
+    return this.state.content || '';
+  }
+  get align() {
+    return this.state.align || DEFAULT_ALIGN;
+  }
+  set align(value) {
+    this.state.align = value;
+  }
+  get visible() {
+    return this.state.visible;
+  }
+  set visible(value) {
+    this.state.visible = value;
+    if (this.state.visible) {
+      this.state.hidden = false;
+    }
+    if (this.state.hidden) {
+      this.setAttribute('aria-hidden', true);
+    } else {
+      this.removeAttribute('aria-hidden');
+    }
+  }
+  handleTransitionEnd() {
+    if (!this.state.visible) {
+      this.state.hidden = true;
+      this.setAttribute('aria-hidden', true);
+    }
+  }
+  setIdManually() {
+    this.setAttribute('id', this.state.contentId);
+  }
+  setContentManually() {
+    this.template.querySelector('.slds-popover__body').textContent = this.state.content;
+  }
+  createInvisibleDivManually() {
+    if (this.state.visible) {
+      const popoverParent = this.template.querySelector('.slds-popover');
+      const popoverBody = this.template.querySelector('.slds-popover__body');
+      const invisibleDiv = document.createElement('div');
+      const {
+        vertical
+      } = this.align;
+      let computedStyle = null;
+      if (window && popoverParent && popoverBody) {
+        computedStyle = window.getComputedStyle(popoverParent);
+        invisibleDiv.style.width = computedStyle.getPropertyValue('width');
+        if (vertical === 'bottom') {
+          invisibleDiv.style.top = Math.max(POPOVER_MIN_HEIGHT, popoverParent.offsetHeight) + 'px';
+        } else {
+          invisibleDiv.style.top = '-1rem';
+        }
+      }
+      invisibleDiv.style.height = DEFAULT_INVISIBLE_DIV_STYLES.height;
+      invisibleDiv.style.position = DEFAULT_INVISIBLE_DIV_STYLES.position;
+      invisibleDiv.style.left = DEFAULT_INVISIBLE_DIV_STYLES.left;
+      invisibleDiv.style.marginLeft = DEFAULT_INVISIBLE_DIV_STYLES.marginLeft;
+      popoverBody.appendChild(invisibleDiv);
+    }
+  }
+  get computedPopoverClass() {
+    const classes = classSet('slds-popover').add('slds-popover_tooltip').add('fix-popover_tooltip_alignment');
+    classes.add({
+      'slds-rise-from-ground': this.visible,
+      'slds-fall-into-ground': !this.visible,
+      'slds-hide': this.state.hidden
+    });
+    const {
+      horizontal,
+      vertical
+    } = this.align;
+    classes.add({
+      'slds-nubbin_top-left': horizontal === 'left' && vertical === 'top',
+      'slds-nubbin_top-right': horizontal === 'right' && vertical === 'top',
+      'slds-nubbin_bottom-left': horizontal === 'left' && vertical === 'bottom',
+      'slds-nubbin_bottom-right': horizontal === 'right' && vertical === 'bottom',
+      'slds-nubbin_bottom': horizontal === 'center' && vertical === 'bottom',
+      'slds-nubbin_top': horizontal === 'center' && vertical === 'top',
+      'slds-nubbin_left': horizontal === 'left' && vertical === 'center',
+      'slds-nubbin_right': horizontal === 'right' && vertical === 'center'
+    });
+    return classes.toString();
+  }
+  handleMouseLeave() {
+    if (!this.disableVisibilityChangeOnLeave) {
+      this.visible = false;
+    }
+  }
+  /*LWC compiler v9.5.3*/
+}
+_registerDecorators(LightningPrimitiveBubble, {
+  publicProps: {
+    disableVisibilityChangeOnLeave: {
+      config: 0
+    },
+    contentId: {
+      config: 3
+    },
+    content: {
+      config: 3
+    },
+    align: {
+      config: 3
+    },
+    visible: {
+      config: 3
+    }
+  },
+  track: {
+    state: 1
+  },
+  fields: ["divEl"]
+});
+const __lwc_component_class_internal = _registerComponent(LightningPrimitiveBubble, {
+  tmpl: _tmpl,
+  sel: "lightning-primitive-bubble",
+  apiVersion: 66
+});
+export default __lwc_component_class_internal;
