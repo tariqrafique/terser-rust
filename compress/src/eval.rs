@@ -125,20 +125,19 @@ fn opt_table(n: &N, cx: &Cx) -> Option<N> {
 }
 
 fn optimize_simple(n: &N, cx: &Cx) -> Option<N> {
-    if cx.opts.negate_iife {
-        if let Some(rewritten) = negate_iife(n) {
-            return Some(rewritten);
-        }
-    }
+    // terser negates in `def_optimize(AST_Call)` (the child), then this
+    // statement's `drop_side_effect_free` runs on `!call`.
+    let negated = if cx.opts.negate_iife { negate_iife(n) } else { None };
+    let cur = negated.clone().unwrap_or_else(|| Rc::clone(n));
     if cx.opts.side_effects {
-        if let Some(rewritten) = unwrap_void_statement(n, cx) {
+        if let Some(rewritten) = unwrap_void_statement(&cur, cx) {
             return Some(rewritten);
         }
-        if let Some(rewritten) = drop_statement(n, cx) {
+        if let Some(rewritten) = drop_statement(&cur, cx) {
             return Some(rewritten);
         }
     }
-    None
+    negated
 }
 
 /// terser `def_optimize(AST_UnaryPostfix)`: `lift_sequences`.
