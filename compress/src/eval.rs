@@ -9,7 +9,7 @@ use std::rc::Rc;
 use crate::Cx;
 
 #[derive(Clone, Debug)]
-enum Lit {
+pub(crate) enum Lit {
     Num(f64),
     Str(String),
     Bool(bool),
@@ -18,12 +18,23 @@ enum Lit {
 }
 
 impl Lit {
-    fn truthy(&self) -> bool {
+    pub(crate) fn truthy(&self) -> bool {
         match self {
             Lit::Num(n) => *n != 0.0 && !n.is_nan(),
             Lit::Str(s) => !s.is_empty(),
             Lit::Bool(b) => *b,
             Lit::Null | Lit::Undef => false,
+        }
+    }
+
+    /// JavaScript `===`. `NaN === NaN` is false. `-0 === 0` is true.
+    pub(crate) fn js_eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Lit::Num(a), Lit::Num(b)) => a == b,
+            (Lit::Str(a), Lit::Str(b)) => a == b,
+            (Lit::Bool(a), Lit::Bool(b)) => a == b,
+            (Lit::Null, Lit::Null) | (Lit::Undef, Lit::Undef) => true,
+            _ => false,
         }
     }
 }
@@ -47,16 +58,6 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if cx.opts.evaluate {
         if let Some(rewritten) = fold_value(n, cx) {
             return rewritten;
-        }
-    }
-    if cx.opts.dead_code {
-        if let Some(rewritten) = fold_empty_switch(n, cx) {
-            return rewritten;
-        }
-        if cx.opts.switches {
-            if let Some(rewritten) = fold_switch_if(n, cx) {
-                return rewritten;
-            }
         }
     }
     if cx.opts.computed_props {
@@ -88,10 +89,9 @@ pub fn fold(n: &N, cx: &Cx) -> N {
             return rewritten;
         }
     }
-    if cx.opts.loops {
-        if let Some(rewritten) = fold_while(n) {
-            return rewritten;
-        }
+    // terser `def_optimize` for `AST_While` / `AST_Do` / `AST_For` / `AST_Switch` / `AST_Try`.
+    if let Some(rewritten) = crate::loops::optimize(n, cx) {
+        return rewritten;
     }
     if let Some(rewritten) = crate::call::optimize(n, cx) {
         return rewritten;
@@ -182,141 +182,6 @@ fn fold_bool(n: &N, cx: &Cx) -> Option<N> {
     }
 }
 
-fn fold_switch_if(n: &N, cx: &Cx) -> Option<N> {
-    let Data::Switch { expr, body } = &n.data else {
-        return None;
-    };
-    if body.is_empty() || has_control_jump(body) {
-        return None;
-    }
-    if break_only(body, cx) {
-        return Some(if statement_pure(expr, cx) {
-            empty(n)
-        } else {
-            simple(n, Rc::clone(expr))
-        });
-    }
-    let mut case_test: Option<&N> = None;
-    let mut case_body: Option<Vec<N>> = None;
-    let mut default_body: Option<Vec<N>> = None;
-    for arm in body {
-        match &arm.data {
-            Data::Case { expr: test, body } => {
-                if case_test.is_some() {
-                    return None;
-                }
-                case_test = Some(test);
-                case_body = Some(strip_break(body));
-            }
-            Data::Default { body } => {
-                if default_body.is_some() {
-                    return None;
-                }
-                default_body = Some(strip_break(body));
-            }
-            _ => return None,
-        }
-    }
-    let (Some(test), Some(case_body)) = (case_test, case_body) else {
-        return None;
-    };
-    if case_body.is_empty() {
-        return None;
-    }
-    let cond = eq_test(n, Rc::clone(expr), Rc::clone(test), cx);
-    let body = stmt_list(n, &case_body, cx);
-    let alt = default_body.and_then(|stmts| {
-        if stmts.is_empty() {
-            None
-        } else {
-            Some(stmt_list(n, &stmts, cx))
-        }
-    });
-    Some(atom(n, Data::If { cond, body, alt }))
-}
-
-fn eq_test(span: &N, left: N, right: N, cx: &Cx) -> N {
-    let node = binary(span, "===", left, right);
-    fold_compare(&node, cx).unwrap_or(node)
-}
-
-fn break_only(body: &[N], cx: &Cx) -> bool {
-    body.iter().all(|arm| match &arm.data {
-        Data::Case { expr, body } => statement_pure(expr, cx) && strip_break(body).is_empty(),
-        Data::Default { body } => strip_break(body).is_empty(),
-        _ => false,
-    })
-}
-
-fn strip_break(body: &[N]) -> Vec<N> {
-    let mut out: Vec<N> = body.iter().cloned().collect();
-    if let Some(Data::Break { label: None }) = out.last().map(|s| &s.data) {
-        out.pop();
-    }
-    out
-}
-
-fn has_control_jump(body: &[N]) -> bool {
-    body.iter().any(|arm| {
-        let stmts = match &arm.data {
-            Data::Case { body, .. } | Data::Default { body } => body.as_slice(),
-            _ => &[],
-        };
-        stmts.iter().enumerate().any(|(i, stmt)| {
-            let last = i + 1 == stmts.len();
-            match &stmt.data {
-                Data::Break { label: None } if last => false,
-                Data::Break { .. } | Data::Continue { .. } => true,
-                Data::If { .. } | Data::For { .. } | Data::While { .. } | Data::Do { .. } | Data::Switch { .. } | Data::Block { .. } | Data::Try { .. } => {
-                    contains_jump(stmt)
-                }
-                _ => false,
-            }
-        })
-    })
-}
-
-fn contains_jump(n: &N) -> bool {
-    match &n.data {
-        Data::Break { .. } | Data::Continue { .. } => true,
-        Data::Func { .. } | Data::Class { .. } => false,
-        other => walk_children(other, contains_jump),
-    }
-}
-
-fn stmt_list(span: &N, stmts: &[N], cx: &Cx) -> N {
-    let merged = if cx.opts.sequences_limit > 0 && stmts.len() > 1 && stmts.iter().all(|s| matches!(s.data, Data::Simple { .. })) {
-        let exprs = stmts
-            .iter()
-            .map(|s| match &s.data {
-                Data::Simple { body } => Rc::clone(body),
-                _ => unreachable!(),
-            })
-            .collect();
-        vec![simple(span, sequence(span, exprs))]
-    } else {
-        stmts.to_vec()
-    };
-    if merged.len() == 1 {
-        merged.into_iter().next().unwrap()
-    } else {
-        atom(span, Data::Block { body: merged })
-    }
-}
-
-fn fold_empty_switch(n: &N, cx: &Cx) -> Option<N> {
-    let Data::Switch { expr, body } = &n.data else {
-        return None;
-    };
-    if !body.is_empty() {
-        return None;
-    }
-    if cx.opts.side_effects && is_pure(expr) {
-        Some(atom(n, Data::Empty))
-    } else {
-        Some(simple(n, Rc::clone(expr)))
-    }
-}
 
 fn fold_computed(n: &N, cx: &Cx) -> Option<N> {
     match &n.data {
@@ -604,7 +469,7 @@ fn alt_changed(orig: &Option<N>, now: &Option<N>) -> bool {
     }
 }
 
-fn is_empty_stmt(n: &N) -> bool {
+pub(crate) fn is_empty_stmt(n: &N) -> bool {
     match &n.data {
         Data::Empty => true,
         Data::Block { body } if body.is_empty() => true,
@@ -629,7 +494,7 @@ fn tail_node(n: &N) -> &N {
 
 /// terser `evaluate.js` `AST_Node.evaluate`: a constant, or nothing when the
 /// expression is not a value (or the string would print longer).
-fn eval_if_cond(n: &N, cx: &Cx) -> Option<Lit> {
+pub(crate) fn eval_if_cond(n: &N, cx: &Cx) -> Option<Lit> {
     if !cx.opts.evaluate {
         return None;
     }
@@ -735,7 +600,7 @@ fn is_undefined_like(n: &N) -> bool {
 }
 
 /// terser `inference.js` `aborts`.
-fn aborts(n: &N) -> bool {
+pub(crate) fn aborts(n: &N) -> bool {
     match &n.data {
         Data::Return { .. } | Data::Throw { .. } | Data::Break { .. } | Data::Continue { .. } => true,
         Data::Block { body } | Data::StaticBlock { body } => body.iter().any(aborts),
@@ -746,7 +611,7 @@ fn aborts(n: &N) -> bool {
 }
 
 /// terser `tighten-body.js` `extract_from_unreachable_code`.
-fn extract_unreachable(stat: &N, target: &mut Vec<N>, cx: &Cx, is_root: bool) {
+pub(crate) fn extract_unreachable(stat: &N, target: &mut Vec<N>, cx: &Cx, is_root: bool) {
     match &stat.data {
         Data::Defs { kind: ast::DefKind::Var, defs, .. } => {
             if let Some(node) = strip_var_inits(stat, defs) {
@@ -867,7 +732,7 @@ fn var_from_name(span: &N, name_node: &N) -> N {
 }
 
 /// terser `inference.js` `negate`. `first_in_statement` is false for an `if` test.
-fn negate_expr(n: &N, cx: &Cx) -> N {
+pub(crate) fn negate_expr(n: &N, cx: &Cx) -> N {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "!" => Rc::clone(expr),
         Data::Seq { exprs } if exprs.len() >= 2 => {
@@ -913,7 +778,7 @@ fn best_expr(a: &N, b: &N) -> N {
 
 /// terser `size.js` `AST_Node.size`. Parentheses follow `output.js` `needs_parens`
 /// for binaries; the root's parent is the `if`, which adds none.
-fn node_size(n: &N) -> usize {
+pub(crate) fn node_size(n: &N) -> usize {
     size_at(n, None)
 }
 
@@ -2752,20 +2617,6 @@ fn is_basic_ident(value: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
 
-fn fold_while(n: &N) -> Option<N> {
-    let Data::While { cond, body } = &n.data else {
-        return None;
-    };
-    Some(atom(
-        n,
-        Data::For {
-            init: None,
-            cond: Some(Rc::clone(cond)),
-            step: None,
-            body: Rc::clone(body),
-        },
-    ))
-}
 
 
 pub(crate) fn only_pure_decls(body: &[N], cx: &Cx) -> bool {
@@ -2976,7 +2827,7 @@ fn drop_pure_call(n: &N) -> Option<N> {
     Some(simple(n, sequence(n, effects)))
 }
 
-fn statement_pure(n: &N, cx: &Cx) -> bool {
+pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
     if cx.in_with {
         return is_pure(n);
     }
@@ -3247,7 +3098,7 @@ pub(crate) fn print_len(n: &N) -> usize {
     codegen::print(n).len()
 }
 
-fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
+pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
     match lit {
         Lit::Num(n) if n.is_nan() => nan_node(orig, cx),
         Lit::Num(n) if n.is_infinite() => {
@@ -3308,7 +3159,7 @@ fn string(orig: &N, value: String) -> N {
     atom(orig, Data::String { value, quote, units: None })
 }
 
-fn empty(orig: &N) -> N {
+pub(crate) fn empty(orig: &N) -> N {
     atom(orig, Data::Empty)
 }
 
