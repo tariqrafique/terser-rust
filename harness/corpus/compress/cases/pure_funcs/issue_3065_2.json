@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/pure_funcs/issue_3065_2",
+  "corpus": "compress",
+  "name": "issue_3065_2",
+  "origin": {
+    "file": "test/compress/pure_funcs.js",
+    "line": 617,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function modifyWrapper(a, f, wrapper) {\n            wrapper.a = a;\n            wrapper.f = f;\n            return wrapper;\n        }\n        function pureFunc(fun) {\n            return modifyWrapper(1, fun, function(a) {\n                return fun(a);\n            });\n        }\n        var unused = pureFunc(function(x) {\n            return x;\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "pure_funcs": [
+        "pureFunc"
+      ],
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {
+      "reserved": [
+        "pureFunc"
+      ],
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    pure_funcs: [ \"pureFunc\" ],\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": "{\n    reserved: [ \"pureFunc\" ],\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

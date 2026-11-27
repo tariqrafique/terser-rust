@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/rename/function_catch_catch_ie8",
+  "corpus": "compress",
+  "name": "function_catch_catch_ie8",
+  "origin": {
+    "file": "test/compress/rename.js",
+    "line": 539,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var o = 0;\n        function f() {\n            try {\n                throw 1;\n            } catch (c) {\n                try {\n                    throw 2;\n                } catch (o) {\n                    var o = 3;\n                    console.log(o);\n                }\n            }\n            console.log(o);\n        }\n        f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    ie8: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "var o=0;function f(){try{throw 1}catch(c){try{throw 2}catch(o){var o=3;console.log(o)}}console.log(o)}f();",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "3\nundefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

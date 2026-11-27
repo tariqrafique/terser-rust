@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_2535_1",
+  "corpus": "compress",
+  "name": "issue_2535_1",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 1097,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (true || x()) y();\n        if (true && x()) y();\n        if (x() || true) y();\n        if (x() && true) y();\n        if (false || x()) y();\n        if (false && x()) y();\n        if (x() || false) y();\n        if (x() && false) y();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "evaluate": true,
+      "passes": 2,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    evaluate: true,\n    passes: 2,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "y();x()&&y();(x(),1)&&y();x()&&y();x()&&y();x()&&y();(x(),0)&&y();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

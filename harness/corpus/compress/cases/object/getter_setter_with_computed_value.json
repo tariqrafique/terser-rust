@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/object/getter_setter_with_computed_value",
+  "corpus": "compress",
+  "name": "getter_setter_with_computed_value",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 428,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class C {\n            get ['a']() {\n                return 'A';\n            }\n            set ['a'](value) {\n                do_something(a);\n            }\n        }\n        var x = {\n            get [a.b]() {\n                return 42;\n            }\n        };\n        class MyArray extends Array {\n            get [Symbol.species]() {\n                return Array;\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class C{get[\"a\"](){return\"A\"}set[\"a\"](value){do_something(a)}}var x={get[a.b](){return 42}};class MyArray extends Array{get[Symbol.species](){return Array}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

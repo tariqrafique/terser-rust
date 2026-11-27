@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/properties/methods_keep_quoted_false",
+  "corpus": "compress",
+  "name": "methods_keep_quoted_false",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 977,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class C { \"Quoted\"(){} Unquoted(){} }\n        f1({ \"Quoted\"(){}, Unquoted(){}, \"Prop\": 3 });\n        f2({ \"Quoted\": function(){} });\n        f3({ \"Quoted\": ()=>{} });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "ecma": 2015,
+      "unsafe_methods": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": false
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true,\n    ecma: 2015,\n    unsafe_methods: true\n}",
+    "mangle": "{\n    properties: {\n        keep_quoted: false\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class C{o(){}t(){}}f1({o(){},t(){},u:3});f2({o(){}});f3({o(){}});",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

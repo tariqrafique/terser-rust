@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_2535_2",
+  "corpus": "compress",
+  "name": "issue_2535_2",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 1126,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function x() {}\n        function y() {\n            return \"foo\";\n        }\n        console.log((x() || true) || y());\n        console.log((y() || true) || x());\n        console.log((x() || true) && y());\n        console.log((y() || true) && x());\n        console.log((x() && true) || y());\n        console.log((y() && true) || x());\n        console.log((x() && true) && y());\n        console.log((y() && true) && x());\n        console.log((x() || false) || y());\n        console.log((y() || false) || x());\n        console.log((x() || false) && y());\n        console.log((y() || false) && x());\n        console.log((x() && false) || y());\n        console.log((y() && false) || x());\n        console.log((x() && false) && y());\n        console.log((y() && false) && x());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function x(){}function y(){return\"foo\"}console.log(x()||!0);console.log(y()||!0);console.log((x(),y()));console.log((y(),x()));console.log(!!x()||y());console.log(!!y()||x());console.log(x()&&y());console.log(y()&&x());console.log(x()||y());console.log(y()||x());console.log(!!x()&&y());console.log(!!y()&&x());console.log((x(),y()));console.log((y(),x()));console.log(x()&&!1);console.log(y()&&!1);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\nfoo\nfoo\nundefined\nfoo\ntrue\nundefined\nundefined\nfoo\nfoo\nfalse\nundefined\nfoo\nundefined\nundefined\nfalse\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

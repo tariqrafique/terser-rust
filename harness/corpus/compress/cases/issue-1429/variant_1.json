@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1429/variant_1",
+  "corpus": "compress",
+  "name": "variant_1",
+  "origin": {
+    "file": "test/compress/issue-1429.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const A = 1, B = 0, C = 2, D = 3;\n\n        export function f() {\n            return A * (B + C + 2 * D);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "evaluate": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true,\n    evaluate: true,\n    reduce_vars: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export function f(){return 8}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

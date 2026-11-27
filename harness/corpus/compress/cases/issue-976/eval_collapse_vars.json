@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "compress/issue-976/eval_collapse_vars",
+  "corpus": "compress",
+  "name": "eval_collapse_vars",
+  "origin": {
+    "file": "test/compress/issue-976.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var e = 7;\n            var s = \"abcdef\";\n            var i = 2;\n            var eval = console.log.bind(console);\n            var x = s.charAt(i++);\n            var y = s.charAt(i++);\n            var z = s.charAt(i++);\n            eval(x, y, z, e);\n        }\n        function p1() { var a = foo(), b = bar(), eval = baz(); return a + b + eval; }\n        function p2() { var a = foo(), b = bar(), eval = baz; return a + b + eval(); }\n        (function f2(eval) {\n            var a = 2;\n            console.log(a - 5);\n            eval(\"console.log(a);\");\n        })(eval);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "sequences": false,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    sequences: false,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){var e=7,s=\"abcdef\",i=2,eval=console.log.bind(console),x=s.charAt(i++),y=s.charAt(i++),z=s.charAt(i++);eval(x,y,z,e)}function p1(){return foo()+bar()+baz()}function p2(){var a=foo(),b=bar(),eval=baz;return a+b+eval()}(function f2(eval){var a=2;console.log(a-5);eval(\"console.log(a);\")})(eval);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

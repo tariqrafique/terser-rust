@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1443/keep_fnames",
+  "corpus": "compress",
+  "name": "keep_fnames",
+  "origin": {
+    "file": "test/compress/issue-1443.js",
+    "line": 29,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(undefined) {\n            return function() {\n                function n(a) {\n                    return a * a;\n                }\n                if (a)\n                    return b;\n                if (c)\n                    return d;\n            };\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "unsafe_undefined": true,
+      "defaults": false
+    },
+    "mangle": {
+      "keep_fnames": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true,\n    unsafe_undefined: true\n}",
+    "mangle": "{\n    keep_fnames: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(r){return function(){function n(r){return r*r}return a?b:c?d:r}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/comments/print_every_comment_only_once",
+  "corpus": "compress",
+  "name": "print_every_comment_only_once",
+  "origin": {
+    "file": "test/compress/comments.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = {};\n        // this is a comment line\n        (foo.bar = {}).test = 123;\n        var foo2 = {};\n        /* this is a block line */\n        (foo2.bar = {}).test = 123;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "comments": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    comments: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo={};\n// this is a comment line\n(foo.bar={}).test=123;var foo2={};\n/* this is a block line */(foo2.bar={}).test=123;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

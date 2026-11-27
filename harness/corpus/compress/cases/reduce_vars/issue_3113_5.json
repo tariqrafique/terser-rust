@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_3113_5",
+  "corpus": "compress",
+  "name": "issue_3113_5",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6669,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            console.log(a);\n        }\n        function g() {\n            f();\n        }\n        while (g());\n        var a = 1;\n        f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_vars: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){console.log(a)}function g(){f()}while(g());var a=1;f();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_203",
+  "corpus": "compress",
+  "name": "issue_203",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 277,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var m = {};\n        var fn = Function(\"require\", \"module\", \"exports\", \"module.exports = 42;\");\n        fn(null, m, m.exports);\n        console.log(m.exports);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "keep_fargs": false,
+      "side_effects": true,
+      "unsafe_Function": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    keep_fargs: false,\n    side_effects: true,\n    unsafe_Function: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var m={};var fn=Function(\"n,o\",\"o.exports=42\");fn(null,m,m.exports);console.log(m.exports);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "42\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

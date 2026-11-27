@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/arguments/modified",
+  "corpus": "compress",
+  "name": "modified",
+  "origin": {
+    "file": "test/compress/arguments.js",
+    "line": 163,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(a, b) {\n            var c = arguments[0];\n            var d = arguments[1];\n            var a = \"foo\";\n            b++;\n            arguments[0] = \"moo\";\n            arguments[1] *= 2;\n            console.log(a, b, c, d, arguments[0], arguments[1]);\n        })(\"bar\", 42);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arguments": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arguments: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(a,b){var c=a;var d=b;var a=\"foo\";b++;a=\"moo\";b*=2;console.log(a,b,c,d,a,b)})(\"bar\",42);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "moo 86 bar 42 moo 86\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

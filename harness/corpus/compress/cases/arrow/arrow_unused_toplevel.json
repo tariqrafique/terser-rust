@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/arrow_unused_toplevel",
+  "corpus": "compress",
+  "name": "arrow_unused_toplevel",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 172,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        top => dog;\n        let fn = a => { console.log(a * a); };\n        let u = (x, y) => x - y + g;\n        (() => { console.log(\"0\"); })();\n        !function(x) {\n            (() => { console.log(\"1\"); })();\n            let unused = x => { console.log(x); };\n            let baz = e => e + e;\n            console.log(baz(x));\n        }(1);\n        fn(3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let fn=a=>{console.log(a*a)};(()=>{console.log(\"0\")})();!function(x){(()=>{console.log(\"1\")})();let baz=e=>e+e;console.log(baz(x))}(1);fn(3);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0\n1\n2\n9\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

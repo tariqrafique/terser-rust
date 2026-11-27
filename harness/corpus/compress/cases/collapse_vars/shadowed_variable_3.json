@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/shadowed_variable_3",
+  "corpus": "compress",
+  "name": "shadowed_variable_3",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 6195,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if(1) {\n            var object = 1\n            var object2 = \"PASS\"\n            let temp_variable = id(true) ? object2 : object\n            {\n                let object = temp_variable\n                console.log(object)\n                console.log(object)\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": true,
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: true,\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "if(1){var object=1;var object2=\"PASS\";let temp_variable=id(true)?object2:object;{let object=temp_variable;console.log(object);console.log(object)}}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

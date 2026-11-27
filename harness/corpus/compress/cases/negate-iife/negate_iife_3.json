@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/negate-iife/negate_iife_3",
+  "corpus": "compress",
+  "name": "negate_iife_3",
+  "origin": {
+    "file": "test/compress/negate-iife.js",
+    "line": 46,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(){ return t })() ? console.log(true) : console.log(false);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "negate_iife": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    negate_iife: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){return t}()?console.log(false):console.log(true);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

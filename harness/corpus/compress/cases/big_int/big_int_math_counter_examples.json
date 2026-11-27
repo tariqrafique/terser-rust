@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/big_int/big_int_math_counter_examples",
+  "corpus": "compress",
+  "name": "big_int_math_counter_examples",
+  "origin": {
+    "file": "test/compress/big_int.js",
+    "line": 80,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log({\n            mixing_types: 1 * 10n,\n            bad_shift: 1n >>> 0n,\n            bad_div: 1n / 0n,\n            bad_mod: 1n % 0n,\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log({mixing_types:1*10n,bad_shift:1n>>>0n,bad_div:1n/0n,bad_mod:1n%0n});",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">= 12",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

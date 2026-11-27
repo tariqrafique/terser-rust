@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/issue-2001/export_mangle_1",
+  "corpus": "compress",
+  "name": "export_mangle_1",
+  "origin": {
+    "file": "test/compress/issue-2001.js",
+    "line": 153,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export function foo(one, two) {\n            return one - two;\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export function foo(o,n){return o-n}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

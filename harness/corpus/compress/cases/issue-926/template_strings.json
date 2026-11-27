@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/issue-926/template_strings",
+  "corpus": "compress",
+  "name": "template_strings",
+  "origin": {
+    "file": "test/compress/issue-926.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        foo(\n            `<span>${contents}</span>`,\n            `<a href=\"${url}\">${text}</a>`\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "foo(`<span>${contents}</span>`,`<a href=\"${url}\">${text}</a>`);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

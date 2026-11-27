@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/to_and_or",
+  "corpus": "compress",
+  "name": "to_and_or",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 1322,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var values = [\n            0,\n            null,\n            true,\n            \"foo\",\n            false,\n            -1 / 0,\n            void 0,\n        ];\n        values.forEach(function(x) {\n            values.forEach(function(y) {\n                values.forEach(function(z) {\n                    console.log(x ? y || z : z);\n                });\n            });\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var values=[0,null,true,\"foo\",false,-1/0,void 0];values.forEach(function(x){values.forEach(function(y){values.forEach(function(z){console.log(x&&y||z)})})});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

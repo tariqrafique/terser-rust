@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/destructuring_arguments_1",
+  "corpus": "compress",
+  "name": "destructuring_arguments_1",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 55,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function ( a ) { });\n        (function ( [ a ] ) { });\n        (function ( [ a, b ] ) { });\n        (function ( [ [ a ] ] ) { });\n        (function ( [ [ a, b ] ] ) { });\n        (function ( [ a, [ b ] ] ) { });\n        (function ( [ [ b ], a ] ) { });\n\n        (function ( { a } ) { });\n        (function ( { a, b } ) { });\n\n        (function ( [ { a } ] ) { });\n        (function ( [ { a, b } ] ) { });\n        (function ( [ a, { b } ] ) { });\n        (function ( [ { b }, a ] ) { });\n\n        ( [ a ] ) => { };\n        ( [ a, b ] ) => { };\n\n        ( { a } ) => { };\n        ( { a, b, c, d, e } ) => { };\n\n        ( [ a ] ) => b;\n        ( [ a, b ] ) => c;\n\n        ( { a } ) => b;\n        ( { a, b } ) => c;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(a){});(function([a]){});(function([a,b]){});(function([[a]]){});(function([[a,b]]){});(function([a,[b]]){});(function([[b],a]){});(function({a:a}){});(function({a:a,b:b}){});(function([{a:a}]){});(function([{a:a,b:b}]){});(function([a,{b:b}]){});(function([{b:b},a]){});([a])=>{};([a,b])=>{};({a:a})=>{};({a:a,b:b,c:c,d:d,e:e})=>{};([a])=>b;([a,b])=>c;({a:a})=>b;({a:a,b:b})=>c;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/unused_class_with_static_props_this_2",
+  "corpus": "compress",
+  "name": "unused_class_with_static_props_this_2",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2837,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let Foo = (()=>{\n            let _classThis;\n            var Foo = class {\n                static _ = (()=>{\n                    Foo = _classThis = this;\n                })();\n                foo(){\n                    return \"PASS\";\n                }\n            };\n            return Foo = _classThis;\n        })();\n        console.log(new Foo().foo());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let Foo=(()=>{let _classThis;(class{static _=(()=>{_classThis=this})();foo(){return\"PASS\"}});return _classThis})();console.log((new Foo).foo());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

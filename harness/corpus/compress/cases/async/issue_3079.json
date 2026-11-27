@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/async/issue_3079",
+  "corpus": "compress",
+  "name": "issue_3079",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 331,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        async => 1;\n        var async = async => async;\n        console.log(async(1));\n        async = (async) => async;\n        console.log(async(2));\n        console.log({\n            m: async => async ? \"3\" : \"4\"\n        }.m(true));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "async=>1;var async=async=>async;console.log(async(1));async=async=>async;console.log(async(2));console.log({m:async=>async?\"3\":\"4\"}.m(true));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n2\n3\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/destructuring_parameters_get_set",
+  "corpus": "compress",
+  "name": "destructuring_parameters_get_set",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 152,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function default_get({ get = \"PASS\" }) { return get }\n        function default_set({ set = \"PASS\" }) { return set }\n        const default_get_arrow = ({ get = \"PASS\" }) => { return get }\n        const default_set_arrow = ({ set = \"PASS\" }) => { return set }\n\n        console.log(default_get({}))\n        console.log(default_set({}))\n        console.log(default_get_arrow({}))\n        console.log(default_set_arrow({}))\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS\nPASS\nPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

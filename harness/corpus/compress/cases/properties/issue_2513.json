@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/properties/issue_2513",
+  "corpus": "compress",
+  "name": "issue_2513",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1423,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        !function(Infinity, NaN, undefined) {\n            console.log(\"a\"[1/0], \"b\"[\"Infinity\"]);\n            console.log(\"c\"[0/0], \"d\"[\"NaN\"]);\n            console.log(\"e\"[void 0], \"f\"[\"undefined\"]);\n        }(0, 0, 0);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    properties: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(Infinity,NaN,undefined){console.log(\"a\"[1/0],\"b\"[1/0]);console.log(\"c\".NaN,\"d\".NaN);console.log(\"e\"[void 0],\"f\"[void 0])}(0,0,0);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined undefined\nundefined undefined\nundefined undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

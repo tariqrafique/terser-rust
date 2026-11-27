@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/functions/avoid_generating_duplicate_functions_compared_together_3",
+  "corpus": "compress",
+  "name": "avoid_generating_duplicate_functions_compared_together_3",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2743,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const x = () => null;\n        console.log(id(x) === id(x));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "unused": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    unused: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

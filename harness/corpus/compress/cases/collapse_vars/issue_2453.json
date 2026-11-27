@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2453",
+  "corpus": "compress",
+  "name": "issue_2453",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3891,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function log(n) {\n            console.log(n);\n        }\n        const a = 42;\n        log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "conditionals": true,
+      "inline": true,
+      "join_vars": true,
+      "passes": 2,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    conditionals: true,\n    inline: true,\n    join_vars: true,\n    passes: 2,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function log(n){console.log(n)}const a=void 0;log(42);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "42\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/object/issue_2554_4",
+  "corpus": "compress",
+  "name": "issue_2554_4",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 962,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var bar = new class {\n            constructor() {\n                this[1] = 2;\n            }\n            [2 + 0]() {\n                this[4] = \"PASS\";\n            }\n            get [3 + 0]() {\n                return this[1];\n            }\n            set [4 + 0](value) {\n                this[1] = value;\n            }\n        }();\n        bar[2]();\n        console.log(bar[3]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "computed_props": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    computed_props: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var bar=new class{constructor(){this[1]=2}2(){this[4]=\"PASS\"}get 3(){return this[1]}set 4(value){this[1]=value}};bar[2]();console.log(bar[3]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_short_circuited_conditions",
+  "corpus": "compress",
+  "name": "collapse_vars_short_circuited_conditions",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 1574,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function c1(x) { var a = foo(), b = bar(), c = baz(); return a ? b : c; }\n        function c2(x) { var a = foo(), b = bar(), c = baz(); return a ? c : b; }\n        function c3(x) { var a = foo(), b = bar(), c = baz(); return b ? a : c; }\n        function c4(x) { var a = foo(), b = bar(), c = baz(); return b ? c : a; }\n        function c5(x) { var a = foo(), b = bar(), c = baz(); return c ? a : b; }\n        function c6(x) { var a = foo(), b = bar(), c = baz(); return c ? b : a; }\n\n        function i1(x) { var a = foo(), b = bar(), c = baz(); if (a) return b; else return c; }\n        function i2(x) { var a = foo(), b = bar(), c = baz(); if (a) return c; else return b; }\n        function i3(x) { var a = foo(), b = bar(), c = baz(); if (b) return a; else return c; }\n        function i4(x) { var a = foo(), b = bar(), c = baz(); if (b) return c; else return a; }\n        function i5(x) { var a = foo(), b = bar(), c = baz(); if (c) return a; else return b; }\n        function i6(x) { var a = foo(), b = bar(), c = baz(); if (c) return b; else return a; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": false,
+      "conditionals": false,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": false,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "sequences": false,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: false,\n    conditionals: false,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: false,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    sequences: false,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function c1(x){var a=foo(),b=bar(),c=baz();return a?b:c}function c2(x){var a=foo(),b=bar(),c=baz();return a?c:b}function c3(x){var a=foo(),b=bar(),c=baz();return b?a:c}function c4(x){var a=foo(),b=bar(),c=baz();return b?c:a}function c5(x){var a=foo(),b=bar();return baz()?a:b}function c6(x){var a=foo(),b=bar();return baz()?b:a}function i1(x){var a=foo(),b=bar(),c=baz();if(a)return b;else return c}function i2(x){var a=foo(),b=bar(),c=baz();if(a)return c;else return b}function i3(x){var a=foo(),b=bar(),c=baz();if(b)return a;else return c}function i4(x){var a=foo(),b=bar(),c=baz();if(b)return c;else return a}function i5(x){var a=foo(),b=bar();if(baz())return a;else return b}function i6(x){var a=foo(),b=bar();if(baz())return b;else return a}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

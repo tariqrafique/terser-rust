@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/properties/mangle_properties_which_matches_pattern",
+  "corpus": "compress",
+  "name": "mangle_properties_which_matches_pattern",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 2542,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var acd = {\n            get asd() {\n                return this._asd;\n            },\n            _asd: true\n        };\n\n        console.log(acd)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true
+    },
+    "mangle": {
+      "properties": {
+        "regex": "^_"
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true\n}",
+    "mangle": "{\n    properties: {\n        regex: \"^_\"\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var acd={get asd(){return this.t},t:!0};console.log(acd);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

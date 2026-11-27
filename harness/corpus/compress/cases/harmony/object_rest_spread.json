@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/object_rest_spread",
+  "corpus": "compress",
+  "name": "object_rest_spread",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 868,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var   { w: w1, ...V } = { w: 7, x: 1, y: 2 }; console.log(w1, V);\n        let   { w: w2, ...L } = { w: 8, x: 3, y: 4 }; console.log(w2, L);\n        const { w: w3, ...C } = { w: 9, x: 5, y: 6 }; console.log(w3, C);\n\n        let b;\n        ({ b, ...V } = { a: 1, b: 2, c: 3 }); console.log(V);\n        ({ b, ...L } = { a: 4, b: 5, c: 6 }); console.log(L);\n\n        (function({ y, ...p }){ console.log(p); })({ x: 1, y: 2, z: 3 });\n        (({ y, ...p }) =>     { console.log(p); })({ x: 4, y: 5, z: 6 });\n\n        const T = { a: 1, b: 2 }; console.log({ ...T, w: 0, ...{}, ...L, ...{K: 9} });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var{w:o,...l}={w:7,x:1,y:2};console.log(o,l);let{w:c,...n}={w:8,x:3,y:4};console.log(c,n);const{w:e,...s}={w:9,x:5,y:6};console.log(e,s);let g;({b:g,...l}={a:1,b:2,c:3});console.log(l);({b:g,...n}={a:4,b:5,c:6});console.log(n);(function({y:o,...l}){console.log(l)})({x:1,y:2,z:3});(({y:o,...l})=>{console.log(l)})({x:4,y:5,z:6});const w={a:1,b:2};console.log({...w,w:0,...n,K:9});",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

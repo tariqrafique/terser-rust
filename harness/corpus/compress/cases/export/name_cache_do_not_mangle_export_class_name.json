@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/export/name_cache_do_not_mangle_export_class_name",
+  "corpus": "compress",
+  "name": "name_cache_do_not_mangle_export_class_name",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 502,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export class add {}\n        class sub {}\n        console.log(add, add, sub, sub);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "module": true
+    },
+    "mangle": {
+      "cache": {
+        "props": {
+          "$add": "_$ADD$_",
+          "$sub": "_$SUB$_"
+        }
+      },
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    module: true\n}",
+    "mangle": "{\n    cache: {\n        props: {\n            $add: \"_$ADD$_\",\n            $sub: \"_$SUB$_\"\n        }\n    },\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export class add{}class _$SUB$_{}console.log(add,add,_$SUB$_,_$SUB$_);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

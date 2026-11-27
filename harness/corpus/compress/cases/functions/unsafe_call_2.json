@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/functions/unsafe_call_2",
+  "corpus": "compress",
+  "name": "unsafe_call_2",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 1077,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            console.log(a, b);\n        }\n        var bar = function(a, b) {\n            console.log(this, a, b);\n        }\n        (function() {\n            foo.call(\"foo\", \"bar\");\n            bar.call(\"foo\", \"bar\");\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){console.log(a,b)}var bar=function(a,b){console.log(this,a,b)}(function(){foo(\"bar\");bar.call(\"foo\",\"bar\")})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

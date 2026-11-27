@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/export/name_cache_mangle_local_import_and_export_aliases",
+  "corpus": "compress",
+  "name": "name_cache_mangle_local_import_and_export_aliases",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 801,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import { foo as bar, cat as dog, bird } from \"stuff\";\n        console.log(bar, dog, bird);\n        export { bar as qux, dog, bird };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "module": true
+    },
+    "mangle": {
+      "cache": {
+        "props": {
+          "$foo": "_$FOO$_",
+          "$bar": "_$BAR$_",
+          "$qux": "_$QUX$_",
+          "$cat": "_$CAT$_",
+          "$dog": "_$DOG$_",
+          "$bird": "_$BIRD$_"
+        }
+      },
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    module: true\n}",
+    "mangle": "{\n    cache: {\n        props: {\n            $foo: \"_$FOO$_\",\n            $bar: \"_$BAR$_\",\n            $qux: \"_$QUX$_\",\n            $cat: \"_$CAT$_\",\n            $dog: \"_$DOG$_\",\n            $bird: \"_$BIRD$_\"\n        }\n    },\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import{foo as _$BAR$_,cat as _$DOG$_,bird as _$BIRD$_}from\"stuff\";console.log(_$BAR$_,_$DOG$_,_$BIRD$_);export{_$BAR$_ as qux,_$DOG$_ as dog,_$BIRD$_ as bird};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/optional_chain_call_argument_side_effect",
+  "corpus": "compress",
+  "name": "optional_chain_call_argument_side_effect",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 6091,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        ((this_is_null) => {\n            const results = console.log(\"PASS\");\n            this_is_null?.(results);\n        })(id(null));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(this_is_null=>{const results=console.log(\"PASS\");this_is_null?.(results)})(id(null));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

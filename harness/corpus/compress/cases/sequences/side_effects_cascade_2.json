@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/sequences/side_effects_cascade_2",
+  "corpus": "compress",
+  "name": "side_effects_cascade_2",
+  "origin": {
+    "file": "test/compress/sequences.js",
+    "line": 686,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a, b) {\n            b = a,\n            !a + (b += a) || (b += a),\n            b = a,\n            b;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a,b){b=a,!a+(b+=a)||(b+=a),b=a}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

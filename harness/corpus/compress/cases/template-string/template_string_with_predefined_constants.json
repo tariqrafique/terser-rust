@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/template_string_with_predefined_constants",
+  "corpus": "compress",
+  "name": "template_string_with_predefined_constants",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 82,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = `This is ${undefined}`;\n        var bar = `This is ${NaN}`;\n        var baz = `This is ${null}`;\n        var foofoo = `This is ${Infinity}`;\n        var foobar = \"This is ${1/0}\";\n        var foobaz = 'This is ${1/0}';\n        var barfoo = \"This is ${NaN}\";\n        var bazfoo = \"This is ${null}\";\n        var bazbaz = `This is ${1/0}`;\n        var barbar = `This is ${0/0}`;\n        var barbar = \"This is ${0/0}\";\n        var barber = 'This is ${0/0}';\n\n        var a = `${4**11}`; // 8 in template vs 7 chars - 4194304\n        var b = `${4**12}`; // 8 in template vs 8 chars - 16777216\n        var c = `${4**14}`; // 8 in template vs 9 chars - 268435456\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "quote_style": 3
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": "{\n    quote_style: 3\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=\"This is undefined\";var bar=\"This is NaN\";var baz=\"This is null\";var foofoo=\"This is \"+1/0;var foobar=\"This is ${1/0}\";var foobaz='This is ${1/0}';var barfoo=\"This is ${NaN}\";var bazfoo=\"This is ${null}\";var bazbaz=\"This is \"+1/0;var barbar=\"This is NaN\";var barbar=\"This is ${0/0}\";var barber='This is ${0/0}';var a=\"4194304\";var b=\"16777216\";var c=`${4**14}`;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

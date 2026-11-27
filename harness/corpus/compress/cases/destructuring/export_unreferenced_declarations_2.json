@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/export_unreferenced_declarations_2",
+  "corpus": "compress",
+  "name": "export_unreferenced_declarations_2",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 1220,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var {unused} = obj;\n        export const [{a, b = 1}] = obj;\n        export let [[{c, d = 2}]] = obj;\n        export var [, [{e, f = 3}]] = obj;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "module": true,
+      "pure_getters": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    module: true,\n    pure_getters: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "obj;export const[{a:a,b:b=1}]=obj;export let[[{c:c,d:d=2}]]=obj;export var[,[{e:e,f:f=3}]]=obj;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

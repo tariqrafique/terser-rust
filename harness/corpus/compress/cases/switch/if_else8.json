@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/switch/if_else8",
+  "corpus": "compress",
+  "name": "if_else8",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 1820,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function test(foo) {\n            switch (foo) {\n            case 'bar':\n                return 'PASS';\n            default:\n                return 'FAIL';\n            }\n        }\n        console.log(test('bar'));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function test(foo){return\"bar\"===foo?\"PASS\":\"FAIL\"}console.log(test(\"bar\"));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

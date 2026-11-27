@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_regexp",
+  "corpus": "compress",
+  "name": "collapse_vars_regexp",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 1623,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var k = 9;\n            var rx = /[A-Z]+/;\n            return [rx, k];\n        }\n        function f2() {\n            var rx = /ab*/g;\n            return function(s) {\n                return rx.exec(s);\n            };\n        }\n        (function() {\n            var result;\n            var s = 'acdabcdeabbb';\n            var rx = /ab*/g;\n            while (result = rx.exec(s)) {\n                console.log(result[0]);\n            }\n        })();\n        (function() {\n            var result;\n            var s = 'acdabcdeabbb';\n            var rx = f2();\n            while (result = rx(s)) {\n                console.log(result[0]);\n            }\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": false,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: false,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){return[/[A-Z]+/,9]}function f2(){var rx=/ab*/g;return function(s){return rx.exec(s)}}(function(){var result,rx=/ab*/g;while(result=rx.exec(\"acdabcdeabbb\"))console.log(result[0])})();(function(){var result,rx=f2();while(result=rx(\"acdabcdeabbb\"))console.log(result[0])})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2420_3",
+  "corpus": "compress",
+  "name": "issue_2420_3",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 4017,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            var that = this;\n            if (that.bar)\n                that.foo();\n            else\n                ((that, self) => {\n                    console.log(this === that, self === this, that === self);\n                })(that, this);\n        }\n        f.call({\n            bar: 1,\n            foo: function() { console.log(\"foo\", this.bar); },\n        });\n        f.call({});\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){if(this.bar)this.foo();else((that,self)=>{console.log(this===that,self===this,that===self)})(this,this)}f.call({bar:1,foo:function(){console.log(\"foo\",this.bar)}});f.call({});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "foo 1\ntrue true true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

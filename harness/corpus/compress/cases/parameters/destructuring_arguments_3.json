@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/destructuring_arguments_3",
+  "corpus": "compress",
+  "name": "destructuring_arguments_3",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 139,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function fn3({x: {y: {z: {} = 42}}}) {}\n        const { a = (function () {}), b = (0, function() {})  } = {};\n        let { c = (function () {}), d = (0, function() {})  } = {};\n        var { e = (function () {}), f = (0, function() {})  } = {};\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function fn3({x:{y:{z:{}=42}}}){}const{a=function(){},b=(0,function(){})}={};let{c=function(){},d=(0,function(){})}={};var{e=function(){},f=(0,function(){})}={};",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

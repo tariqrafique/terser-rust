@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/return_1",
+  "corpus": "compress",
+  "name": "return_1",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 4871,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var log = console.log;\n        function f(b, c) {\n            var a = c;\n            if (b) return b;\n            log(a);\n        }\n        f(false, 1);\n        f(true, 2);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var log=console.log;function f(b,c){if(b)return b;log(c)}f(false,1);f(true,2);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

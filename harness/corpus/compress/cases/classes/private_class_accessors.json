@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/classes/private_class_accessors",
+  "corpus": "compress",
+  "name": "private_class_accessors",
+  "origin": {
+    "file": "test/compress/classes.js",
+    "line": 158,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class A {\n            #accessorInternal = \"FAIL\"\n            get #accessor() {\n                return this.#accessorInternal\n            }\n            set #accessor(v) {\n                this.#accessorInternal = v;\n            }\n            static get #accessor2() {\n                return \"S\"\n            }\n            get [\"#accessor\"]() {\n                return \"S\"\n            }\n            async print() {\n                this.#accessor = \"PA\"\n                console.log(this.#accessor + A.#accessor2 + this[\"#accessor\"]);\n            }\n        }\n        new A().print();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class A{#accessorInternal=\"FAIL\";get#accessor(){return this.#accessorInternal}set#accessor(v){this.#accessorInternal=v}static get#accessor2(){return\"S\"}get[\"#accessor\"](){return\"S\"}async print(){this.#accessor=\"PA\";console.log(this.#accessor+A.#accessor2+this[\"#accessor\"])}}(new A).print();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

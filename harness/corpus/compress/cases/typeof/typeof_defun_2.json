@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/typeof/typeof_defun_2",
+  "corpus": "compress",
+  "name": "typeof_defun_2",
+  "origin": {
+    "file": "test/compress/typeof.js",
+    "line": 107,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var f = function() {\n            console.log(x);\n        };\n        var x = 0;\n        x++ < 2 && typeof f == \"function\" && f();\n        x++ < 2 && typeof f == \"function\" && f();\n        x++ < 2 && typeof f == \"function\" && f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "typeofs": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_vars: true,\n    toplevel: true,\n    typeofs: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var f=function(){console.log(x)};var x=0;x++<2&&f();x++<2&&f();x++<2&&f();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

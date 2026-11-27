@@ -1,0 +1,38 @@
+[
+  {
+    "id": "compress/pure_funcs/issue_2629_1",
+    "reason": "reparse of the extracted source does not match the in-memory AST expect",
+    "expect_head": "/*@__PURE__*/c();",
+    "actual_head": "/*@__PURE__*/\n/*@__PURE__*/c();"
+  },
+  {
+    "id": "compress/pure_funcs/issue_2629_2",
+    "reason": "reparse of the extracted source does not match the in-memory AST expect",
+    "expect_head": "/*@__PURE__*/e(1)(2)(3);\n/*@__PURE__*/f(1)(2)(3);\n/*@__PURE__*/g(1)(2)(3);",
+    "actual_head": "/*@__PURE__*/\n/*@__PURE__*/e(1)(2)(3);\n/*@__PURE__*/f(1)(2)(3);\n/*@__PURE__*/g(1)(2)(3);"
+  },
+  {
+    "id": "compress/pure_funcs/issue_2629_3",
+    "reason": "reparse of the extracted source does not match the in-memory AST expect",
+    "expect_head": "/*@__PURE__*/h.x(1).y(2).z(3);\n/*@__PURE__*/i.x(1).y(2).z(3);\n/*@__PURE__*/j.x(1).y(2).z(3);\n/*@__PURE__*/k.x(1).y(2).z(3);\n/*@__PURE__*/l.x(1).y(2).z(3);\n/*@__",
+    "actual_head": "/*@__PURE__*/\n/*@__PURE__*/h.x(1).y(2).z(3);\n/*@__PURE__*/i.x(1).y(2).z(3);\n/*@__PURE__*/j.x(1).y(2).z(3);\n/*@__PURE__*/k.x(1).y(2).z(3);\n/*@__PURE__*/l.x(1).y("
+  },
+  {
+    "id": "compress/pure_funcs/issue_2705_1",
+    "reason": "reparse of the extracted source does not match the in-memory AST expect",
+    "expect_head": "new/*@__PURE__*/c;",
+    "actual_head": "/*@__PURE__*/new/*@__PURE__*/c;"
+  },
+  {
+    "id": "compress/pure_funcs/issue_2705_2",
+    "reason": "reparse of the extracted source does not match the in-memory AST expect",
+    "expect_head": "new/*@__PURE__*/e(1)(2)(3);\n/*@__PURE__*/new f(1)(2)(3);\n/*@__PURE__*/new g(1)(2)(3);",
+    "actual_head": "/*@__PURE__*/new/*@__PURE__*/e(1)(2)(3);\n/*@__PURE__*/new f(1)(2)(3);\n/*@__PURE__*/new g(1)(2)(3);"
+  },
+  {
+    "id": "compress/pure_funcs/issue_2705_3",
+    "reason": "reparse of the extracted source does not match the in-memory AST expect",
+    "expect_head": "new/*@__PURE__*/h.x(1).y(2).z(3);new/*@__PURE__*/i.x(1).y(2).z(3);\n/*@__PURE__*/new j.x(1).y(2).z(3);\n/*@__PURE__*/new k.x(1).y(2).z(3);\n/*@__PURE__*/new l.x(1)",
+    "actual_head": "/*@__PURE__*/new/*@__PURE__*/h.x(1).y(2).z(3);new/*@__PURE__*/i.x(1).y(2).z(3);\n/*@__PURE__*/new j.x(1).y(2).z(3);\n/*@__PURE__*/new k.x(1).y(2).z(3);\n/*@__PURE_"
+  }
+]

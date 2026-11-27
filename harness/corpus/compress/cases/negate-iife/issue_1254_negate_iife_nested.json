@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/negate-iife/issue_1254_negate_iife_nested",
+  "corpus": "compress",
+  "name": "issue_1254_negate_iife_nested",
+  "origin": {
+    "file": "test/compress/negate-iife.js",
+    "line": 339,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            return function() {\n                console.log('test')\n            };\n        })()()()()();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "negate_iife": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    negate_iife: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){return function(){console.log(\"test\")}}()()()()();",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/block-scope/issue_1043_function_block_scope",
+  "corpus": "compress",
+  "name": "issue_1043_function_block_scope",
+  "origin": {
+    "file": "test/compress/block-scope.js",
+    "line": 278,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (true) {\n            function asd () {}\n        }\n        const asd = 123;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "module": true,
+      "defaults": false
+    },
+    "mangle": {
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    module: true\n}",
+    "mangle": "{\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": false,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

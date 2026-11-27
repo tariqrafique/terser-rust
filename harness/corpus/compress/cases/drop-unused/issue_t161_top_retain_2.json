@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_t161_top_retain_2",
+  "corpus": "compress",
+  "name": "issue_t161_top_retain_2",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2388,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() { return 2; }\n        function g() { return 3; }\n        console.log(f(), f(), g(), g());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "top_retain": "f",
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    top_retain: \"f\",\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){return 2}function g(){return 3}console.log(f(),f(),g(),g());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2 2 3 3\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

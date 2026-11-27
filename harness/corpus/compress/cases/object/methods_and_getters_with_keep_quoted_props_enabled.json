@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/object/methods_and_getters_with_keep_quoted_props_enabled",
+  "corpus": "compress",
+  "name": "methods_and_getters_with_keep_quoted_props_enabled",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 566,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj = {\n            a() {},\n            \"b\"() {},\n            get c() { return \"c\"},\n            get \"d\"() { return \"d\"},\n            set e(a) { doSomething(a); },\n            set f(a) { doSomething(b); }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "quote_style": 3,
+      "keep_quoted_props": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    quote_style: 3,\n    keep_quoted_props: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj={a(){},\"b\"(){},get c(){return\"c\"},get\"d\"(){return\"d\"},set e(a){doSomething(a)},set f(a){doSomething(b)}};",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

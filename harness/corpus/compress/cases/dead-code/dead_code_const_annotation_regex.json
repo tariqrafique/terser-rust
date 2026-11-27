@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/dead_code_const_annotation_regex",
+  "corpus": "compress",
+  "name": "dead_code_const_annotation_regex",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 257,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var unused;\n        // @constraint this shouldn't be a constant\n        var CONST_FOO_ANN = false;\n        if (CONST_FOO_ANN) {\n            console.log(\"reachable\");\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "loops": true,
+      "booleans": true,
+      "conditionals": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    loops: true,\n    booleans: true,\n    conditionals: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var unused;var CONST_FOO_ANN=!1;CONST_FOO_ANN&&console.log(\"reachable\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/issue_2233_1",
+  "corpus": "compress",
+  "name": "issue_2233_1",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 390,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        Array.isArray;\n        Boolean;\n        console.log;\n        Date;\n        decodeURI;\n        decodeURIComponent;\n        encodeURI;\n        encodeURIComponent;\n        Error.name;\n        escape;\n        eval;\n        EvalError;\n        Function.length;\n        isFinite;\n        isNaN;\n        JSON;\n        Math.random;\n        Number.isNaN;\n        parseFloat;\n        parseInt;\n        RegExp;\n        Object.defineProperty;\n        String.fromCharCode;\n        RangeError;\n        ReferenceError;\n        SyntaxError;\n        TypeError;\n        unescape;\n        URIError;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": "strict",
+      "side_effects": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: \"strict\",\n    side_effects: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

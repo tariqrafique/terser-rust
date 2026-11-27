@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/issue-427/no_wrap_func_args",
+  "corpus": "compress",
+  "name": "no_wrap_func_args",
+  "origin": {
+    "file": "test/compress/issue-427.js",
+    "line": 16,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function() {\n            return \"test\";\n        }, () => null);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "negate_iife": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "wrap_func_args": false
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    negate_iife: false\n}",
+    "mangle": null,
+    "format": "{\n    wrap_func_args: false\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(){return\"test\"},()=>null);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

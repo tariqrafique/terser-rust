@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/properties/accessor_2",
+  "corpus": "compress",
+  "name": "accessor_2",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1298,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log({\n            get a() {\n                return \"PASS\";\n            },\n            set a(v) {},\n            a: \"FAIL\"\n        }.a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    properties: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log({get a(){return\"PASS\"},set a(v){},a:\"FAIL\"}.a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

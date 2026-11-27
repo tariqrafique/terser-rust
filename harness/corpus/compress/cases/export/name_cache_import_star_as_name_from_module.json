@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/export/name_cache_import_star_as_name_from_module",
+  "corpus": "compress",
+  "name": "name_cache_import_star_as_name_from_module",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 831,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import * as fs from \"filesystem\";\n        import * as stuff from \"whatever\";\n        fs.resolve();\n        stuff.search();\n        export { fs, stuff };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "module": true
+    },
+    "mangle": {
+      "cache": {
+        "props": {
+          "$fs": "_$FS$_"
+        }
+      },
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    module: true\n}",
+    "mangle": "{\n    cache: {\n        props: {\n            $fs: \"_$FS$_\"\n        }\n    },\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import*as _$FS$_ from\"filesystem\";import*as e from\"whatever\";_$FS$_.resolve(),e.search();export{_$FS$_ as fs,e as stuff};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

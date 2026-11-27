@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/ifs_6",
+  "corpus": "compress",
+  "name": "ifs_6",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 133,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var x, y;\n        if (!foo && !bar && !baz && !boo) {\n            x = 10;\n        } else {\n            x = 20;\n        }\n        if (y) {\n            x[foo] = 10;\n        } else {\n            x[foo] = 20;\n        }\n        if (foo) {\n            x[bar] = 10;\n        } else {\n            x[bar] = 20;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "comparisons": true,
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    comparisons: true,\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x,y;x=foo||bar||baz||boo?20:10;x[foo]=y?10:20;foo?x[bar]=10:x[bar]=20;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

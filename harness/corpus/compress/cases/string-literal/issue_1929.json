@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/string-literal/issue_1929",
+  "corpus": "compress",
+  "name": "issue_1929",
+  "origin": {
+    "file": "test/compress/string-literal.js",
+    "line": 12,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(s) {\n            return s.split(/[\\\\/]/);\n        }\n        var r = f(\"A/B\\\\C\\\\D/E\\\\F\");\n        console.log(r[5], r[4], r[3], r[2], r[1], r[0], r.length);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(s){return s.split(/[\\\\/]/)}var r=f(\"A/B\\\\C\\\\D/E\\\\F\");console.log(r[5],r[4],r[3],r[2],r[1],r[0],r.length);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "F E D C B A 6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

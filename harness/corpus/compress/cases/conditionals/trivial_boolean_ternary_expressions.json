@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/trivial_boolean_ternary_expressions",
+  "corpus": "compress",
+  "name": "trivial_boolean_ternary_expressions",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 728,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        f('foo' in m ? true  : false);\n        f('foo' in m ? false : true);\n\n        f(g       ? true : false);\n        f(foo()   ? true : false);\n        f(\"bar\"   ? true : false);\n        f(5       ? true : false);\n        f(5.7     ? true : false);\n        f(x - y   ? true : false);\n\n        f(x == y  ? true : false);\n        f(x === y ?   !0 :    !1);\n        f(x < y   ?   !0 : false);\n        f(x <= y  ? true : false);\n        f(x > y   ? true :    !1);\n        f(x >= y  ?   !0 :    !1);\n\n        f(g       ? false : true);\n        f(foo()   ? false : true);\n        f(\"bar\"   ? false : true);\n        f(5       ? false : true);\n        f(5.7     ? false : true);\n        f(x - y   ? false : true);\n\n        f(x == y  ?    !1 :   !0);\n        f(x === y ? false : true);\n\n        f(x < y   ? false : true);\n        f(x <= y  ? false :   !0);\n        f(x > y   ?    !1 : true);\n        f(x >= y  ?    !1 :   !0);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": true,
+      "booleans": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: true,\n    booleans: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "f(\"foo\"in m);f(!(\"foo\"in m));f(!!g);f(!!foo());f(!0);f(!0);f(!0);f(!!(x-y));f(x==y);f(x===y);f(x<y);f(x<=y);f(x>y);f(x>=y);f(!g);f(!foo());f(!1);f(!1);f(!1);f(!(x-y));f(x!=y);f(x!==y);f(!(x<y));f(!(x<=y));f(!(x>y));f(!(x>=y));",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

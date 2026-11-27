@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/switch/regression_retain_var_in_eliminated_default",
+  "corpus": "compress",
+  "name": "regression_retain_var_in_eliminated_default",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 3229,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 100;\n\n        (function () {\n            a++\n            a.toString()\n            switch (null) {\n              default: {\n                var a\n              }\n            }\n        })();\n\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "switches": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    switches: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=100;(function(){a++;a.toString();var a;null})();console.log(a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "100\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

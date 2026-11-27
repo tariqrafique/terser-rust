@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/ie8/issue_2254_2",
+  "corpus": "compress",
+  "name": "issue_2254_2",
+  "origin": {
+    "file": "test/compress/ie8.js",
+    "line": 363,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"eeeeee\";\n        try {\n            console.log(f(\"PASS\"));\n        } catch (e) {}\n        function f(s) {\n            try {\n                throw \"FAIL\";\n            } catch (e) {\n                return s;\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    ie8: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"eeeeee\";try{console.log(f(\"PASS\"))}catch(e){}function f(t){try{throw\"FAIL\"}catch(e){return t}}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

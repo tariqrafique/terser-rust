@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/comparing/keep_comparisons",
+  "corpus": "compress",
+  "name": "keep_comparisons",
+  "origin": {
+    "file": "test/compress/comparing.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj1 = {\n            valueOf: function() {triggeredFirst();}\n        }\n        var obj2 = {\n            valueOf: function() {triggeredSecond();}\n        }\n        var result1 = obj1 <= obj2;\n        var result2 = obj1 <  obj2;\n        var result3 = obj1 >= obj2;\n        var result4 = obj1 >  obj2;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "comparisons": true,
+      "unsafe_comps": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    comparisons: true,\n    unsafe_comps: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj1={valueOf:function(){triggeredFirst()}};var obj2={valueOf:function(){triggeredSecond()}};var result1=obj1<=obj2;var result2=obj1<obj2;var result3=obj1>=obj2;var result4=obj1>obj2;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

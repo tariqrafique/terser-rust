@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/empty_object_destructuring_misc",
+  "corpus": "compress",
+  "name": "empty_object_destructuring_misc",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 1504,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let out = [],\n            foo = (out.push(0), 1),\n            {} = {k: 9},\n            bar = out.push(2),\n            {unused} = (out.push(3), {unused: 7}),\n            {a: b, prop, w, x: y, z} = {prop: 8},\n            baz = (out.push(4), 5);\n        console.log(`${foo} ${prop} ${baz} ${JSON.stringify(out)}`);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": true,
+      "toplevel": true,
+      "unsafe": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: true,\n    toplevel: true,\n    unsafe: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let out=[],foo=(out.push(0),1),{prop:prop}=(out.push(2),out.push(3),{prop:8}),baz=(out.push(4),5);console.log(`${foo} ${prop} ${baz} ${JSON.stringify(out)}`);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 8 5 [0,2,3,4]\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

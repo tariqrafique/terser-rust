@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/async/async_shorthand_property",
+  "corpus": "compress",
+  "name": "async_shorthand_property",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 211,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function print(o) { console.log(o.async + \" \" + o.await); }\n        var async = \"Async\", await = \"Await\";\n\n        print({ async });\n        print({ await });\n        print({ async, await });\n        print({ await, async });\n\n        print({ async: async });\n        print({ await: await });\n        print({ async: async, await: await });\n        print({ await: await, async: async });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function a(a){console.log(a.async+\" \"+a.await)}var n=\"Async\",c=\"Await\";a({async:n});a({await:c});a({async:n,await:c});a({await:c,async:n});a({async:n});a({await:c});a({async:n,await:c});a({await:c,async:n});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "Async undefined\nundefined Await\nAsync Await\nAsync Await\nAsync undefined\nundefined Await\nAsync Await\nAsync Await\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

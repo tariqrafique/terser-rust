@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_2794_5",
+  "corpus": "compress",
+  "name": "issue_2794_5",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1736,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (var x of ([1, 2], [3, 4])) {\n            console.log(x);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "passes": 1,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    passes: 1,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(var x of[3,4])console.log(x);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "3\n4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

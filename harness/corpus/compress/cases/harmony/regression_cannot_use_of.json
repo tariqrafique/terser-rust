@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/regression_cannot_use_of",
+  "corpus": "compress",
+  "name": "regression_cannot_use_of",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 500,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function of() {\n        }\n        var of = \"is a valid variable name\";\n        of = { of: \"is ok\" };\n        x.of;\n        of: foo()\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function of(){}var of=\"is a valid variable name\";of={of:\"is ok\"};x.of;foo();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/functions/inline_loop_1",
+  "corpus": "compress",
+  "name": "inline_loop_1",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 696,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            return x();\n        }\n        for (;;) f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){return x()}for(;;)f();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

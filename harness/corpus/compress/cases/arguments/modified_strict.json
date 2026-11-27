@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/arguments/modified_strict",
+  "corpus": "compress",
+  "name": "modified_strict",
+  "origin": {
+    "file": "test/compress/arguments.js",
+    "line": 192,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\";\n        (function(a, b) {\n            var c = arguments[0];\n            var d = arguments[1];\n            var a = \"foo\";\n            b++;\n            arguments[0] = \"moo\";\n            arguments[1] *= 2;\n            console.log(a, b, c, d, arguments[0], arguments[1]);\n        })(\"bar\", 42);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arguments": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arguments: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";(function(a,b){var c=arguments[0];var d=arguments[1];var a=\"foo\";b++;arguments[0]=\"moo\";arguments[1]*=2;console.log(a,b,c,d,arguments[0],arguments[1])})(\"bar\",42);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "foo 43 bar 42 moo 84\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

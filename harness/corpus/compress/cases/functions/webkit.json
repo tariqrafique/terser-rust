@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/functions/webkit",
+  "corpus": "compress",
+  "name": "webkit",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 312,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function() {\n            1 + 1;\n        }.a = 1);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "webkit": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    webkit: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log((function(){1+1}).a=1);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

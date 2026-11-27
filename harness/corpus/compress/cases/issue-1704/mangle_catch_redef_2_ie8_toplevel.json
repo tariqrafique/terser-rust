@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1704/mangle_catch_redef_2_ie8_toplevel",
+  "corpus": "compress",
+  "name": "mangle_catch_redef_2_ie8_toplevel",
+  "origin": {
+    "file": "test/compress/issue-1704.js",
+    "line": 328,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        try {\n            throw \"FAIL1\";\n        } catch (a) {\n            var a = \"FAIL2\";\n        }\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ie8": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": true,
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ie8: true,\n    toplevel: true\n}",
+    "mangle": "{\n    ie8: true,\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "try{throw\"FAIL1\"}catch(o){var o=\"FAIL2\"}console.log(o);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

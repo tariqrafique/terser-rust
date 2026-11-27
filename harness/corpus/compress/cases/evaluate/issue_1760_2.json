@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_1760_2",
+  "corpus": "compress",
+  "name": "issue_1760_2",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1222,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        !function(a) {\n            try {\n                throw 0;\n            } catch (Infinity) {\n                a = 123456789 / 0;\n            }\n            console.log(a);\n        }();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "keep_infinity": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    keep_infinity: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(a){try{throw 0}catch(Infinity){a=1/0}console.log(a)}();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "Infinity\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

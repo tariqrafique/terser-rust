@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_t161_top_retain_14",
+  "corpus": "compress",
+  "name": "issue_t161_top_retain_14",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2634,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class Alpha {\n            num() { return x; }\n        }\n        class Beta {\n            num() { return y; }\n        }\n        class Carrot {\n            num() { return z; }\n        }\n        function f() { return x; }\n        const g = () => y;\n        const h = () => z;\n        let x = 2, y = 3, z = 4;\n        console.log(x, y, z, x * y, x * z, y * z, f(), g(), h(),\n            (new Alpha).num(), (new Beta).num(), (new Carrot).num());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "inline": 3,
+      "passes": 2,
+      "top_retain": "Alpha,z"
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    inline: 3,\n    passes: 2,\n    top_retain: \"Alpha,z\"\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class Alpha{num(){return x}}let x=2,z=4;console.log(x,3,4,3*x,4*x,12,x,3,4,(new Alpha).num(),(new class{num(){return 3}}).num(),(new class{num(){return 4}}).num());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2 3 4 6 8 12 2 3 4 2 3 4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

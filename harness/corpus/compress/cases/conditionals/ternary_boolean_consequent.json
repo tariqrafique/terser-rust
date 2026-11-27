@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/ternary_boolean_consequent",
+  "corpus": "compress",
+  "name": "ternary_boolean_consequent",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 648,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() { return a == b ? true : x; }\n        function f2() { return a == b ? false : x; }\n        function f3() { return a < b ? !0 : x; }\n        function f4() { return a < b ? !1 : x; }\n        function f5() { return c ? !0 : x; }\n        function f6() { return c ? false : x; }\n        function f7() { return !c ? true : x; }\n        function f8() { return !c ? !1 : x; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){return a==b||x}function f2(){return a!=b&&x}function f3(){return a<b||x}function f4(){return!(a<b)&&x}function f5(){return!!c||x}function f6(){return!c&&x}function f7(){return!c||x}function f8(){return!!c&&x}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

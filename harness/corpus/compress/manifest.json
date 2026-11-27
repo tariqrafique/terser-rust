@@ -1,0 +1,15 @@
+{
+  "terser": "5.51.4",
+  "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20",
+  "files": 171,
+  "extracted": 2681,
+  "skipped": 0,
+  "bad_input": 77,
+  "with_expect": 2410,
+  "reparse_mismatches": 6,
+  "function_cases": [
+    "compress/properties/mangle_nth_identifier",
+    "compress/pure_funcs/func",
+    "compress/rename/mangle_catch_nth_identifier"
+  ]
+}

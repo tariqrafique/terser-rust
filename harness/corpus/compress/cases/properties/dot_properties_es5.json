@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/properties/dot_properties_es5",
+  "corpus": "compress",
+  "name": "dot_properties_es5",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 40,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        a[\"foo\"] = \"bar\";\n        a[\"if\"] = \"if\";\n        a[\"*\"] = \"asterisk\";\n        a[\"\\u0EB3\"] = \"unicode\";\n        a[\"\"] = \"whitespace\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ie8": false
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    properties: true\n}",
+    "mangle": null,
+    "format": "{\n    ie8: false\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a.foo=\"bar\";a.if=\"if\";a[\"*\"]=\"asterisk\";a[\"ຳ\"]=\"unicode\";a[\"\"]=\"whitespace\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

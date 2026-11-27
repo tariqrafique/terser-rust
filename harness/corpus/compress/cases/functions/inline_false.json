@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/functions/inline_false",
+  "corpus": "compress",
+  "name": "inline_false",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 1865,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            console.log(1);\n        })();\n        (function(a) {\n            console.log(a);\n        })(2);\n        (function(b) {\n            var c = b;\n            console.log(c);\n        })(3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": false,
+      "side_effects": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: false,\n    side_effects: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){console.log(1)})();(function(a){console.log(a)})(2);(function(b){var c=b;console.log(c)})(3);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n2\n3\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

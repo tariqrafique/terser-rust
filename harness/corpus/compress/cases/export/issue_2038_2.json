@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/export/issue_2038_2",
+  "corpus": "compress",
+  "name": "issue_2038_2",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 21,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let LET = 1;\n        const CONST = 2;\n        var VAR = 3;\n        export { LET, CONST, VAR };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true\n}",
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let t=1;const e=2;var o=3;export{t as LET,e as CONST,o as VAR};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

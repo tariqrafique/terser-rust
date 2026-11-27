@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typed_declarations",
+  "corpus": "compress",
+  "name": "typed_declarations",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 125,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var x: number = 3 as string;\n        const x2 = {} satisfies BigInt;\n        var y: typeof func = 3;\n        var z: typeof func.property['computed'] = 4;\n        try { } catch (e: ErrorType) {};\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "var x=3;const x2={};var y=3;var z=4;try{}catch(e){}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

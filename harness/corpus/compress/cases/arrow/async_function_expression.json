@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/async_function_expression",
+  "corpus": "compress",
+  "name": "async_function_expression",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 235,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var named = async function foo() {\n            await bar(1 + 0) + (2 + 0);\n        }\n        var anon = async function() {\n            await (1 + 0) + bar(2 + 0);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe_arrows": true,
+      "ecma": 2015,
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe_arrows: true,\n    ecma: 2015,\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var named=async function foo(){await bar(1)};var anon=async()=>{await 1,bar(2)};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

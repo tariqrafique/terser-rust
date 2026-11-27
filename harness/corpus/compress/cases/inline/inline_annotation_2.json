@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/inline/inline_annotation_2",
+  "corpus": "compress",
+  "name": "inline_annotation_2",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 400,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const shouldInline = n => +n;\n\n        const a = /*@__INLINE__*/ shouldInline(\"42.0\");\n        const b = /*@__INLINE__*/ shouldInline(\"abc\");\n\n        console.log(a, b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "passes": 3,
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    passes: 3,\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(42,NaN);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "42 NaN\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

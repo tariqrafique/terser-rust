@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/nullish/simplify_nullish_coalescing",
+  "corpus": "compress",
+  "name": "simplify_nullish_coalescing",
+  "origin": {
+    "file": "test/compress/nullish.js",
+    "line": 60,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const y = id(\"one\")\n        const is_null = null\n        const not_null = \"two\"\n        console.log(is_null ?? y);\n        console.log(not_null ?? y);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ecma": 2020,
+      "defaults": true,
+      "sequences": false,
+      "toplevel": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ecma: 2020,\n    defaults: true,\n    sequences: false,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const y=id(\"one\");console.log(y);console.log(\"two\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "one\ntwo\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=14",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

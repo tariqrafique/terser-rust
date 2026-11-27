@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/pure_funcs/issue_2629_1",
+  "corpus": "compress",
+  "name": "issue_2629_1",
+  "origin": {
+    "file": "test/compress/pure_funcs.js",
+    "line": 297,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        /*@__PURE__*/ a();\n        /*@__PURE__*/ (b());\n        (/*@__PURE__*/ c)();\n        (/*@__PURE__*/ d());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "preserve_annotations": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true\n}",
+    "mangle": null,
+    "format": "{\n    preserve_annotations: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "/*@__PURE__*/c();",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

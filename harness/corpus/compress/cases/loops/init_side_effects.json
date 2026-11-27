@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/loops/init_side_effects",
+  "corpus": "compress",
+  "name": "init_side_effects",
+  "origin": {
+    "file": "test/compress/loops.js",
+    "line": 532,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (function() {}(), i = 0; i < 5; i++) console.log(i);\n        for (function() {}(); i < 10; i++) console.log(i);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "loops": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    loops: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(i=0;i<5;i++)console.log(i);for(;i<10;i++)console.log(i);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

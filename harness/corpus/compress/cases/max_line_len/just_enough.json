@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/max_line_len/just_enough",
+  "corpus": "compress",
+  "name": "just_enough",
+  "origin": {
+    "file": "test/compress/max_line_len.js",
+    "line": 19,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a) {\n            return { c: 42, d: a(), e: \"foo\"};\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "max_line_len": 14
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    max_line_len: 14\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a){\nreturn{c:42,\nd:a(),e:\"foo\"}\n}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

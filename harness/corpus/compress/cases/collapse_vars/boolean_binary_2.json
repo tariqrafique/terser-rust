@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/boolean_binary_2",
+  "corpus": "compress",
+  "name": "boolean_binary_2",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 2562,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var c = 0;\n        c += 1;\n        (function() {\n            c = 1 + c;\n        } || 9).toString();\n        console.log(c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var c=0;c+=1;(function(){c=1+c}||9).toString();console.log(c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

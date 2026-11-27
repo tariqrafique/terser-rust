@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/condition_symbol_matches_consequent",
+  "corpus": "compress",
+  "name": "condition_symbol_matches_consequent",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 1015,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(x, y) {\n            return x ? x : y;\n        }\n        function bar() {\n            return g ? g : h;\n        }\n        var g = 4;\n        var h = 5;\n        console.log(foo(3, null), foo(0, 7), foo(true, false), bar());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(x,y){return x||y}function bar(){return g||h}var g=4;var h=5;console.log(foo(3,null),foo(0,7),foo(true,false),bar());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "3 7 true 4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

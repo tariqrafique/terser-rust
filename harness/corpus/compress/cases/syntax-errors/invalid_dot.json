@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/syntax-errors/invalid_dot",
+  "corpus": "compress",
+  "name": "invalid_dot",
+  "origin": {
+    "file": "test/compress/syntax-errors.js",
+    "line": 62,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        a.=\n    ",
+  "input_kind": "template",
+  "bad_input": true,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": null,
+  "expect_error": {
+    "name": "SyntaxError",
+    "message": "Unexpected token: operator (=)",
+    "line": 2,
+    "col": 10
+  },
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

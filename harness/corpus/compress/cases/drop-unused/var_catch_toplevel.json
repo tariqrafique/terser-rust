@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/var_catch_toplevel",
+  "corpus": "compress",
+  "name": "var_catch_toplevel",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1264,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            a--;\n            try {\n                a++;\n                x();\n            } catch(a) {\n                if (a) var a;\n                var a = 10;\n            }\n        }\n        f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "negate_iife": true,
+      "passes": 2,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    negate_iife: true,\n    passes: 2,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){0;try{0;x()}catch(a){var a}}();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

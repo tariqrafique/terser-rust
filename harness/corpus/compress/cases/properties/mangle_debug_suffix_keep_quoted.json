@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/properties/mangle_debug_suffix_keep_quoted",
+  "corpus": "compress",
+  "name": "mangle_debug_suffix_keep_quoted",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 293,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = {};\n        a.top = 1;\n        function f1() {\n            a[\"foo\"] = \"bar\";\n            a.color = \"red\";\n            a.stuff = 2;\n            x = {\"bar\": 10, size: 7};\n            a.size = 9;\n        }\n        function f2() {\n            a.foo = \"bar\";\n            a['color'] = \"red\";\n            x = {bar: 10, size: 7};\n            a.size = 9;\n            a.stuff = 3;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "properties": false,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "builtins": true,
+        "debug": "XYZ",
+        "keep_quoted": true,
+        "reserved": []
+      }
+    },
+    "format": {
+      "beautify": false,
+      "quote_style": 3,
+      "keep_quoted_props": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    properties: false\n}",
+    "mangle": "{\n    properties: {\n        builtins: true,\n        debug: \"XYZ\",\n        keep_quoted: true,\n        reserved: []\n    }\n}",
+    "format": "{\n    beautify: false,\n    quote_style: 3,\n    keep_quoted_props: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a={};a._$top$XYZ_=1;function f1(){a[\"foo\"]=\"bar\";a.color=\"red\";a._$stuff$XYZ_=2;x={\"bar\":10,_$size$XYZ_:7};a._$size$XYZ_=9}function f2(){a.foo=\"bar\";a['color']=\"red\";x={bar:10,_$size$XYZ_:7};a._$size$XYZ_=9;a._$stuff$XYZ_=3}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

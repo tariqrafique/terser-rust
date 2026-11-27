@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2497",
+  "corpus": "compress",
+  "name": "issue_2497",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 4398,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function sample() {\n            if (true) {\n                for (var i = 0; i < 1; ++i) {\n                    for (var k = 0; k < 1; ++k) {\n                        var value = 1;\n                        var x = value;\n                        value = x ? x + 1 : 0;\n                    }\n                }\n            } else {\n                for (var i = 0; i < 1; ++i) {\n                    for (var k = 0; k < 1; ++k) {\n                        var value = 1;\n                    }\n                }\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function sample(){if(true)for(var i=0;i<1;++i)for(var k=0;k<1;++k){value=1;value=value?value+1:0}else for(i=0;i<1;++i)for(k=0;k<1;++k)var value=1}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

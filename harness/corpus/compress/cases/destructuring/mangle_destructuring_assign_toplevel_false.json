@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/mangle_destructuring_assign_toplevel_false",
+  "corpus": "compress",
+  "name": "mangle_destructuring_assign_toplevel_false",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 509,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function test(opts) {\n            let s, o, r;\n            let a = opts.a || { e: 7, n: 8 };\n            ({ t, e, n, s = 9, o, r } = a);\n            console.log(t, e, n, s, o, r);\n        }\n        let t, e, n;\n        test({a: { t: 1, e: 2, n: 3, s: 4, o: 5, r: 6 }});\n        test({});\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": false,
+      "evaluate": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": false
+    },
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: false,\n    evaluate: true,\n    unused: true\n}",
+    "mangle": "{\n    toplevel: false\n}",
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function test(o){let s,l,a;let c=o.a||{e:7,n:8};({t,e,n,s=9,o:l,r:a}=c);console.log(t,e,n,s,l,a)}let t,e,n;test({a:{t:1,e:2,n:3,s:4,o:5,r:6}});test({});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 2 3 4 5 6\nundefined 7 8 9 undefined undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/issue_512",
+  "corpus": "compress",
+  "name": "issue_512",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 306,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function a() {\n            if (b()) {\n                c();\n                return;\n            }\n            throw e;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true,\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function a(){if(!b())throw e;c()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

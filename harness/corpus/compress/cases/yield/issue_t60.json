@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/yield/issue_t60",
+  "corpus": "compress",
+  "name": "issue_t60",
+  "origin": {
+    "file": "test/compress/yield.js",
+    "line": 293,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function* t() {\n            const v = yield 1;\n            yield 2;\n            return v;\n        }\n        var g = t();\n        console.log(g.next().value, g.next().value);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function*t(){const v=yield 1;yield 2;return v}var g=t();console.log(g.next().value,g.next().value);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/object/prop_arrows_to_concise_method_various",
+  "corpus": "compress",
+  "name": "prop_arrows_to_concise_method_various",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 735,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        ({\n            null: (x, y) => { x(y); },\n            123: (x, y) => { x(y); },\n            \"A B\": (x, y) => { x(y); },\n            p1: (x, y) => { x(y); },\n            p3: async (x, y) => { await x(y); },\n            [c1]: (x, y) => { x(y); },\n            [c3]: async (x, y) => { await x(y); },\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ecma": 2015,
+      "unsafe_methods": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ecma: 2015,\n    unsafe_methods: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "({null(x,y){x(y)},123(x,y){x(y)},\"A B\"(x,y){x(y)},p1(x,y){x(y)},async p3(x,y){await x(y)},[c1](x,y){x(y)},async[c3](x,y){await x(y)}});",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

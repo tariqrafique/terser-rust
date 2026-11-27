@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/arrays/constant_join",
+  "corpus": "compress",
+  "name": "constant_join",
+  "origin": {
+    "file": "test/compress/arrays.js",
+    "line": 18,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = [ \"foo\", \"bar\", \"baz\" ].join(\"\");\n        var a1 = [ \"foo\", \"bar\", \"baz\" ].join();\n        var a2 = [ \"foo\", \"bar\", \"baz\" ].join(null);\n        var a3 = [ \"foo\", \"bar\", \"baz\" ].join(void 0);\n        var a4 = [ \"foo\", , \"baz\" ].join();\n        var a5 = [ \"foo\", null, \"baz\" ].join();\n        var a6 = [ \"foo\", void 0, \"baz\" ].join();\n        var b = [ \"foo\", 1, 2, 3, \"bar\" ].join(\"\");\n        var c = [ boo(), \"foo\", 1, 2, 3, \"bar\", bar() ].join(\"\");\n        var c1 = [ boo(), bar(), \"foo\", 1, 2, 3, \"bar\", bar() ].join(\"\");\n        var c2 = [ 1, 2, \"foo\", \"bar\", baz() ].join(\"\");\n        var c3 = [ boo() + bar() + \"foo\", 1, 2, 3, \"bar\", bar() + \"foo\" ].join(\"\");\n        var c4 = [ 1, 2, null, undefined, \"foo\", \"bar\", baz() ].join(\"\");\n        var c5 = [ boo() + bar() + \"foo\", 1, 2, 3, \"bar\", bar() + \"foo\" ].join();\n        var c6 = [ 1, 2, null, undefined, \"foo\", \"bar\", baz() ].join();\n        var d = [ \"foo\", 1 + 2 + \"bar\", \"baz\" ].join(\"-\");\n        var e = [].join(foo + bar);\n        var f = [].join(\"\");\n        var g = [].join(\"foo\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=\"foobarbaz\";var a1=\"foo,bar,baz\";var a2=\"foonullbarnullbaz\";var a3=\"foo,bar,baz\";var a4=\"foo,,baz\";var a5=\"foo,,baz\";var a6=\"foo,,baz\";var b=\"foo123bar\";var c=boo()+\"foo123bar\"+bar();var c1=\"\"+boo()+bar()+\"foo123bar\"+bar();var c2=\"12foobar\"+baz();var c3=boo()+bar()+\"foo123bar\"+bar()+\"foo\";var c4=\"12foobar\"+baz();var c5=[boo()+bar()+\"foo\",1,2,3,\"bar\",bar()+\"foo\"].join();var c6=[\"1,2,,,foo,bar\",baz()].join();var d=\"foo-3bar-baz\";var e=[].join(foo+bar);var f=\"\";var g=\"\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

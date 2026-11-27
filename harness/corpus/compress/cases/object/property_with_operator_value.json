@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/object/property_with_operator_value",
+  "corpus": "compress",
+  "name": "property_with_operator_value",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 452,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = {\n            \"*\": 1,\n            get \"*\"() {\n                return 2;\n            },\n            *\"*\"() {\n                return 3;\n            },\n            \"%\": 1,\n            get \"%\"() {\n                return 2;\n            },\n            *\"%\"() {\n                return 3;\n            }\n        }\n        class bar {\n            get \"*\"() {\n                return 1\n            }\n            *\"*\"() {\n                return 2;\n            }\n            get \"%\"() {\n                return 1\n            }\n            *\"%\"() {\n                return 2;\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo={\"*\":1,get\"*\"(){return 2},*\"*\"(){return 3},\"%\":1,get\"%\"(){return 2},*\"%\"(){return 3}};class bar{get\"*\"(){return 1}*\"*\"(){return 2}get\"%\"(){return 1}*\"%\"(){return 2}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

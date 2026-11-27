@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1413/issue_1413_top_retain_reference_shorter_than_value",
+  "corpus": "compress",
+  "name": "issue_1413_top_retain_reference_shorter_than_value",
+  "origin": {
+    "file": "test/compress/issue-1413.js",
+    "line": 17,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const g=100082918280;\n        console.log(g);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "inline": 3,
+      "passes": 2,
+      "top_retain": "g"
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    inline: 3,\n    passes: 2,\n    top_retain: \"g\"\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const g=100082918280;console.log(g);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

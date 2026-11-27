@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/pure_funcs/conditional",
+  "corpus": "compress",
+  "name": "conditional",
+  "origin": {
+    "file": "test/compress/pure_funcs.js",
+    "line": 107,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        pure(1 | a() ? 2 & b() : 7 ^ c());\n        pure(1 | a() ? 2 & b() : 5);\n        pure(1 | a() ? 4 : 7 ^ c());\n        pure(1 | a() ? 4 : 5);\n        pure(3 ? 2 & b() : 7 ^ c());\n        pure(3 ? 2 & b() : 5);\n        pure(3 ? 4 : 7 ^ c());\n        pure(3 ? 4 : 5);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_funcs": [
+        "pure"
+      ],
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_funcs: [ \"pure\" ],\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "1|a()?b():c();1|a()&&b();1|a()||c();a();3?b():c();3&&b();3||c();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

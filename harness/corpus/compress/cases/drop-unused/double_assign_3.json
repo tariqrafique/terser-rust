@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/double_assign_3",
+  "corpus": "compress",
+  "name": "double_assign_3",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2014,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (var i = 0; i < 2; i++)\n            a = void 0, a = { a: a }, console.log(a);\n        var a;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(var i=0;i<2;i++)a=void 0,a={a:a},console.log(a);var a;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

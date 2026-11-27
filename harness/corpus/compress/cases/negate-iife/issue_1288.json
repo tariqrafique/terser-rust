@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/negate-iife/issue_1288",
+  "corpus": "compress",
+  "name": "issue_1288",
+  "origin": {
+    "file": "test/compress/negate-iife.js",
+    "line": 354,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (w) ;\n        else {\n            (function f() {})();\n        }\n        if (!x) {\n            (function() {\n                x = {};\n            })();\n        }\n        if (y)\n            (function() {})();\n        else\n            (function(z) {\n                return z;\n            })(0);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "negate_iife": true,
+      "side_effects": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    negate_iife: true,\n    side_effects: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "w||!function f(){}();x||!function(){x={}}();y?!function(){}():!function(z){return z}(0);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

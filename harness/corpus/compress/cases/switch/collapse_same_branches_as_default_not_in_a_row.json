@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/switch/collapse_same_branches_as_default_not_in_a_row",
+  "corpus": "compress",
+  "name": "collapse_same_branches_as_default_not_in_a_row",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 2667,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        switch (id(1)) {\n            case 1:\n                console.log(\"PASS\");\n                break;\n            case 2:\n                console.log(\"FAIL\");\n                break;\n            case 3:\n                console.log(\"PREVENT_IFS\");\n                break;\n            case 4:\n                console.log(\"PASS\");\n                break;\n            default:\n                console.log(\"PASS\");\n                break;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "switches": true,
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    switches: true,\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "switch(id(1)){case 1:case 4:default:console.log(\"PASS\");break;case 2:console.log(\"FAIL\");break;case 3:console.log(\"PREVENT_IFS\")}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

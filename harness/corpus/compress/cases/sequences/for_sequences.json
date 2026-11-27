@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/sequences/for_sequences",
+  "corpus": "compress",
+  "name": "for_sequences",
+  "origin": {
+    "file": "test/compress/sequences.js",
+    "line": 190,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // 1\n        foo();\n        bar();\n        for (; false;);\n        // 2\n        foo();\n        bar();\n        for (x = 5; false;);\n        // 3\n        x = (foo in bar);\n        for (; false;);\n        // 4\n        x = (foo in bar);\n        for (y = 5; false;);\n        // 5\n        x = function() {\n            foo in bar;\n        };\n        for (y = 5; false;);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(foo(),bar();false;);for(foo(),bar(),x=5;false;);x=foo in bar;for(;false;);x=foo in bar;for(y=5;false;);for(x=function(){foo in bar},y=5;false;);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

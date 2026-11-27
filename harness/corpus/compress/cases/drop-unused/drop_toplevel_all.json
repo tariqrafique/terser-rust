@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/drop_toplevel_all",
+  "corpus": "compress",
+  "name": "drop_toplevel_all",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 472,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a, b = 1, c = g;\n        function f(d) {\n            return function() {\n                c = 2;\n            };\n        }\n        a = 2;\n        function g() {}\n        function h() {}\n        console.log(b = 3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "0;console.log(3);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

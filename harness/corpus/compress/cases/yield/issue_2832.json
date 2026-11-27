@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/yield/issue_2832",
+  "corpus": "compress",
+  "name": "issue_2832",
+  "origin": {
+    "file": "test/compress/yield.js",
+    "line": 254,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function* gen(i) {\n            const result = yield (x = i, -x);\n            var x;\n            console.log(x);\n            console.log(result);\n            yield 2;\n        }\n        var x = gen(1);\n        console.log(x.next(\"first\").value);\n        console.log(x.next(\"second\").value);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    beautify: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function* gen(i) {\n    const result = yield (x = i, -x);\n    var x;\n    console.log(x);\n    console.log(result);\n    yield 2;\n}\n\nvar x = gen(1);\n\nconsole.log(x.next(\"first\").value);\n\nconsole.log(x.next(\"second\").value);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "-1\n1\nsecond\n2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

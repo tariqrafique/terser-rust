@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/return_undefined/return_void",
+  "corpus": "compress",
+  "name": "return_void",
+  "origin": {
+    "file": "test/compress/return_undefined.js",
+    "line": 125,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            function g() {\n                h();\n            }\n            return g();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "if_return": true,
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    if_return: true,\n    inline: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){h()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

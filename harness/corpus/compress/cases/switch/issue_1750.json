@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/switch/issue_1750",
+  "corpus": "compress",
+  "name": "issue_1750",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 2352,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 0, b = 1;\n        switch (true) {\n          case a, true:\n          default:\n            b = 2;\n          case true:\n        }\n        console.log(a, b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "evaluate": true,
+      "switches": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    evaluate: true,\n    switches: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=0,b=1;true;a,true;b=2;console.log(a,b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0 2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

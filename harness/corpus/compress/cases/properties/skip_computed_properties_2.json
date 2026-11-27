@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/properties/skip_computed_properties_2",
+  "corpus": "compress",
+  "name": "skip_computed_properties_2",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1381,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(o) {\n            return {[o.key]: o};\n        }\n        var obj = {key: 'xyz'.slice(1, -1)};\n        console.log(f(obj));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "evaluate": true,
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    evaluate: true,\n    inline: true,\n    reduce_vars: true,\n    unused: true,\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj={key:\"xyz\".slice(1,-1)};console.log((o=obj,{[o.key]:o}));var o;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

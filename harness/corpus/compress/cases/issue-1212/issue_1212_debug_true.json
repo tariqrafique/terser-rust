@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1212/issue_1212_debug_true",
+  "corpus": "compress",
+  "name": "issue_1212_debug_true",
+  "origin": {
+    "file": "test/compress/issue-1212.js",
+    "line": 39,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class foo {\n            bar() {\n                if (DEBUG)\n                    console.log(\"DEV\");\n                else\n                    console.log(\"PROD\");\n            }\n        }\n        new foo().bar();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "global_defs": {
+        "DEBUG": true
+      },
+      "sequences": true,
+      "properties": true,
+      "dead_code": true,
+      "conditionals": true,
+      "comparisons": true,
+      "evaluate": true,
+      "booleans": true,
+      "loops": true,
+      "unused": true,
+      "hoist_funs": true,
+      "keep_fargs": true,
+      "if_return": true,
+      "join_vars": true,
+      "collapse_vars": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    global_defs: {\n        DEBUG: true\n    },\n    sequences: true,\n    properties: true,\n    dead_code: true,\n    conditionals: true,\n    comparisons: true,\n    evaluate: true,\n    booleans: true,\n    loops: true,\n    unused: true,\n    hoist_funs: true,\n    keep_fargs: true,\n    if_return: true,\n    join_vars: true,\n    collapse_vars: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class foo{bar(){console.log(\"DEV\")}}(new foo).bar();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

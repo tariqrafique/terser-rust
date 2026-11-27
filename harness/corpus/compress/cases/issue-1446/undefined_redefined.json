@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1446/undefined_redefined",
+  "corpus": "compress",
+  "name": "undefined_redefined",
+  "origin": {
+    "file": "test/compress/issue-1446.js",
+    "line": 48,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(undefined) {\n            var n = 1;\n            return typeof n == \"undefined\";\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "comparisons": true,
+      "typeofs": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    comparisons: true,\n    typeofs: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(undefined){var n=1;return n===void 0}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/classes/class_static_block_hoisting",
+  "corpus": "compress",
+  "name": "class_static_block_hoisting",
+  "origin": {
+    "file": "test/compress/classes.js",
+    "line": 288,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var y = \"PASS\";\n\n        class A {\n          static field = \"FAIL\";\n          static {\n            var y = this.field;\n          }\n        }\n\n        console.log(y);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=16",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

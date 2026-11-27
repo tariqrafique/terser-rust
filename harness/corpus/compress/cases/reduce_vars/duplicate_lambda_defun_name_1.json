@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/duplicate_lambda_defun_name_1",
+  "corpus": "compress",
+  "name": "duplicate_lambda_defun_name_1",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 5807,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function f(a) {\n            function f() {}\n            return f.length;\n        }());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function f(a){function f(){}return f.length}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

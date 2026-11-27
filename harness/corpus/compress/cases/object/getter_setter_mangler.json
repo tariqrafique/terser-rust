@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/object/getter_setter_mangler",
+  "corpus": "compress",
+  "name": "getter_setter_mangler",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 90,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(get,set) {\n            return {\n                get,\n                set,\n                get g(){},\n                set s(n){},\n                c,\n                a:1,\n                m(){}\n            };\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(t,e){return{get:t,set:e,get g(){},set s(t){},c,a:1,m(){}}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

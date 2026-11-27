@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/block-scope/issue_508",
+  "corpus": "compress",
+  "name": "issue_508",
+  "origin": {
+    "file": "test/compress/block-scope.js",
+    "line": 291,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const foo = () => {\n            let a;\n            {\n                let b = [];\n                {\n                    console.log();\n                }\n                a = b;\n\n                {\n                    let c = a;\n                    let b = 123456;\n                    console.log(b);\n                    c.push(b);\n                }\n            }\n        };\n\n        foo();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "toplevel": true,
+      "pure_getters": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    toplevel: true,\n    pure_getters: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "\n123456\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

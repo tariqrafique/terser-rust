@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/pure_getters_chain",
+  "corpus": "compress",
+  "name": "pure_getters_chain",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3633,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function o(t, r) {\n            var a = t[1], s = t[2], o = t[3], i = t[5];\n            return a <= 23 && s <= 59 && o <= 59 && (!r || i);\n        }\n        console.log(o([ , 23, 59, 59, , 42], 1));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "pure_getters": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    pure_getters: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function o(t,r){return t[1]<=23&&t[2]<=59&&t[3]<=59&&(!r||t[5])}console.log(o([,23,59,59,,42],1));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "42\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

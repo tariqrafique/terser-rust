@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/perf_5",
+  "corpus": "compress",
+  "name": "perf_5",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 4793,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function indirect_foo(x, y, z) {\n            function foo(x, y, z) {\n                return x < y ? x * y + z : x * z - y;\n            }\n            return foo(x, y, z);\n        }\n        var sum = 0;\n        for (var i = 0; i < 100; ++i) {\n            sum += indirect_foo(i, i + 1, 3 * i);\n        }\n        console.log(sum);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "passes": 10,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    passes: 10,\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function indirect_foo(x,y,z){return function(x,y,z){return x<y?x*y+z:x*z-y}(x,y,z)}var sum=0;for(var i=0;i<100;++i)sum+=indirect_foo(i,i+1,3*i);console.log(sum);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "348150\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

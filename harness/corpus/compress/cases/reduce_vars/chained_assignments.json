@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/chained_assignments",
+  "corpus": "compress",
+  "name": "chained_assignments",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6076,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            var a = [0x5e, 0xad, 0xbe, 0xef];\n            var b = 0;\n            b |= a[0];\n            b <<= 8;\n            b |= a[1];\n            b <<= 8;\n            b |= a[2];\n            b <<= 8;\n            b |= a[3];\n            return b;\n        }\n        console.log(f().toString(16));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "inline": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unsafe": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    inline: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    toplevel: true,\n    unsafe: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"5eadbeef\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "5eadbeef\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

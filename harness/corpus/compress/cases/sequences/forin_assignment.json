@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/sequences/forin_assignment",
+  "corpus": "compress",
+  "name": "forin_assignment",
+  "origin": {
+    "file": "test/compress/sequences.js",
+    "line": 935,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var o = [], a = {};\n        o.push(\"PASS\");\n        for (a.b in o)\n            console.log(o[a.b]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var o=[],a={};for(a.b in o.push(\"PASS\"),o)console.log(o[a.b]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

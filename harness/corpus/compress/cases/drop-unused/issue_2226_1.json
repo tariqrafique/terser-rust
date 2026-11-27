@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_2226_1",
+  "corpus": "compress",
+  "name": "issue_2226_1",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1531,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var a = b;\n            a += c;\n        }\n        function f2(a) {\n            a <<= b;\n        }\n        function f3(a) {\n            --a;\n        }\n        function f4() {\n            var a = b;\n            return a *= c;\n        }\n        function f5(a) {\n            x(a /= b);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){b;c}function f2(a){b}function f3(a){0}function f4(){var a=b;return a*=c}function f5(a){x(a/=b)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/issue_1856",
+  "corpus": "compress",
+  "name": "issue_1856",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 355,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(`\\\\n\\\\r\\\\u2028\\\\u2029\\n\\r\\u2028\\u2029`);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ascii_only": false
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ascii_only: false\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(`\\\\n\\\\r\\\\u2028\\\\u2029\\n\\r\\u2028\\u2029`);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

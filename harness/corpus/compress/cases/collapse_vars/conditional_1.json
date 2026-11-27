@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/conditional_1",
+  "corpus": "compress",
+  "name": "conditional_1",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3655,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a, b) {\n            var c = \"\";\n            var d = b ? \">\" : \"<\";\n            if (a) c += \"=\";\n            return c += d;\n        }\n        console.log(f(0, 0), f(0, 1), f(1, 0), f(1, 1));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a,b){var c=\"\";if(a)c+=\"=\";return c+=b?\">\":\"<\"}console.log(f(0,0),f(0,1),f(1,0),f(1,1));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "< > =< =>\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

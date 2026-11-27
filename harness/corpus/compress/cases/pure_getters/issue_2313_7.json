@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/pure_getters/issue_2313_7",
+  "corpus": "compress",
+  "name": "issue_2313_7",
+  "origin": {
+    "file": "test/compress/pure_getters.js",
+    "line": 742,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 0, b = 0;\n        class foo {\n            get c() {\n                a++;\n                return 42;\n            }\n            set c(c) {\n                b++;\n            }\n        }\n        class bar extends foo {\n            d() {\n                super.c++;\n                if (super.c) console.log(a, b);\n            }\n        }\n        new bar().d();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "conditionals": true,
+      "pure_getters": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    conditionals: true,\n    pure_getters: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=0,b=0;class foo{get c(){a++;return 42}set c(c){b++}}class bar extends foo{d(){super.c++;super.c&&console.log(a,b)}}(new bar).d();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2 1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

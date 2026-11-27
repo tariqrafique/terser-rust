@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_t790_complex_expression_smaller",
+  "corpus": "compress",
+  "name": "issue_t790_complex_expression_smaller",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 2129,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const $read$ = \"oooo\";\n        const $only$ = \"llll\";\n        const $readonly$ = $read$ + $only$;\n\n        console.log($read$);\n        console.log($read$);\n        console.log($only$);\n        console.log($only$);\n        console.log($readonly$);\n        console.log($readonly$);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "toplevel": true,
+      "sequences": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    toplevel: true,\n    sequences: false\n}",
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const o=\"oooo\",l=\"llll\",c=o+l;console.log(o);console.log(o);console.log(l);console.log(l);console.log(c);console.log(c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "oooo\noooo\nllll\nllll\noooollll\noooollll\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

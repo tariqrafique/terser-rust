@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/blocks/issue_2946_else_const",
+  "corpus": "compress",
+  "name": "issue_2946_else_const",
+  "origin": {
+    "file": "test/compress/blocks.js",
+    "line": 241,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (1) {\n            const x = 6;\n        } else {\n            const y = 12;\n        }\n        if (2) {\n            let z = 24;\n        } else {\n            let w = 48;\n        }\n        if (3) {\n            class X {}\n        } else {\n            class Y {}\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "if(1){const x=6}else{const y=12}if(2){let z=24}else{let w=48}if(3){class X{}}else{class Y{}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

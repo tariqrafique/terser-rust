@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_switch",
+  "corpus": "compress",
+  "name": "collapse_vars_switch",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 672,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var not_used = sideeffect(), x = g1 + g2;\n            var y = x / 4, z = 'Bar' + y;\n            switch (z) { case 0: return g9; }\n        }\n        function f2() {\n            var  x = g1 + g2, not_used = sideeffect();\n            var y = x / 4\n            var z = 'Bar' + y;\n            switch (z) { case 0: return g9; }\n        }\n        function f3(x) {\n            switch(x) { case 1: var a = 3 - x; return a; }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){sideeffect();switch(\"Bar\"+(g1+g2)/4){case 0:return g9}}function f2(){var x=g1+g2;sideeffect();switch(\"Bar\"+x/4){case 0:return g9}}function f3(x){switch(x){case 1:return 3-x}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

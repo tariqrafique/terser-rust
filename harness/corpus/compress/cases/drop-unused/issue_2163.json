@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_2163",
+  "corpus": "compress",
+  "name": "issue_2163",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1514,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var c;\n        /*@__PURE__*/f(...a);\n        pure(b, ...c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_funcs": [
+        "pure"
+      ],
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_funcs: [ \"pure\" ],\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var c;a;b;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

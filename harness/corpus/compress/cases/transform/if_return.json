@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/transform/if_return",
+  "corpus": "compress",
+  "name": "if_return",
+  "origin": {
+    "file": "test/compress/transform.js",
+    "line": 101,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(w, x, y, z) {\n            if (x) return;\n            if (w) {\n                if (y) return;\n            } else if (z) return;\n            if (x == y) return true;\n\n            if (x) w();\n            if (y) z();\n            return true;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "if_return": true,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    if_return: true,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(w,x,y,z){if(!x){if(w){if(y)return}else if(z)return;return x==y||(x&&w(),y&&z()),!0}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

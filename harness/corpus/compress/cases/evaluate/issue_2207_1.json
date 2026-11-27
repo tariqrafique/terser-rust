@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_2207_1",
+  "corpus": "compress",
+  "name": "issue_2207_1",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1469,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(String.fromCharCode(65));\n        console.log(Math.max(3, 6, 2, 7, 3, 4));\n        console.log(Math.cos(1.2345));\n        console.log(Math.cos(1.2345) - Math.sin(4.321));\n        console.log(Math.pow(Math.PI, Math.E - Math.LN10).toFixed(15));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"A\");console.log(7);console.log(Math.cos(1.2345));console.log(1.2543732512566947);console.log(\"1.609398451447204\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

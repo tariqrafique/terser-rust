@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/object/concise_methods_and_mangle_props",
+  "corpus": "compress",
+  "name": "concise_methods_and_mangle_props",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 376,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function x() {\n            obj = {\n                _foo() { return 1; }\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "regex": {
+          "__terser_type": "RegExp",
+          "source": "_",
+          "flags": ""
+        }
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: {\n        regex: /_/\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function x(){obj={o(){return 1}}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

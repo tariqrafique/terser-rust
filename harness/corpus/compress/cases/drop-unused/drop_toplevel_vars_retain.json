@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/drop_toplevel_vars_retain",
+  "corpus": "compress",
+  "name": "drop_toplevel_vars_retain",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 647,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a, b = 1, c = g;\n        function f(d) {\n            return function() {\n                c = 2;\n            };\n        }\n        a = 2;\n        function g() {}\n        function h() {}\n        console.log(b = 3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "top_retain": "f,a,o",
+      "toplevel": "vars",
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    top_retain: \"f,a,o\",\n    toplevel: \"vars\",\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a;function f(d){return function(){0}}a=2;function g(){}function h(){}console.log(3);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

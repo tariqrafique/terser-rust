@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/switch/issue_1680_1",
+  "corpus": "compress",
+  "name": "issue_1680_1",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 2061,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(x) {\n            console.log(x);\n            return x + 1;\n        }\n        switch (2) {\n          case f(0):\n          case f(1):\n            f(2);\n          case 2:\n          case f(3):\n          case f(4):\n            f(5);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "evaluate": true,
+      "switches": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    evaluate: true,\n    switches: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(x){console.log(x);return x+1}switch(2){case f(0):case f(1):f(2);case 2:f(5)}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0\n1\n2\n5\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

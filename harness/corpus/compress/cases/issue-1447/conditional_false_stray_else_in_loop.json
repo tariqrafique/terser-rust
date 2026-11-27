@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1447/conditional_false_stray_else_in_loop",
+  "corpus": "compress",
+  "name": "conditional_false_stray_else_in_loop",
+  "origin": {
+    "file": "test/compress/issue-1447.js",
+    "line": 23,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (var i = 1; i <= 4; ++i) {\n            if (i <= 2) continue;\n            console.log(i);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": false,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_vars": true,
+      "if_return": true,
+      "join_vars": true,
+      "loops": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: false,\n    dead_code: true,\n    evaluate: true,\n    hoist_vars: true,\n    if_return: true,\n    join_vars: true,\n    loops: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(var i=1;i<=4;++i)if(!(i<=2))console.log(i);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

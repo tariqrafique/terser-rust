@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/pow_sequence_with_parens_exact",
+  "corpus": "compress",
+  "name": "pow_sequence_with_parens_exact",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 550,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log((4 ** 1) ** 2, (4 ** 1) ** (1 / 2));\n        var one = 1;\n        var two = 2;\n        var four = 4;\n        console.log((four ** one) ** two, (four ** one) ** (one / two));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log((4**1)**2,(4**1)**(1/2));var one=1;var two=2;var four=4;console.log((four**one)**two,(four**one)**(one/two));",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "16 2\n16 2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=8",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

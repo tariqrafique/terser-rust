@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue-281/wrap_iife",
+  "corpus": "compress",
+  "name": "wrap_iife",
+  "origin": {
+    "file": "test/compress/issue-281.js",
+    "line": 375,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            return function() {\n                console.log('test')\n            };\n        })()();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "negate_iife": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "wrap_iife": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    negate_iife: false\n}",
+    "mangle": null,
+    "format": "{\n    wrap_iife: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "void console.log(\"test\");",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

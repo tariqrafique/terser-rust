@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/using/await_using_as_name_asi_line_comment",
+  "corpus": "compress",
+  "name": "await_using_as_name_asi_line_comment",
+  "origin": {
+    "file": "test/compress/using.js",
+    "line": 299,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        async () => {\n            await using // comment\n            x = f()\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "async()=>{await using;x=f()};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/rename/mangle_catch_nth_identifier",
+  "corpus": "compress",
+  "name": "mangle_catch_nth_identifier",
+  "origin": {
+    "file": "test/compress/rename.js",
+    "line": 365,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        try {\n            throw \"FAIL1\";\n        } catch (a) {\n            var a = \"FAIL2\";\n        }\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ie8": false,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": false,
+      "toplevel": true,
+      "nth_identifier": {
+        "get": {
+          "__terser_type": "Function",
+          "source": "function get(n) {\n            return \"foo\";\n        }"
+        }
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": "{\n    ie8: false,\n    toplevel: true\n}",
+    "mangle": "{\n    ie8: false,\n    toplevel: true,\n    nth_identifier: function() {\n        function get(n) {\n            return \"foo\";\n        }\n        return {\n            get: get\n        };\n    }()\n}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "try{throw\"FAIL1\"}catch(foo){var foo=\"FAIL2\"}console.log(foo);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": true
+}

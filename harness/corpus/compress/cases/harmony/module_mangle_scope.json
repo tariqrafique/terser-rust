@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/module_mangle_scope",
+  "corpus": "compress",
+  "name": "module_mangle_scope",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1968,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let a = 10;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let e=10;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

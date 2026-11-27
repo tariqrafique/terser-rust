@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/regexp/regexp_no_ddos",
+  "corpus": "compress",
+  "name": "regexp_no_ddos",
+  "origin": {
+    "file": "test/compress/regexp.js",
+    "line": 92,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(/(b+)b+/.test(\"bbb\"))\n        console.log(RegExp(\"(b+)b+\").test(\"bbb\"))\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(/(b+)b+/.test(\"bbb\"));console.log(RegExp(\"(b+)b+\").test(\"bbb\"));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\ntrue\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

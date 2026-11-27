@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/numbers/numeric_separators",
+  "corpus": "compress",
+  "name": "numeric_separators",
+  "origin": {
+    "file": "test/compress/numbers.js",
+    "line": 278,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const one = 1_000;\n        const two = 1_000_000;\n        const bin = 0b0101_0101;\n        const oct = 0o0123_4567;\n        const hex = 0xDEAD_BEEF;\n        const fractional = 1_000.000_100;\n        const identifier = _1000;\n        const negate_identifier = -_1000;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const one=1e3;const two=1e6;const bin=85;const oct=342391;const hex=3735928559;const fractional=1000.0001;const identifier=_1000;const negate_identifier=-_1000;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

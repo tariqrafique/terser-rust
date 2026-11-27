@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2485",
+  "corpus": "compress",
+  "name": "issue_2485",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 4861,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = function(bar) {\n            var n = function(a, b) {\n                return a + b;\n            };\n            var sumAll = function(arg) {\n                return arg.reduce(n, 0);\n            };\n            var runSumAll = function(arg) {\n                return sumAll(arg);\n            };\n            bar.baz = function(arg) {\n                var n = runSumAll(arg);\n                return (n.get = 1), n;\n            };\n            return bar;\n        };\n        var bar = foo({});\n        console.log(bar.baz([1, 2, 3]));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=function(bar){var n=function(a,b){return a+b};var runSumAll=function(arg){return function(arg){return arg.reduce(n,0)}(arg)};bar.baz=function(arg){var n=runSumAll(arg);return n.get=1,n};return bar};var bar=foo({});console.log(bar.baz([1,2,3]));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

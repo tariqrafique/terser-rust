@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/properties/join_object_assignments_if",
+  "corpus": "compress",
+  "name": "join_object_assignments_if",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1711,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function() {\n            var o = {};\n            if (o.a = \"PASS\") return o.a;\n        }())\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "join_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    join_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(){var o={a:\"PASS\"};if(o.a)return o.a}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

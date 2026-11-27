@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/builtins_ecma/pure_builtins_globalthis",
+  "corpus": "compress",
+  "name": "pure_builtins_globalthis",
+  "origin": {
+    "file": "test/compress/builtins_ecma.js",
+    "line": 34,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const drop1 = globalThis.isFinite(1234);\n        const drop2 = new globalThis.Array();\n        const drop3 = new globalThis.Map();\n        const drop4 = new globalThis.Set();\n        const drop5 = globalThis.Math.acosh();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "builtins_ecma": 2020,
+      "builtins_pure": true,
+      "toplevel": true,
+      "passes": 2,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true,\n    builtins_ecma: 2020,\n    builtins_pure: true,\n    toplevel: true,\n    passes: 2\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

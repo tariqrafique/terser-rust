@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/unsafe_evaluate_object_2",
+  "corpus": "compress",
+  "name": "unsafe_evaluate_object_2",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 386,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj = {\n            foo: 1,\n            bar: 2,\n            square: function(x) {\n                return x * x;\n            },\n            cube: function(x) {\n                return x * x * x;\n            },\n        };\n        console.log(obj.foo, obj.bar, obj.square(2), obj.cube);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj={foo:1,bar:2,square:function(x){return x*x},cube:function(x){return x*x*x}};console.log(1,2,obj.square(2),obj.cube);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

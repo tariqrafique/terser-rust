@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/issue-747/unmangleable_props_should_always_be_reserved",
+  "corpus": "compress",
+  "name": "unmangleable_props_should_always_be_reserved",
+  "origin": {
+    "file": "test/compress/issue-747.js",
+    "line": 20,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"aaaaaaaaaabbbbb\";\n        var obj = {};\n        obj.asd = 256;\n        obj.a = 123;\n        console.log(obj.a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "regex": {
+          "__terser_type": "RegExp",
+          "source": "asd",
+          "flags": ""
+        }
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: {\n        regex: /asd/\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"aaaaaaaaaabbbbb\";var obj={};obj.o=256;obj.a=123;console.log(obj.a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "123\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

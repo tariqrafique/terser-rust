@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/static_property_side_effects",
+  "corpus": "compress",
+  "name": "static_property_side_effects",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 163,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let x = \"FAIL\"\n        class cls {\n            static [x = \"PASS\"]\n        }\n        console.log(x)\n        class cls2 {\n            static [console.log(\"PASS\")]\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

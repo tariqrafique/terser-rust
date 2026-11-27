@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/blocks/issue_1672_for",
+  "corpus": "compress",
+  "name": "issue_1672_for",
+  "origin": {
+    "file": "test/compress/blocks.js",
+    "line": 80,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        switch (function() {\n            return xxx;\n        }) {\n          case xxx:\n            for (; console.log(\"FAIL\");) {\n                function xxx() {}\n            }\n            break;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "switch(function(){return xxx}){case xxx:for(;console.log(\"FAIL\");){function xxx(){}}break}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

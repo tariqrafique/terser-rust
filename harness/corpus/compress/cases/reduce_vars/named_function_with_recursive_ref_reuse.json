@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/named_function_with_recursive_ref_reuse",
+  "corpus": "compress",
+  "name": "named_function_with_recursive_ref_reuse",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 5846,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var result = [];\n        var do_not_inline = function foo() {\n            result.push(foo)\n        };\n        [0, 1].map(() => do_not_inline());\n        console.log(result[0] === result[1]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "evaluate": true,
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    evaluate: true,\n    inline: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var result=[];var do_not_inline=function foo(){result.push(foo)};[0,1].map(()=>do_not_inline());console.log(result[0]===result[1]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typescript_imports",
+  "corpus": "compress",
+  "name": "typescript_imports",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 293,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // fully typescript imports\n        import type Default from \"module\"\n        import type * as Star from \"module\"\n        import type { Named } from \"module\"\n        import type { Named as Renamed } from \"module\"\n        import type { default as NamedDefault } from \"module\"\n        import type A, { F } from 'module'\n\n        // partially typescript imports\n        import { Partial, type Removed } from \"module\"\n        import { Partial, type Removed as RenamedRemoved } from \"module\"\n\n        // misdirection\n        import type from 'module'\n        import { type } from 'module'\n        import { type as Renamed } from 'module'\n        import type, { A } from 'module'\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "import{Partial}from\"module\";import{Partial}from\"module\";import type from\"module\";import{type}from\"module\";import{type as Renamed}from\"module\";import type,{A}from\"module\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/identity/inline_identity_lose_this",
+  "corpus": "compress",
+  "name": "inline_identity_lose_this",
+  "origin": {
+    "file": "test/compress/identity.js",
+    "line": 181,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\";\n\n        const id = x => x;\n\n        const func_bag = {\n            func: function () { return this === undefined ? \"PASS\" : \"FAIL\"; }\n        };\n\n        func_bag.func2 = function () { return this === undefined ? \"PASS\" : \"FAIL\"; };\n\n        console.log(id(func_bag.func)());\n        console.log(id(func_bag.func2)());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "toplevel": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    toplevel: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";const id=x=>x;const func_bag={func:function(){return this===void 0?\"PASS\":\"FAIL\"}};func_bag.func2=function(){return this===void 0?\"PASS\":\"FAIL\"};console.log((0,func_bag.func)());console.log((0,func_bag.func2)());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

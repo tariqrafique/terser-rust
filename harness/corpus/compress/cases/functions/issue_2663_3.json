@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2663_3",
+  "corpus": "compress",
+  "name": "issue_2663_3",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 1749,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function () {\n            var outputs = [\n                { type: 0, target: null, eventName: \"ngSubmit\", propName: null },\n                { type: 0, target: null, eventName: \"submit\", propName: null },\n                { type: 0, target: null, eventName: \"reset\", propName: null },\n            ];\n            function listenToElementOutputs(outputs) {\n                var handlers = [];\n                for (var i = 0; i < outputs.length; i++) {\n                    var output = outputs[i];\n                    var handleEventClosure = renderEventHandlerClosure(output.eventName);\n                    handlers.push(handleEventClosure)\n                }\n                var target, name;\n                return handlers;\n            }\n            function renderEventHandlerClosure(eventName) {\n                return function () {\n                    return console.log(eventName);\n                };\n            }\n            listenToElementOutputs(outputs).forEach(function (handler) {\n                return handler()\n            });\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){function renderEventHandlerClosure(eventName){return function(){return console.log(eventName)}}(function(outputs){var handlers=[];for(var i=0;i<outputs.length;i++){var output=outputs[i];var handleEventClosure=renderEventHandlerClosure(output.eventName);handlers.push(handleEventClosure)}return handlers})([{type:0,target:null,eventName:\"ngSubmit\",propName:null},{type:0,target:null,eventName:\"submit\",propName:null},{type:0,target:null,eventName:\"reset\",propName:null}]).forEach(function(handler){return handler()})})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "ngSubmit\nsubmit\nreset\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

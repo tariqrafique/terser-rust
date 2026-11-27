@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/if_return_6",
+  "corpus": "compress",
+  "name": "if_return_6",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 127,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(x) {\n          return x ? true : void 0;\n          return y;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "if_return": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    if_return: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(x){return!!x||void 0}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

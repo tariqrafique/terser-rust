@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/ifs_4",
+  "corpus": "compress",
+  "name": "ifs_4",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 79,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (foo && bar) {\n            x(foo)[10].bar.baz = something();\n        } else\n            x(foo)[10].bar.baz = something_else();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "foo&&bar?x(foo)[10].bar.baz=something():x(foo)[10].bar.baz=something_else();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

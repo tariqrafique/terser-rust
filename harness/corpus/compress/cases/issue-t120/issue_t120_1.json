@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "compress/issue-t120/issue_t120_1",
+  "corpus": "compress",
+  "name": "issue_t120_1",
+  "origin": {
+    "file": "test/compress/issue-t120.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(node) {\n            var traverse = function(obj) {\n                var i = obj.data;\n                return i && i.a != i.b;\n            };\n            while (traverse(node)) {\n                node = node.data;\n            }\n            return node;\n        }\n        var x = {\n            a: 1,\n            b: 2,\n            data: {\n                a: \"hello\",\n            }\n        };\n        console.log(foo(x).a, foo({a : \"world\"}).a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "inline": 3,
+      "join_vars": true,
+      "loops": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    inline: 3,\n    join_vars: true,\n    loops: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "hello world\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

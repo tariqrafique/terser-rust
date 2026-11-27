@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/array_spread_of_sequence",
+  "corpus": "compress",
+  "name": "array_spread_of_sequence",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 931,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = [1];\n        console.log([...(a, a)]);\n        console.log([...a, a]);\n        console.log([...(a || a)]);\n        console.log([...a || a]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var o=[1];console.log([...(o,o)]);console.log([...o,o]);console.log([...o||o]);console.log([...o||o]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "[ 1 ]\n[ 1, [ 1 ] ]\n[ 1 ]\n[ 1 ]\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

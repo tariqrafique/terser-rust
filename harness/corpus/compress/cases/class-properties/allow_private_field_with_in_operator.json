@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/allow_private_field_with_in_operator",
+  "corpus": "compress",
+  "name": "allow_private_field_with_in_operator",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 456,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class A {\n            #p;\n            isA (input) {\n                #p in input; \n                #p in this;\n                return #p in this; \n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class A{#i;i(i){#i in i;#i in this;return#i in this}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

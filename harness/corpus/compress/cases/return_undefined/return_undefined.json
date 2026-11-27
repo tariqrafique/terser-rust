@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "compress/return_undefined/return_undefined",
+  "corpus": "compress",
+  "name": "return_undefined",
+  "origin": {
+    "file": "test/compress/return_undefined.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f0() {\n        }\n        function f1() {\n            return undefined;\n        }\n        function f2() {\n            return void 0;\n        }\n        function f3() {\n            return void 123;\n        }\n        function f4() {\n            return;\n        }\n        function f5(a, b) {\n            console.log(a, b);\n            baz(a);\n            return;\n        }\n        function f6(a, b) {\n            console.log(a, b);\n            if (a) {\n                foo(b);\n                baz(a);\n                return a + b;\n            }\n            return undefined;\n        }\n        function f7(a, b) {\n            console.log(a, b);\n            if (a) {\n                foo(b);\n                baz(a);\n                return void 0;\n            }\n            return a + b;\n        }\n        function f8(a, b) {\n            foo(a);\n            bar(b);\n            return void 0;\n        }\n        function f9(a, b) {\n            foo(a);\n            bar(b);\n            return undefined;\n        }\n        function f10() {\n            return false;\n        }\n        function f11() {\n            return null;\n        }\n        function f12() {\n            return 0;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "drop_debugger": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "hoist_vars": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "keep_fnames": false,
+      "loops": true,
+      "negate_iife": true,
+      "properties": true,
+      "sequences": false,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    drop_debugger: true,\n    evaluate: true,\n    hoist_funs: true,\n    hoist_vars: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    keep_fnames: false,\n    loops: true,\n    negate_iife: true,\n    properties: true,\n    sequences: false,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f0(){}function f1(){}function f2(){}function f3(){}function f4(){}function f5(a,b){console.log(a,b);baz(a)}function f6(a,b){console.log(a,b);if(a){foo(b);baz(a);return a+b}}function f7(a,b){console.log(a,b);if(!a)return a+b;foo(b);baz(a)}function f8(a,b){foo(a);bar(b)}function f9(a,b){foo(a);bar(b)}function f10(){return!1}function f11(){return null}function f12(){return 0}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

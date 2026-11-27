@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1105/assorted_Infinity_NaN_undefined_in_with_scope_keep_infinity",
+  "corpus": "compress",
+  "name": "assorted_Infinity_NaN_undefined_in_with_scope_keep_infinity",
+  "origin": {
+    "file": "test/compress/issue-1105.js",
+    "line": 243,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var f = console.log;\n        var o = {\n            undefined : 3,\n            NaN       : 4,\n            Infinity  : 5,\n        };\n        if (o) {\n            f(undefined, void 0);\n            f(NaN, 0/0);\n            f(Infinity, 1/0);\n            f(-Infinity, -(1/0));\n            f(2 + 7 + undefined, 2 + 7 + void 0);\n        }\n        with (o) {\n            f(undefined, void 0);\n            f(NaN, 0/0);\n            f(Infinity, 1/0);\n            f(-Infinity, -(1/0));\n            f(2 + 7 + undefined, 2 + 7 + void 0);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "keep_infinity": true,
+      "sequences": false,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    keep_infinity: true,\n    sequences: false,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var f=console.log,o={undefined:3,NaN:4,Infinity:5};if(o){f(void 0,void 0);f(NaN,NaN);f(Infinity,1/0);f(-Infinity,-1/0);f(NaN,NaN)}with(o){f(undefined,void 0);f(NaN,0/0);f(Infinity,1/0);f(-Infinity,-1/0);f(9+undefined,9+void 0)}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

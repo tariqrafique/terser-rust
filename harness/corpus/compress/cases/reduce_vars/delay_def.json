@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/delay_def",
+  "corpus": "compress",
+  "name": "delay_def",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 2454,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            return a;\n            var a;\n        }\n        function g() {\n            return a;\n            var a = 1;\n        }\n        console.log(f(), g());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){return}function g(){return a;var a=1}console.log(f(),g());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

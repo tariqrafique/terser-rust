@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2783",
+  "corpus": "compress",
+  "name": "issue_2783",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2199,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            return g;\n            function f(a) {\n                var b = a.b;\n                if (b) return b;\n                return a;\n            }\n            function g(o, i) {\n                while (i--) {\n                    console.log(f(o));\n                }\n            }\n        })()({ b: \"PASS\" }, 1);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "conditionals": true,
+      "if_return": true,
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    conditionals: true,\n    if_return: true,\n    inline: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){return function(o,i){while(i--)console.log(f(o))};function f(a){var b=a.b;return b||a}})()({b:\"PASS\"},1);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

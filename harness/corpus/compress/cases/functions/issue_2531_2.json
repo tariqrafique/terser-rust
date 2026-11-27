@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2531_2",
+  "corpus": "compress",
+  "name": "issue_2531_2",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 610,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function outer() {\n            function inner(value) {\n                function closure() {\n                    return value;\n                }\n                return function() {\n                    return closure();\n                };\n            }\n            return inner(\"Hello\");\n        }\n        console.log(\"Greeting:\", outer()());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "inline": true,
+      "passes": 3,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    inline: true,\n    passes: 3,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function outer(){return function(){return\"Hello\"}}console.log(\"Greeting:\",outer()());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "Greeting: Hello\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

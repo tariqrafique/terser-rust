@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/unused_destructuring_declaration_complex_1",
+  "corpus": "compress",
+  "name": "unused_destructuring_declaration_complex_1",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 1260,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const [, w, , x, {y, z}] = [1, 2, 3, 4, {z: 5}];\n        console.log(x, z);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "pure_getters": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    pure_getters: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const[,w,,x,{z:z}]=[1,2,3,4,{z:5}];console.log(x,z);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "4 5\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

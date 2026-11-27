@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1105/check_drop_unused_in_peer_function",
+  "corpus": "compress",
+  "name": "check_drop_unused_in_peer_function",
+  "origin": {
+    "file": "test/compress/issue-1105.js",
+    "line": 100,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function outer() {\n            var o = {};\n            var unused = {};     // should be kept\n            function foo() {     // should be kept\n                function not_in_use() {\n                    var nested_unused = \"foo\"; // should be dropped\n                    return 24;\n                }\n                var unused = {}; // should be kept\n                with (o) {\n                    var foo = \"something\";\n                }\n                doSomething(o);\n            }\n            function bar() {\n                var unused = {}; // should be dropped\n                doSomethingElse();\n            }\n            foo();\n            bar();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function outer(){var o={};var unused={};function foo(){function not_in_use(){return 24}var unused={};with(o)var foo=\"something\";doSomething(o)}function bar(){doSomethingElse()}foo();bar()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

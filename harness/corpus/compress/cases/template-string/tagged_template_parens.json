@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/tagged_template_parens",
+  "corpus": "compress",
+  "name": "tagged_template_parens",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (a) `0`;\n        (a => b) `1`;\n        (a = b) `2`;\n        (a + b) `3`;\n        (a ? b : c) `4`;\n        (a, b, c) `5`;\n        (~a) `6`;\n        (a.b) `7`;\n        (a[\"b\"]) `8`;\n        (a()) `9`;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a`0`;(a=>b)`1`;(a=b)`2`;(a+b)`3`;(a?b:c)`4`;(a,b,c)`5`;(~a)`6`;a.b`7`;a[\"b\"]`8`;a()`9`;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

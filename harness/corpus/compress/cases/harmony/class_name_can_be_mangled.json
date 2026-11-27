@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/class_name_can_be_mangled",
+  "corpus": "compress",
+  "name": "class_name_can_be_mangled",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 61,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function x() {\n            class Foo {\n            }\n            var class1 = Foo;\n            var class2 = class Bar {};\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function x(){class a{}var s=a;var c=class a{}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typed_class_head",
+  "corpus": "compress",
+  "name": "typed_class_head",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 195,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class ClassTypeParameters<T> {}\n        class ClassImplements implements Type {}\n        class ClassExtendsImplements extends OtherClass implements Type {}\n        class ClassImplementsMany extends OtherClass implements T1, T2 {}\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "class ClassTypeParameters{}class ClassImplements{}class ClassExtendsImplements extends OtherClass{}class ClassImplementsMany extends OtherClass{}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

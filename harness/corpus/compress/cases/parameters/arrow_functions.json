@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/arrow_functions",
+  "corpus": "compress",
+  "name": "arrow_functions",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (a) => b;  // 1 args\n        (a, b) => c;  // n args\n        () => b;  // 0 args\n        (a) => (b) => c;  // func returns func returns func\n        (a) => ((b) => c);  // So these parens are dropped\n        () => (b,c) => d;  // func returns func returns func\n        a=>{return b;}\n        a => 'lel';  // Dropping the parens\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a=>b;(a,b)=>c;()=>b;a=>b=>c;a=>b=>c;()=>(b,c)=>d;a=>b;a=>\"lel\";",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

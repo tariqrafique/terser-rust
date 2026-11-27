@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/bitwise_2",
+  "corpus": "compress",
+  "name": "bitwise_2",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 256,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const any = {}\n\n        const test1 = (bar | 0) & 1\n        const test1_rev = 1 & (bar | 0)\n        const test2 = (bar & ~0) & 1\n        const test2_rev = 1 & (bar & ~0)\n        const test3 = (bar ^ 0) ^ (baz | 0)\n        const test5 = ~(bar ^ ~baz)\n        const test5_2 = ~(~bar ^ baz)\n        const test5_3 = ~bar ^ ~baz\n\n        const same = globalThis.same\n        const test6 = same | same\n        const test6_2 = same ^ same\n\n        const test_7 = (same & same) | 0\n        const test_7_2 = (same | same) | 0\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "side_effects": true,
+      "booleans": true,
+      "comparisons": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    side_effects: true,\n    booleans: true,\n    comparisons: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const any={};const test1=bar&1;const test1_rev=1&bar;const test2=bar&1;const test2_rev=1&bar;const test3=bar^(baz|0);const test5=bar^baz;const test5_2=bar^baz;const test5_3=bar^baz;const same=globalThis.same;const test6=same|same;const test6_2=same^same;const test_7=same|0;const test_7_2=same|0;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

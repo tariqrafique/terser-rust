@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/global_defs/mixed",
+  "corpus": "compress",
+  "name": "mixed",
+  "origin": {
+    "file": "test/compress/global_defs.js",
+    "line": 114,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const FOO = { BAR: 0 };\n        console.log(FOO.BAR);\n        console.log(++CONFIG.DEBUG);\n        console.log(++CONFIG.VALUE);\n        console.log(++CONFIG[\"VAL\" + \"UE\"]);\n        console.log(++DEBUG[CONFIG.VALUE]);\n        CONFIG.VALUE.FOO = \"bar\";\n        console.log(CONFIG);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "global_defs": {
+        "CONFIG.VALUE": 42,
+        "FOO.BAR": "moo"
+      },
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    global_defs: {\n        \"CONFIG.VALUE\": 42,\n        \"FOO.BAR\": \"moo\"\n    },\n    properties: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const FOO={BAR:0};console.log(\"moo\");console.log(++CONFIG.DEBUG);console.log(++CONFIG.VALUE);console.log(++CONFIG.VALUE);console.log(++DEBUG[42]);CONFIG.VALUE.FOO=\"bar\";console.log(CONFIG);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

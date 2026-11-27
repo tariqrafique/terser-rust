@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/issue_2747",
+  "corpus": "compress",
+  "name": "issue_2747",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 456,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\";\n        function f(baz) {\n            if (baz === 0) {\n                return null;\n            }\n            let r;\n            if (baz > 2) {\n                r = 4;\n            } else {\n                r = 5;\n            }\n            return r;\n        }\n        console.log(f(0), f(1), f(3));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "sequences": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true,\n    sequences: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";function f(baz){if(baz===0)return null;let r;return r=baz>2?4:5,r}console.log(f(0),f(1),f(3));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "null 5 4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

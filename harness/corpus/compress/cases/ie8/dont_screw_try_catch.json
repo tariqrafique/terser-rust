@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/ie8/dont_screw_try_catch",
+  "corpus": "compress",
+  "name": "dont_screw_try_catch",
+  "origin": {
+    "file": "test/compress/ie8.js",
+    "line": 83,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        bad = function(e){\n            return function(error){\n                try{\n                    e()\n                } catch(e) {\n                    error(e)\n                }\n            }\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ie8": true,
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": true
+    },
+    "format": {
+      "ie8": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ie8: true\n}",
+    "mangle": "{\n    ie8: true\n}",
+    "format": "{\n    ie8: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "bad=function(n){return function(t){try{n()}catch(n){t(n)}}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

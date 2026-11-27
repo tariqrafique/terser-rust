@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/sequences/unsafe_undefined",
+  "corpus": "compress",
+  "name": "unsafe_undefined",
+  "origin": {
+    "file": "test/compress/sequences.js",
+    "line": 315,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(undefined) {\n            if (a)\n                return b;\n            if (c)\n                return d;\n        }\n        function g(undefined) {\n            if (a)\n                return b;\n            if (c)\n                return d;\n            e();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "sequences": true,
+      "side_effects": true,
+      "unsafe_undefined": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true,\n    sequences: true,\n    side_effects: true,\n    unsafe_undefined: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(undefined){return a?b:c?d:undefined}function g(undefined){return a?b:c?d:void e()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

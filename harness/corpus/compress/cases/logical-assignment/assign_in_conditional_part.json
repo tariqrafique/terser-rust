@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/logical-assignment/assign_in_conditional_part",
+  "corpus": "compress",
+  "name": "assign_in_conditional_part",
+  "origin": {
+    "file": "test/compress/logical-assignment.js",
+    "line": 75,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var status = 'PASS'\n        var nil = null\n        var nil_prop = { prop: null }\n\n        nil &&= console.log(status = 'FAIL')\n        nil_prop.prop &&= console.log(status = 'FAIL')\n\n        console.log(status)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "evaluate": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    evaluate: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var status=\"PASS\";var nil=null;nil&&=console.log(status=\"FAIL\");({prop:null}).prop&&=console.log(status=\"FAIL\");console.log(status);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=15",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

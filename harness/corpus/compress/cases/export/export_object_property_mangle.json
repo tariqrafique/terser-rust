@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/export/export_object_property_mangle",
+  "corpus": "compress",
+  "name": "export_object_property_mangle",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 925,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const n = null;\n        export const o = { o: n };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": false,
+      "defaults": false
+    },
+    "mangle": true,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: false\n}",
+    "mangle": "true",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const n=null;export const o={o:n};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": true,
+  "ignored_output": null,
+  "has_function": false
+}

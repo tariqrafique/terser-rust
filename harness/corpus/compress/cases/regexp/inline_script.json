@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/regexp/inline_script",
+  "corpus": "compress",
+  "name": "inline_script",
+  "origin": {
+    "file": "test/compress/regexp.js",
+    "line": 79,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        /* </script> */\n        /[</script>]/\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "inline_script": true,
+      "comments": "all"
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{}",
+    "mangle": null,
+    "format": "{\n    inline_script: true,\n    comments: \"all\"\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "/* <\\/script> */\n/[<\\/script>]/;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

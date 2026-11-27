@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/double_assign_1",
+  "corpus": "compress",
+  "name": "double_assign_1",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1927,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var a = {};\n            var a = [];\n            return a;\n        }\n        function f2() {\n            var a = {};\n            a = [];\n            return a;\n        }\n        function f3() {\n            a = {};\n            var a = [];\n            return a;\n        }\n        function f4(a) {\n            a = {};\n            a = [];\n            return a;\n        }\n        function f5(a) {\n            var a = {};\n            a = [];\n            return a;\n        }\n        function f6(a) {\n            a = {};\n            var a = [];\n            return a;\n        }\n        console.log(f1(), f2(), f3(), f4(), f5(), f6());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "passes": 2,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    passes: 2,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){return[]}function f2(){var a;a=[];return a}function f3(){return[]}function f4(a){a=[];return a}function f5(a){a=[];return a}function f6(a){a=[];return a}console.log(f1(),f2(),f3(),f4(),f5(),f6());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/issue-782/dont_remove_this_binding_sequence",
+  "corpus": "compress",
+  "name": "dont_remove_this_binding_sequence",
+  "origin": {
+    "file": "test/compress/issue-782.js",
+    "line": 15,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (0, eval)();\n        (0, logThis)();\n        (0, _decorators.logThis)();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(0,eval)();logThis();(0,_decorators.logThis)();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

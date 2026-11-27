@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/issue-976/eval_mangle",
+  "corpus": "compress",
+  "name": "eval_mangle",
+  "origin": {
+    "file": "test/compress/issue-976.js",
+    "line": 89,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1(a, eval, c, d, e) {\n            return a('c') + eval;\n        }\n        function f2(a, b, c, d, e) {\n            return a + eval('c');\n        }\n        function f3(a, eval, c, d, e) {\n            return a + eval('c');\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(n,c,e,a,f){return n(\"c\")+c}function f2(a,b,c,d,e){return a+eval(\"c\")}function f3(a,eval,c,d,e){return a+eval(\"c\")}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2571_1",
+  "corpus": "compress",
+  "name": "issue_2571_1",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 4493,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var b = 1;\n        try {\n            var a = function f0(c) {\n                throw c;\n            }(2);\n            var d = --b + a;\n        } catch (e) {\n        }\n        console.log(b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var b=1;try{var a=function f0(c){throw c}(2);var d=--b+a}catch(e){}console.log(b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

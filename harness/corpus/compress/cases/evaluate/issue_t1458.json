@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_t1458",
+  "corpus": "compress",
+  "name": "issue_t1458",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1964,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        global.z = null\n        var a = z?.j.toString();\n        var b = z?.toString();\n        var c = z?.[0].toString();\n        global.z = [null]\n        var d = z[0]?.toString();\n        global.z = () => null\n        var e = z()?.toString();\n        var f = z()?.x.toString();\n        var g = z()?.x.toString().x;\n        console.log(typeof a, typeof b, typeof c, typeof d, typeof e, typeof f, typeof g);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe": true,
+      "pure_getters": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe: true,\n    pure_getters: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined undefined undefined undefined undefined undefined undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

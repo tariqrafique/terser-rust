@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/block-scope/switch_block_scope_mangler",
+  "corpus": "compress",
+  "name": "switch_block_scope_mangler",
+  "origin": {
+    "file": "test/compress/block-scope.js",
+    "line": 149,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var fn = function(code) {\n            switch (code) {\n                case 1:\n                    let apple = code + 1;\n                    let dog = code + 4;\n                    console.log(apple, dog);\n                    break;\n                case 2:\n                    let banana = code + 2;\n                    console.log(banana);\n                    break;\n                default:\n                    let cat = code + 3;\n                    console.log(cat);\n            }\n        };\n        fn(1);\n        fn(2);\n        fn(3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var fn=function(e){switch(e){case 1:let l=e+1;let o=e+4;console.log(l,o);break;case 2:let n=e+2;console.log(n);break;default:let c=e+3;console.log(c)}};fn(1);fn(2);fn(3);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2 5\n4\n6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

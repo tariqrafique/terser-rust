@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/optional_chaining_private_fields",
+  "corpus": "compress",
+  "name": "optional_chaining_private_fields",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 335,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class A {\n            #opt = undefined;\n            toString() {\n                return this?.#opt ?? \"PASS\";\n            }\n        }\n        console.log(new A().toString())\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class A{#opt=void 0;toString(){return this?.#opt??\"PASS\"}}console.log((new A).toString());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/unicode/keep_quoted_unicode_props_es5",
+  "corpus": "compress",
+  "name": "keep_quoted_unicode_props_es5",
+  "origin": {
+    "file": "test/compress/unicode.js",
+    "line": 19,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log({ \"\\uA7A0\": \"2139\" });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 5
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 5\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log({\"Ꞡ\":\"2139\"});",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

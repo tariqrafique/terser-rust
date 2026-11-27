@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typescript_imports_incompatible_with_estree_test",
+  "corpus": "compress",
+  "name": "typescript_imports_incompatible_with_estree_test",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 330,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import { type 'string' as NamedStringType } from \"module\"\n        import { type default as NamedDefaultType } from \"module\"\n        import A, { type F } from 'module'\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "import{}from\"module\";import{}from\"module\";import A,{}from\"module\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": true,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

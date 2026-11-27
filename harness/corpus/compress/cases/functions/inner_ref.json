@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/functions/inner_ref",
+  "corpus": "compress",
+  "name": "inner_ref",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 417,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function(a) {\n            return function() {\n                return a + 1;\n            }();\n        }(1), function(a) {\n            return function(a) {\n                return a === undefined;\n            }();\n        }(2));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(a){return a+1}(1),function(a){return a===void 0}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2 true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

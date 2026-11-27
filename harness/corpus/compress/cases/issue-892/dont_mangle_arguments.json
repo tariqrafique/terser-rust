@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "id": "compress/issue-892/dont_mangle_arguments",
+  "corpus": "compress",
+  "name": "dont_mangle_arguments",
+  "origin": {
+    "file": "test/compress/issue-892.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(){\n            var arguments = arguments, not_arguments = 9;\n            console.log(not_arguments, arguments);\n        })(5,6,7);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "drop_debugger": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "hoist_vars": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "keep_fnames": false,
+      "loops": true,
+      "negate_iife": false,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    drop_debugger: true,\n    evaluate: true,\n    hoist_funs: true,\n    hoist_vars: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    keep_fnames: false,\n    loops: true,\n    negate_iife: false,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){var arguments=arguments,o=9;console.log(o,arguments)})(5,6,7);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

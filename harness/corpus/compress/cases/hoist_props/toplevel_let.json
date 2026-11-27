@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/hoist_props/toplevel_let",
+  "corpus": "compress",
+  "name": "toplevel_let",
+  "origin": {
+    "file": "test/compress/hoist_props.js",
+    "line": 858,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let a = {\n            b: 1,\n            c: 2\n        };\n        console.log(a.b + a.c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "hoist_props": true,
+      "reduce_vars": true,
+      "toplevel": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    hoist_props: true,\n    reduce_vars: true,\n    toplevel: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let a={b:1,c:2};console.log(a.b+a.c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "3\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

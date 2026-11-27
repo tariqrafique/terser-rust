@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/array_literal_with_spread_2b",
+  "corpus": "compress",
+  "name": "array_literal_with_spread_2b",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1210,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var x = [30, 40];\n        console.log([10, ...[], 20, ...x, 50][\"length\"]);\n        console.log([10, ...[], 20, ...x, 50][0]);\n        console.log([10, ...[], 20, ...x, 50][1]);\n        console.log([10, ...[], 20, ...x, 50][2]);\n        console.log([10, ...[], 20, ...x, 50][3]);\n        console.log([10, ...[], 20, ...x, 50][4]);\n        console.log([10, ...[], 20, ...x, 50][5]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "properties": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    properties: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x=[30,40];console.log([10,20,...x,50][\"length\"]);console.log(10);console.log(20);console.log([10,20,...x,50][2]);console.log([10,20,...x,50][3]);console.log([10,20,...x,50][4]);console.log([10,20,...x,50][5]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "5\n10\n20\n30\n40\n50\nundefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

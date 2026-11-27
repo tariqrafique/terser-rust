@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/shadowed_variable",
+  "corpus": "compress",
+  "name": "shadowed_variable",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 6129,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function test(e) {\n            const result = {};\n            const test = e.test;\n\n            {\n                const e = random(test);\n                result.discretized = e\n            }\n\n            return result;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": true,
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: true,\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function test(e){const result={};const test=e.test;{const e=random(test);result.discretized=e}return result}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

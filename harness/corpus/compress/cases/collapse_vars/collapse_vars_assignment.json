@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_assignment",
+  "corpus": "compress",
+  "name": "collapse_vars_assignment",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 724,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function log(x) { return console.log(x), x; }\n        function f0(c) {\n            var a = 3 / c;\n            return a = a;\n        }\n        function f1(c) {\n            const a = 3 / c;\n            const b = 1 - a;\n            return b;\n        }\n        function f2(c) {\n            var a = 3 / c;\n            var b = a - 7;\n            return log(c = b);\n        }\n        function f3(c) {\n            var a = 3 / c;\n            var b = a - 7;\n            return log(c |= b);\n        }\n        function f4(c) {\n            var a = 3 / c;\n            var b = 2;\n            return log(b += a);\n        }\n        function f5(c) {\n            var b = 2;\n            var a = 3 / c;\n            return log(b += a);\n        }\n        function f6(c) {\n            var b = g();\n            var a = 3 / c;\n            return log(b += a);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function log(x){return console.log(x),x}function f0(c){var a=3/c;return a}function f1(c){return 1-3/c}function f2(c){return log(c=3/c-7)}function f3(c){return log(c|=3/c-7)}function f4(c){var b=2;return log(b+=3/c)}function f5(c){var b=2;return log(b+=3/c)}function f6(c){var b=g();return log(b+=3/c)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

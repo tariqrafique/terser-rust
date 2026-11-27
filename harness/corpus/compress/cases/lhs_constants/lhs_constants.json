@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/lhs_constants/lhs_constants",
+  "corpus": "compress",
+  "name": "lhs_constants",
+  "origin": {
+    "file": "test/compress/lhs_constants.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function test(a, b, c, d) {\n            var x;\n\n            x = a == 42;\n            x = a === 42;\n            x = a != 42;\n            x = a !== 42;\n            x = a * 42;\n            x = a & 42;\n            x = a | 42;\n            x = a ^ 42;\n\n            x = a == 42n;\n            x = a == \"moo\";\n            x = a == null;\n\n            x = a == ~42;\n            x = a == void 0;\n            x = a == +42;\n\n            x = a == /moo/;\n\n            a & 42 & 2;\n            a == 42 & 2;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "lhs_constants": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    lhs_constants: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function test(a,b,c,d){var x;x=42==a;x=42===a;x=42!=a;x=42!==a;x=42*a;x=42&a;x=42|a;x=42^a;x=42n==a;x=\"moo\"==a;x=null==a;x=~42==a;x=void 0==a;x=+42==a;x=a==/moo/;42&a&2;42==a&2}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

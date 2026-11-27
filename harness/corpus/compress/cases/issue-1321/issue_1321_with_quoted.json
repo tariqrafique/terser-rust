@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1321/issue_1321_with_quoted",
+  "corpus": "compress",
+  "name": "issue_1321_with_quoted",
+  "origin": {
+    "file": "test/compress/issue-1321.js",
+    "line": 38,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var x = {};\n        x.foo = 1;\n        x[\"a\"] = 2 * x.foo;\n        console.log(x.foo, x[\"a\"]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": false
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: {\n        keep_quoted: false\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x={};x.o=1;x[\"a\"]=2*x.o;console.log(x.o,x[\"a\"]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

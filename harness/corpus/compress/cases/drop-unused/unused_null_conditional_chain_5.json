@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/unused_null_conditional_chain_5",
+  "corpus": "compress",
+  "name": "unused_null_conditional_chain_5",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3093,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export const obj = {\n            side_effect() {\n                side_effect();\n                return { null: null };\n            }\n        }\n        obj.side_effect().null?.unused;\n        obj.side_effect().null?.[side_effect()];\n        obj.side_effect().null?.unused.i_will_throw;\n        obj.side_effect().null?.call(1);\n        obj.side_effect().null?.(2);\n        obj.side_effect().null?.maybe_call?.(3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": true,
+      "passes": 5
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    defaults: true,\n    passes: 5\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export const obj={side_effect:()=>(side_effect(),{null:null})};obj.side_effect().null,obj.side_effect().null?.[side_effect()],obj.side_effect().null?.unused.i_will_throw,obj.side_effect().null?.call(1),obj.side_effect().null?.(2),obj.side_effect().null?.maybe_call?.(3);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/issue-597/beautify_on_1",
+  "corpus": "compress",
+  "name": "beautify_on_1",
+  "origin": {
+    "file": "test/compress/issue-597.js",
+    "line": 97,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var NaN;\n        console.log(\n            null,\n            undefined,\n            Infinity,\n            NaN,\n            Infinity * undefined,\n            Infinity.toString(),\n            NaN.toString(),\n            (Infinity * undefined).toString()\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": "{\n    beautify: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var NaN;\n\nconsole.log(null, void 0, 1 / 0, NaN, 0 / 0, (1 / 0).toString(), NaN.toString(), (0 / 0).toString());",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

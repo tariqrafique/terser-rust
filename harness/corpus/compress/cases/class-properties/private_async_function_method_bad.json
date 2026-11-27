@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/private_async_function_method_bad",
+  "corpus": "compress",
+  "name": "private_async_function_method_bad",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 668,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "class C { #async function f() {} }",
+  "input_kind": "template",
+  "bad_input": true,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": null,
+  "expect_error": {
+    "name": "SyntaxError",
+    "message": "Unexpected token: keyword (function)"
+  },
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

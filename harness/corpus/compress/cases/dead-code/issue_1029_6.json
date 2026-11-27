@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/issue_1029_6",
+  "corpus": "compress",
+  "name": "issue_1029_6",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 1385,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function fn() {\n            let val\n            return val = function() {\n                setTimeout(() => {\n                    (() => console.log(val))();\n                })\n                return {};\n            }();\n        }\n        fn();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function fn(){let val;return val=function(){setTimeout(()=>{(()=>console.log(val))()});return{}}()}fn();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

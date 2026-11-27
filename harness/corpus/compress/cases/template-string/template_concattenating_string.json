@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/template_concattenating_string",
+  "corpus": "compress",
+  "name": "template_concattenating_string",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 183,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = \"Have a nice \" + `day. ${`day. ` + `day.`}`;\n        var bar = \"Have a nice \" + `${day()}`;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "quote_style": 3
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": "{\n    quote_style: 3\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=\"Have a nice day. day. day.\";var bar=\"Have a nice \"+day();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

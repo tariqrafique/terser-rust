@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue-368/collapse",
+  "corpus": "compress",
+  "name": "collapse",
+  "origin": {
+    "file": "test/compress/issue-368.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var a;\n            a = typeof b === 'function' ? b() : b;\n            return a !== undefined && c();\n        }\n        function f2(b) {\n            var a;\n            b = c();\n            a = typeof b === 'function' ? b() : b;\n            return 'stirng' == typeof a && d();\n        }\n        function f3(c) {\n            var a;\n            a = b(a / 2);\n            if (a < 0) {\n                a++;\n                ++c;\n                return c / 2;\n            }\n        }\n        function f4(c) {\n            var a;\n            a = b(a / 2);\n            if (a < 0) {\n                a++;\n                c++;\n                return c / 2;\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){return(typeof b===\"function\"?b():b)!==void 0&&c()}function f2(b){return\"stirng\"==typeof(typeof(b=c())===\"function\"?b():b)&&d()}function f3(c){var a;if((a=b(a/2))<0)return a++,++c/2}function f4(c){var a;if((a=b(a/2))<0)return a++,++c/2}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

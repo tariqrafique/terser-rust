@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/static_means_execution",
+  "corpus": "compress",
+  "name": "static_means_execution",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 181,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let x = 0;\n        class NoProps { }\n        class WithProps {\n            prop = (x = x === 1 ? \"PASS\" : \"FAIL\")\n        }\n        class WithStaticProps {\n            static prop = (x = x === 0 ? 1 : \"FAIL\")\n        }\n\n        new NoProps();\n        new WithProps();\n        new WithStaticProps();\n\n        console.log(x);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let x=0;class WithStaticProps{static prop=x=x===0?1:\"FAIL\"}new class{};new class{prop=x=x===1?\"PASS\":\"FAIL\"};new WithStaticProps;console.log(x);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

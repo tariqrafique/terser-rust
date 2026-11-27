@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_379",
+  "corpus": "compress",
+  "name": "issue_379",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 7325,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        global.a = ((...args) => ((a1, a2) => a1.foo === a2.foo))(...args)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "global.a=((...args)=>(a1,a2)=>a1.foo===a2.foo)(...args);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/object/issue_2554_2",
+  "corpus": "compress",
+  "name": "issue_2554_2",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 878,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var instance = new class {\n            constructor() {\n                this.x = 2;\n            }\n            [\"method\" + \"\"]() {\n                this.s = \"PASS\";\n            }\n            get [\"g\" + \"\"]() {\n                return this.x;\n            }\n            set [\"s\" + \"\"](value) {\n                this.x = value;\n            }\n        }();\n        instance.method();\n        console.log(instance.g);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "computed_props": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    computed_props: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var instance=new class{constructor(){this.x=2}method(){this.s=\"PASS\"}get g(){return this.x}set s(value){this.x=value}};instance.method();console.log(instance.g);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

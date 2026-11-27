@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/export_statement_mangling",
+  "corpus": "compress",
+  "name": "export_statement_mangling",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 463,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export var foo = 6;\n        export function bar() { }\n        export class Baz { }\n        bar(foo, Baz)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export var foo=6;export function bar(){}export class Baz{}bar(foo,Baz);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

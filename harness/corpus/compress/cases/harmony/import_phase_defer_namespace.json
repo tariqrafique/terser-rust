@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/import_phase_defer_namespace",
+  "corpus": "compress",
+  "name": "import_phase_defer_namespace",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 371,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import defer * as ns from \"./mod.js\";\n        use(ns);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import defer*as ns from\"./mod.js\";use(ns);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

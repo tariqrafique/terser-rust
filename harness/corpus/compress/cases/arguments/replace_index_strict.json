@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/arguments/replace_index_strict",
+  "corpus": "compress",
+  "name": "replace_index_strict",
+  "origin": {
+    "file": "test/compress/arguments.js",
+    "line": 50,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\";\n        (function() {\n            console.log(arguments[1], arguments[\"1\"], arguments[\"foo\"]);\n        })(\"bar\", 42);\n        (function(a, b) {\n            console.log(arguments[1], arguments[\"1\"], arguments[\"foo\"]);\n        })(\"bar\", 42);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arguments": true,
+      "evaluate": true,
+      "properties": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arguments: true,\n    evaluate: true,\n    properties: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";(function(){console.log(arguments[1],arguments[1],arguments.foo)})(\"bar\",42);(function(a,b){console.log(b,b,arguments.foo)})(\"bar\",42);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "42 42 undefined\n42 42 undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/side_effects",
+  "corpus": "compress",
+  "name": "side_effects",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 375,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        `t1`;\n        tag`t2`;\n        `t${3}`;\n        tag`t${4}`;\n        console.log(`\nt${5}`);\n        function f(a) {\n            `t6${a}`;\n            a = `t7${a}` & a;\n            a = `t8${b}` | a;\n            a = f`t9${a}` ^ a;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "tag`t2`;tag`t${4}`;console.log(\"\\nt5\");function f(a){a&=`t7${a}`;a=`t8${b}`|a;a=f`t9${a}`^a}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/sequences/issue_2313",
+  "corpus": "compress",
+  "name": "issue_2313",
+  "origin": {
+    "file": "test/compress/sequences.js",
+    "line": 796,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 0, b = 0;\n        var foo = {\n            get c() {\n                a++;\n                return 42;\n            },\n            set c(c) {\n                b++;\n            },\n            d: function() {\n                this.c++;\n                if (this.c) console.log(a, b);\n            }\n        }\n        foo.d();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=0,b=0;var foo={get c(){return a++,42},set c(c){b++},d:function(){if(this.c++,this.c)console.log(a,b)}};foo.d();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2 1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

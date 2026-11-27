@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/shorthand_keywords",
+  "corpus": "compress",
+  "name": "shorthand_keywords",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1110,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = 0,\n            async = 1,\n            await = 2,\n            implements = 3,\n            package = 4,\n            private = 5,\n            protected = 6,\n            static = 7,\n            yield = 8;\n        console.log({\n            foo: foo,\n            0: 0,\n            NaN: NaN,\n            async: async,\n            await: await,\n            false: false,\n            implements: implements,\n            null: null,\n            package: package,\n            private: private,\n            protected: protected,\n            static: static,\n            this: this,\n            true: true,\n            undefined: undefined,\n            yield: yield,\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=0,async=1,await=2,implements=3,package=4,private=5,protected=6,static=7,yield=8;console.log({foo,0:0,NaN:NaN,async,await,false:false,implements:implements,null:null,package:package,private:private,protected:protected,static:static,this:this,true:true,undefined:void 0,yield});",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

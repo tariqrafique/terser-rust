@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1466/same_variable_in_multiple_forOf_sequences_const",
+  "corpus": "compress",
+  "name": "same_variable_in_multiple_forOf_sequences_const",
+  "origin": {
+    "file": "test/compress/issue-1466.js",
+    "line": 290,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var test = [ \"a\", \"b\", \"c\" ];\n        for (const tmp of test) {\n            console.log(tmp);\n            let dd;\n            dd = [ \"e\", \"f\", \"g\" ];\n            for (const tmp of dd) {\n                console.log(tmp);\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "hoist_funs": true,
+      "dead_code": true,
+      "conditionals": true,
+      "comparisons": true,
+      "evaluate": true,
+      "booleans": true,
+      "loops": true,
+      "unused": true,
+      "keep_fargs": true,
+      "if_return": true,
+      "join_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    hoist_funs: true,\n    dead_code: true,\n    conditionals: true,\n    comparisons: true,\n    evaluate: true,\n    booleans: true,\n    loops: true,\n    unused: true,\n    keep_fargs: true,\n    if_return: true,\n    join_vars: true,\n    sequences: true,\n    side_effects: true,\n    collapse_vars: true\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var test=[\"a\",\"b\",\"c\"];for(const o of test){let t;console.log(o),t=[\"e\",\"f\",\"g\"];for(const o of t)console.log(o)}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

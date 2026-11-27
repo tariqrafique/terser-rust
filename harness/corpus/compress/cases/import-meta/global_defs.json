@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/import-meta/global_defs",
+  "corpus": "compress",
+  "name": "global_defs",
+  "origin": {
+    "file": "test/compress/import-meta.js",
+    "line": 52,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import.meta;\n        leak(import.meta.LIT)\n        leak(import.meta.OBJ)\n        leak(import.meta.FUNC)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "global_defs": {
+        "import.meta.LIT": 123,
+        "@import.meta.OBJ": "{'hello': 123}",
+        "@import.meta.FUNC": "() => false"
+      },
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    global_defs: {\n        \"import.meta.LIT\": 123,\n        \"@import.meta.OBJ\": \"{'hello': 123}\",\n        \"@import.meta.FUNC\": \"() => false\"\n    }\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import.meta;leak(123);leak({hello:123});leak(()=>false);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

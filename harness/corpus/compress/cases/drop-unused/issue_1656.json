@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_1656",
+  "corpus": "compress",
+  "name": "issue_1656",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 941,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for(var a=0;;);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": "{\n    beautify: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for (;;) ;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

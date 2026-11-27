@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/switch/collapse_same_branches_not_in_a_row_ensure_no_evaluate_elad",
+  "corpus": "compress",
+  "name": "collapse_same_branches_not_in_a_row_ensure_no_evaluate_elad",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 2601,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let i = 1;\n        switch (true) {\n            case 3 == i:\n                console.log(i);\n                break;\n            case 5 == i:\n                console.log(5);\n                break;\n            case 1 == i:\n                console.log(i);\n                break;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "switches": true,
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    switches: true,\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let i=1;switch(true){case 3==i:console.log(i);break;case 5==i:console.log(5);break;case 1==i:console.log(i)}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

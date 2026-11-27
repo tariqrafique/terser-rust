@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/rename/function_iife_catch",
+  "corpus": "compress",
+  "name": "function_iife_catch",
+  "origin": {
+    "file": "test/compress/rename.js",
+    "line": 466,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(n) {\n            !function() {\n                try {\n                    throw 0;\n                } catch (n) {\n                    var a = 1;\n                    console.log(n, a);\n                }\n            }();\n        }\n        f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": false
+    },
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    ie8: false\n}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "function f(o){!function(){try{throw 0}catch(c){var o=1;console.log(c,o)}}()}f();",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0 1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

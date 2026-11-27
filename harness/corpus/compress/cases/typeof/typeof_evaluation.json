@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typeof/typeof_evaluation",
+  "corpus": "compress",
+  "name": "typeof_evaluation",
+  "origin": {
+    "file": "test/compress/typeof.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        a = typeof 1;\n        b = typeof 'test';\n        c = typeof [];\n        d = typeof {};\n        e = typeof /./;\n        f = typeof false;\n        g = typeof function(){};\n        h = typeof undefined;\n        i = typeof 1n;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "typeofs": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    typeofs: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a=\"number\";b=\"string\";c=\"object\";d=\"object\";e=typeof/./;f=\"boolean\";g=\"function\";h=\"undefined\";i=\"bigint\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

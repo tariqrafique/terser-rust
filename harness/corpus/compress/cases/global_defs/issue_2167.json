@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/global_defs/issue_2167",
+  "corpus": "compress",
+  "name": "issue_2167",
+  "origin": {
+    "file": "test/compress/global_defs.js",
+    "line": 174,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (isDevMode()) {\n            greetOverlord();\n        }\n        doWork();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "global_defs": {
+        "@isDevMode": "function(){}"
+      },
+      "passes": 2,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    global_defs: {\n        \"@isDevMode\": \"function(){}\"\n    },\n    passes: 2,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "doWork();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

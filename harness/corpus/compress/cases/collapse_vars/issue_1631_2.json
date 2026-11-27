@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_1631_2",
+  "corpus": "compress",
+  "name": "issue_1631_2",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 1921,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 0, b = 1;\n        function f() {\n            a = 2;\n            return 4;\n        }\n        function g() {\n            var t = f();\n            b = a + t;\n            return b;\n        }\n        console.log(g());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "hoist_funs": true,
+      "join_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    hoist_funs: true,\n    join_vars: true,\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){return a=2,4}function g(){var t=f();return b=a+t}var a=0,b=1;console.log(g());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

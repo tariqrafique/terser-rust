@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2436_11",
+  "corpus": "compress",
+  "name": "issue_2436_11",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 4273,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function matrix() {}\n        function isCollection() {}\n        function _randomDataForMatrix() {}\n        function _randomInt() {}\n        function f(arg1, arg2) {\n            if (isCollection(arg1)) {\n                var size = arg1;\n                var max = arg2;\n                var min = 0;\n                var res = _randomDataForMatrix(size.valueOf(), min, max, _randomInt);\n                return size && true === size.isMatrix ? matrix(res) : res;\n            } else {\n                var min = arg1;\n                var max = arg2;\n                return _randomInt(min, max);\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "join_vars": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    join_vars: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function matrix(){}function isCollection(){}function _randomDataForMatrix(){}function _randomInt(){}function f(arg1,arg2){if(isCollection(arg1)){var size=arg1,max=arg2,min=0,res=_randomDataForMatrix(size.valueOf(),min,max,_randomInt);return size&&true===size.isMatrix?matrix(res):res}else{return _randomInt(min=arg1,max=arg2)}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

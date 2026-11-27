@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/keep_raw_content_in_tagged_template",
+  "corpus": "compress",
+  "name": "keep_raw_content_in_tagged_template",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 278,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = tag`\\u0020\\u{20}\\u{00020}\\x20\\40\\040 `;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=tag`\\u0020\\u{20}\\u{00020}\\x20\\40\\040 `;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

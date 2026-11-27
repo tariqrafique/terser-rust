@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/transform/condition_evaluate",
+  "corpus": "compress",
+  "name": "condition_evaluate",
+  "origin": {
+    "file": "test/compress/transform.js",
+    "line": 35,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        while (1 === 2);\n        for (; 1 == true;);\n        if (void 0 == null);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "dead_code": false,
+      "evaluate": true,
+      "loops": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    dead_code: false,\n    evaluate: true,\n    loops: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "while(0);for(;1;);if(1);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

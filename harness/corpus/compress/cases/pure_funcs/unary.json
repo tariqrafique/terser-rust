@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/pure_funcs/unary",
+  "corpus": "compress",
+  "name": "unary",
+  "origin": {
+    "file": "test/compress/pure_funcs.js",
+    "line": 256,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        typeof foo();\n        typeof bar();\n        typeof \"bar\";\n        void foo();\n        void bar();\n        void \"bar\";\n        delete a[foo()];\n        delete a[bar()];\n        delete a[\"bar\"];\n        a[foo()]++;\n        a[bar()]++;\n        a[\"bar\"]++;\n        --a[foo()];\n        --a[bar()];\n        --a[\"bar\"];\n        ~foo();\n        ~bar();\n        ~\"bar\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_funcs": [
+        "foo"
+      ],
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_funcs: [ \"foo\" ],\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "bar();bar();delete a[foo()];delete a[bar()];delete a[\"bar\"];a[foo()]++;a[bar()]++;a[\"bar\"]++;--a[foo()];--a[bar()];--a[\"bar\"];bar();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

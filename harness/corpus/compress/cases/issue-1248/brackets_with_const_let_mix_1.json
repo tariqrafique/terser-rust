@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1248/brackets_with_const_let_mix_1",
+  "corpus": "compress",
+  "name": "brackets_with_const_let_mix_1",
+  "origin": {
+    "file": "test/compress/issue-1248.js",
+    "line": 52,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (a) {\n            let b = b();\n            var c;\n            var d;\n            const e = e();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "if(a){let b=b();var c,d;const e=e()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

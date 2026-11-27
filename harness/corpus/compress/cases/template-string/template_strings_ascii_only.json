@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/template_strings_ascii_only",
+  "corpus": "compress",
+  "name": "template_strings_ascii_only",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 41,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = `foo\n        bar\n        ↂωↂ`;\n        var bar = `\\``;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ascii_only": true,
+      "quote_style": 3
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ascii_only: true,\n    quote_style: 3\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=`foo\\n        bar\\n        \\u2182\\u03c9\\u2182`;var bar=`\\``;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

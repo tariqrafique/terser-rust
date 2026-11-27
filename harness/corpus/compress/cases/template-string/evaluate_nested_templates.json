@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/evaluate_nested_templates",
+  "corpus": "compress",
+  "name": "evaluate_nested_templates",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 221,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = `${`${`${`foo`}`}`}`;\n        var bar = `before ${`innerBefore ${any} innerAfter`} after`;\n        var baz = `1 ${2 + `3 ${any} 4` + 5} 6`;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "quote_style": 0
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": "{\n    quote_style: 0\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=\"foo\";var bar=`before innerBefore ${any} innerAfter after`;var baz=`1 23 ${any} 45 6`;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

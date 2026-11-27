@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/const/issue_1194",
+  "corpus": "compress",
+  "name": "issue_1194",
+  "origin": {
+    "file": "test/compress/const.js",
+    "line": 34,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {const a = \"X\"; return a + a;}\n        function f2() {const aa = \"X\"; return aa + aa;}\n        function f3() {const aaa = \"X\"; return aaa + aaa;}\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "booleans": true,
+      "comparisons": true,
+      "dead_code": true,
+      "conditionals": true,
+      "side_effects": true,
+      "unused": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "sequences": false,
+      "collapse_vars": false,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    booleans: true,\n    comparisons: true,\n    dead_code: true,\n    conditionals: true,\n    side_effects: true,\n    unused: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    sequences: false,\n    collapse_vars: false,\n    reduce_funcs: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){return\"XX\"}function f2(){return\"XX\"}function f3(){return\"XX\"}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

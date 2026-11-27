@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typescript_exports",
+  "corpus": "compress",
+  "name": "typescript_exports",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 345,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // fully typescript exports\n        export type X = 1\n        export interface Interface {}\n        export type { X }\n        export type { X as Y }\n        export type { X as default }\n        export type { X as 'stringly' }\n\n        // partially typescript exports\n        export { Value, type X }\n        export { OtherValue, type X as Y }\n        export { OtherValue, type X as default }\n        export { OtherValue, type X as 'stringly' }\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "export{Value};export{OtherValue};export{OtherValue};export{OtherValue};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

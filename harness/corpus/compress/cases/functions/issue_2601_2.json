@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2601_2",
+  "corpus": "compress",
+  "name": "issue_2601_2",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 845,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = \"FAIL\";\n        (function() {\n            function f(b) {\n                function g(b) {\n                    b && b();\n                }\n                g();\n                (function() {\n                    b && (a = \"PASS\");\n                })();\n            }\n            f(\"foo\");\n        })();\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "inline": true,
+      "passes": 3,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    inline: true,\n    passes: 3,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "var a=\"FAIL\";a=\"PASS\",console.log(a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

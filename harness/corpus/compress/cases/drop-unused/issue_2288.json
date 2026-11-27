@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_2288",
+  "corpus": "compress",
+  "name": "issue_2288",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1617,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(o) {\n            for (var j = o.a, i = 0; i < 0; i++);\n            for (var i = 0; i < 0; i++);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true\n}",
+    "mangle": null,
+    "format": "{\n    beautify: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(o) {\n    o.a;\n    for (var i = 0; i < 0; i++) ;\n    for (i = 0; i < 0; i++) ;\n}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

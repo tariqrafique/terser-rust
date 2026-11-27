@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/async/async_inline",
+  "corpus": "compress",
+  "name": "async_inline",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 145,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (async function(){ return await 3; })();\n        (async function(x){ await console.log(x); })(4);\n\n        function invoke(x, y) { return x(y); }\n        invoke( async function(){ return await 1; } );\n        invoke( async function(x){ await console.log(x); }, 2);\n\n        function top() { console.log(\"top\"); }\n        top();\n\n        async function async_top() { console.log(\"async_top\"); }\n        async_top();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "conditionals": true,
+      "evaluate": true,
+      "inline": true,
+      "negate_iife": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    conditionals: true,\n    evaluate: true,\n    inline: true,\n    negate_iife: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!async function(){await 3}();!async function(){await console.log(4)}();function invoke(x,y){return x(y)}invoke(async function(){return await 1});invoke(async function(x){await console.log(x)},2);console.log(\"top\");!async function(){console.log(\"async_top\")}();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "4\n2\ntop\nasync_top\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

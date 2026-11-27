@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_1753_disable",
+  "corpus": "compress",
+  "name": "issue_1753_disable",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 681,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class SomeClass {\n            constructor(props) {\n                let pickedSets = [];\n                for (let i = 0; i < 6; i++) {\n                    pickedSets.push({\n                        mainDrawNumbers: [],\n                        extraDrawNumbers: []\n                    });\n                }\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "safari10": false
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    safari10: false\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class SomeClass{constructor(r){let s=[];for(let r=0;r<6;r++)s.push({mainDrawNumbers:[],extraDrawNumbers:[]})}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

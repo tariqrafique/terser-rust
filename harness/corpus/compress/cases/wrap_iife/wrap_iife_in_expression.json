@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/wrap_iife/wrap_iife_in_expression",
+  "corpus": "compress",
+  "name": "wrap_iife_in_expression",
+  "origin": {
+    "file": "test/compress/wrap_iife.js",
+    "line": 18,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        foo = (function () {\n            return bar();\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "negate_iife": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "wrap_iife": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    negate_iife: false\n}",
+    "mangle": null,
+    "format": "{\n    wrap_iife: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "foo=(function(){return bar()})();",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_3110_3",
+  "corpus": "compress",
+  "name": "issue_3110_3",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6500,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function foo() {\n                return isDev ? \"foo\" : \"bar\";\n            }\n            console.log(foo());\n            var isDev = true;\n            var obj = {\n                foo: foo\n            };\n            console.log(obj.foo());\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": true,
+      "inline": true,
+      "properties": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: true,\n    inline: true,\n    properties: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){function foo(){return isDev?\"foo\":\"bar\"}console.log(foo());var isDev=true;var obj={foo:foo};console.log(obj.foo())})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "bar\nfoo\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

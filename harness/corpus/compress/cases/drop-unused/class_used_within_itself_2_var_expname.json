@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/class_used_within_itself_2_var_expname",
+  "corpus": "compress",
+  "name": "class_used_within_itself_2_var_expname",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3713,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        globalThis.useThis = function(obj) {\n            obj.prototype.method()\n        }\n\n        const List = ['P', 'A', 'S', 'S'];\n        var Class = class Class {\n            method(t) {\n                List.forEach(letter => console.log(letter));\n            }\n            static prop = useThis(Class);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "globalThis.useThis=function(obj){obj.prototype.method()};const List=[\"P\",\"A\",\"S\",\"S\"];(class Class{method(t){List.forEach(letter=>console.log(letter))}static prop=useThis(Class)});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "P\nA\nS\nS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

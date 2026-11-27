@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/private_properties_can_be_mangled",
+  "corpus": "compress",
+  "name": "private_properties_can_be_mangled",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 357,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class X {\n            aaaaaa = \"P\"\n            #aaaaaa = \"A\"\n            #bbbbbb() {\n                return \"SS\"\n            }\n            get #cccccc() {}\n            set #dddddd(v) {}\n            log() {\n                console.log(this.aaaaaa + this.#aaaaaa + this.#bbbbbb() + this.#cccccc + this.#dddddd)\n            }\n        }\n\n        new X().log()\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class X{t=\"P\";#a=\"A\";#s(){return\"SS\"}get#c(){}set#t(a){}log(){console.log(this.t+this.#a+this.#s()+this.#c+this.#t)}}(new X).log();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

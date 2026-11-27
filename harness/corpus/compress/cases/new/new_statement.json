@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/new/new_statement",
+  "corpus": "compress",
+  "name": "new_statement",
+  "origin": {
+    "file": "test/compress/new.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        new x(1);\n        new x(1)(2);\n        new x(1)(2)(3);\n        new new x(1);\n        new new x(1)(2);\n        new (new x(1))(2);\n        (new new x(1))(2);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "new x(1);new x(1)(2);new x(1)(2)(3);new new x(1);new new x(1)(2);new new x(1)(2);(new new x(1))(2);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

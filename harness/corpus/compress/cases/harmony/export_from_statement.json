@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/export_from_statement",
+  "corpus": "compress",
+  "name": "export_from_statement",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 311,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export * from \"a.js\";\n        export {A} from \"a.js\";\n        export {A, B} from \"a.js\";\n        export {C};\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export*from\"a.js\";export{A}from\"a.js\";export{A,B}from\"a.js\";export{C};",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

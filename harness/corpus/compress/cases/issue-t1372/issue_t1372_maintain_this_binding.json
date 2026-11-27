@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue-t1372/issue_t1372_maintain_this_binding",
+  "corpus": "compress",
+  "name": "issue_t1372_maintain_this_binding",
+  "origin": {
+    "file": "test/compress/issue-t1372.js",
+    "line": 2,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(o) {\n            console.log((0, o.f)(\"PASS\"), (0, o?.f)(\"PASS\"));\n        })({\n            a: \"FAIL\",\n            f(b) {\n                return this.a || b;\n            },\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(o){console.log((0,o.f)(\"PASS\"),(0,o?.f)(\"PASS\"))})({a:\"FAIL\",f(b){return this.a||b}});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

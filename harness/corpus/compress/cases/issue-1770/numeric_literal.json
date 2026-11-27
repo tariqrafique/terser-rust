@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1770/numeric_literal",
+  "corpus": "compress",
+  "name": "numeric_literal",
+  "origin": {
+    "file": "test/compress/issue-1770.js",
+    "line": 58,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj = {\n            0: 0,\n            \"-0\": 1,\n            42: 2,\n            42: 3,\n            37: 4,\n            o: 5,\n            1e42: 6,\n            j: 7,\n            1e42: 8\n        };\n\n        console.log(obj[-0], obj[-\"\"], obj[\"-0\"]);\n\n        console.log(obj[42], obj[\"42\"]);\n\n        console.log(obj[37], obj[\"o\"], obj[37], obj[\"37\"]);\n\n        console.log(obj[1e42], obj[\"j\"], obj[\"1e+42\"]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": true
+    },
+    "format": {
+      "beautify": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: true\n}",
+    "format": "{\n    beautify: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0 0 1\n3 3\n4 5 4 4\n8 7 8\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

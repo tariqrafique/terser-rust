@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_ternary_and_nullish_coalescing_operator",
+  "corpus": "compress",
+  "name": "issue_ternary_and_nullish_coalescing_operator",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 802,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        globalThis.a = null\n        globalThis.b = 'not null'\n\n        ;(a == null ? null : a.x) ?? b ? console.log('PASS') : console.log('FAIL');\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

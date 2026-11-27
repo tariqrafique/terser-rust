@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/object/property_with_unprintable",
+  "corpus": "compress",
+  "name": "property_with_unprintable",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 488,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = {\n            \"\\x00\\x01\": \"foo\",\n            get \"\\x00\\x01\"() {\n                return \"bar\";\n            },\n            set \"\\x00\\x01\"(foo) {\n                save(foo);\n            },\n            *\"\\x00\\x01\"() {\n                return \"foobar\";\n            }\n        }\n        class bar {\n            get \"\\x00\\x01\"() {\n                return \"bar\"\n            }\n            set \"\\x00\\x01\"(foo) {\n                save(foo);\n            }\n            *\"\\x00\\x01\"() {\n                return \"foobar\";\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo={\"\\0\u0001\":\"foo\",get\"\\0\u0001\"(){return\"bar\"},set\"\\0\u0001\"(foo){save(foo)},*\"\\0\u0001\"(){return\"foobar\"}};class bar{get\"\\0\u0001\"(){return\"bar\"}set\"\\0\u0001\"(foo){save(foo)}*\"\\0\u0001\"(){return\"foobar\"}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

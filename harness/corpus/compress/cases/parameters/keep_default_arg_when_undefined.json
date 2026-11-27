@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/keep_default_arg_when_undefined",
+  "corpus": "compress",
+  "name": "keep_default_arg_when_undefined",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 187,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function x(a = void 0) { }\n        console.log(x.length)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "keep_fargs": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    keep_fargs: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function x(a=void 0){}console.log(x.length);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

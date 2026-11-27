@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue-281/negate_iife_3_off",
+  "corpus": "compress",
+  "name": "negate_iife_3_off",
+  "origin": {
+    "file": "test/compress/issue-281.js",
+    "line": 125,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(){ return t })() ? console.log(true) : console.log(false);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "expression": true,
+      "inline": true,
+      "negate_iife": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    expression: true,\n    inline: true,\n    negate_iife: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "t?console.log(true):console.log(false);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

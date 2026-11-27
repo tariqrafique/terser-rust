@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/typeof/typeof_defun_1",
+  "corpus": "compress",
+  "name": "typeof_defun_1",
+  "origin": {
+    "file": "test/compress/typeof.js",
+    "line": 67,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            console.log(\"YES\");\n        }\n        function g() {\n            h = 42;\n            console.log(\"NOPE\");\n        }\n        function h() {\n            console.log(\"YUP\");\n        }\n        g = 42;\n        \"function\" == typeof f && f();\n        \"function\" == typeof g && g();\n        \"function\" == typeof h && h();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "inline": true,
+      "passes": 2,
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "typeofs": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    inline: true,\n    passes: 2,\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true,\n    typeofs: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function h(){console.log(\"YUP\")}console.log(\"YES\");h();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "YES\nYUP\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

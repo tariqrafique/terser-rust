@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/conditional_nested_3",
+  "corpus": "compress",
+  "name": "conditional_nested_3",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6763,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var n = 2, c = 0;\n        (function f(a) {\n            0 < n-- && g(a = 1);\n            function g() {\n                a && c++;\n            }\n            g();\n            0 < n-- && f();\n        })();\n        console.log(c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var n=2,c=0;(function f(a){0<n--&&g(a=1);function g(){a&&c++}g();0<n--&&f()})();console.log(c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

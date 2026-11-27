@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/regexp_property_eval",
+  "corpus": "compress",
+  "name": "regexp_property_eval",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 2039,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(/abc/i.source);\n        console.log(/abc/i.flags);\n\n        console.log(/abc/i.dotAll);\n        console.log(/abc/i.global);\n        console.log(/abc/i.ignoreCase);\n        console.log(/abc/i.multiline);\n        console.log(/abc/i.sticky);\n        console.log(/abc/i.unicode);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"abc\");console.log(\"i\");console.log(false);console.log(false);console.log(true);console.log(false);console.log(false);console.log(false);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

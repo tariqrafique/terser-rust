@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_2105_1",
+  "corpus": "compress",
+  "name": "issue_2105_1",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1365,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        !function(factory) {\n            factory();\n        }( function() {\n            return function(fn) {\n                fn()().prop();\n            }( function() {\n                function bar() {\n                    var quux = function() {\n                        console.log(\"PASS\");\n                    }, foo = function() {\n                        console.log;\n                        quux();\n                    };\n                    return { prop: foo };\n                }\n                return bar;\n            } );\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "inline": true,
+      "passes": 3,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    inline: true,\n    passes: 3,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "({prop:function(){console.log;console.log(\"PASS\")}}).prop();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

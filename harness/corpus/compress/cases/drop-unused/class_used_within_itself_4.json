@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/class_used_within_itself_4",
+  "corpus": "compress",
+  "name": "class_used_within_itself_4",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3347,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let List = [1];\n        let c;\n        globalThis.n = t => new t(1);\n        (e = [\n            ((r = 'x-button'),\n            (t, e) => {\n                let { addInitializer: n } = e;\n                return n(function () {\n                    customElements.define(r, this);\n                });\n            }),\n        ]),\n            new (class {\n                static #t = (() => {\n                    class r {\n                        static #t = (c = n(this, [], e));\n                        constructor(t) {\n                            this.ok = List.includes(t);\n                            if (this.ok) {\n                                console.log(\"PASS\");\n                            }\n                        }\n                    }\n                })();\n                x = 1;\n                constructor() { }\n            })();\n\n        console.log(c.ok);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\ntrue\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=20.0.0",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

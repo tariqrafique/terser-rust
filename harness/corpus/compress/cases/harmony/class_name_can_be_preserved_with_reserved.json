@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/class_name_can_be_preserved_with_reserved",
+  "corpus": "compress",
+  "name": "class_name_can_be_preserved_with_reserved",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 978,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function x() {\n            class Foo {}\n            Foo.bar;\n            class Bar {}\n            Bar.foo;\n        }\n        function y() {\n            var Foo = class Foo {};\n            Foo.bar;\n            var Bar = class Bar {};\n            Bar.bar;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "reserved": [
+        "Foo"
+      ]
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    reserved: [ \"Foo\" ]\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function x(){class Foo{}Foo.bar;class a{}a.foo}function y(){var Foo=class Foo{};Foo.bar;var a=class a{};a.bar}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

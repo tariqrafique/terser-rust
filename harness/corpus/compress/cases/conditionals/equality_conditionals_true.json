@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/equality_conditionals_true",
+  "corpus": "compress",
+  "name": "equality_conditionals_true",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 927,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a, b, c) {\n            console.log(\n                a == (b ? a : a),\n                a == (b ? a : c),\n                a != (b ? a : a),\n                a != (b ? a : c),\n                a === (b ? a : a),\n                a === (b ? a : c),\n                a !== (b ? a : a),\n                a !== (b ? a : c)\n            );\n        }\n        f(0, 0, 0);\n        f(0, true, 0);\n        f(1, 2, 3);\n        f(1, null, 3);\n        f(NaN);\n        f(NaN, \"foo\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a,b,c){console.log((b,a==a),a==(b?a:c),(b,a!=a),a!=(b?a:c),(b,a===a),a===(b?a:c),(b,a!==a),a!==(b?a:c))}f(0,0,0),f(0,true,0),f(1,2,3),f(1,null,3),f(NaN),f(NaN,\"foo\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

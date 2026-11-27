@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/inline/dont_inline_funcs_into_default_param",
+  "corpus": "compress",
+  "name": "dont_inline_funcs_into_default_param",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 446,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\"\n\n        const getData = (val) => {\n            return {val}\n        }\n\n        const print = function (data = getData(id(\"PASS\"))) {\n            console.log(data.val);\n        }\n\n        print();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "inline": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true,\n    inline: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

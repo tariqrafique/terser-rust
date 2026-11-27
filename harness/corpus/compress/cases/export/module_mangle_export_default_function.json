@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/export/module_mangle_export_default_function",
+  "corpus": "compress",
+  "name": "module_mangle_export_default_function",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 769,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export default function foo() {\n            return 1;\n        }\n        export function bar() {\n            return 2;\n        }\n        function qux() {\n            return 3;\n        }\n        console.log(foo(), bar(), qux());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "module": true,
+      "passes": 3
+    },
+    "mangle": {
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    module: true,\n    passes: 3\n}",
+    "mangle": "{\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export default function r(){return 1}export function bar(){return 2}console.log(r(),bar(),3);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

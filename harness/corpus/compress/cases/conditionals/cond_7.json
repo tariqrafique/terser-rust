@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/cond_7",
+  "corpus": "compress",
+  "name": "cond_7",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 279,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var x, y, z, a, b;\n        // compress these\n        if (y) {\n            x = 1+1;\n        } else {\n            x = 2;\n        }\n\n        if (y) {\n            x = 1+1;\n        } else if (z) {\n            x = 2;\n        } else {\n            x = 3-1;\n        }\n\n        x = y ? 'foo' : 'fo'+'o';\n\n        x = y ? 'foo' : y ? 'foo' : 'fo'+'o';\n\n        // Compress conditions that have side effects\n        if (condition()) {\n            x = 10+10;\n        } else {\n            x = 20;\n        }\n\n        if (z) {\n            x = 'fuji';\n        } else if (condition()) {\n            x = 'fu'+'ji';\n        } else {\n            x = 'fuji';\n        }\n\n        x = condition() ? 'foobar' : 'foo'+'bar';\n\n        // don't compress these\n        x = y ? a : b;\n\n        x = y ? 'foo' : 'fo';\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x,y,z,a,b;x=2;x=2;x=\"foo\";x=\"foo\";x=(condition(),20);x=(z||condition(),\"fuji\");x=(condition(),\"foobar\");x=y?a:b;x=y?\"foo\":\"fo\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

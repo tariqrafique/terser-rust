@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/numbers/compress_numbers",
+  "corpus": "compress",
+  "name": "compress_numbers",
+  "origin": {
+    "file": "test/compress/numbers.js",
+    "line": 208,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const exp = 1000;\n        const Exp = 1000000000000;\n        const negativeExp = 0.00000001;\n        const huge = 1000000000001;\n        const big = 100000000001;\n        const fractional = 100.2300200;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const exp=1e3;const Exp=1e12;const negativeExp=1e-8;const huge=0xe8d4a51001;const big=100000000001;const fractional=100.23002;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

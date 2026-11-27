@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/mangleprops-mangleprop-annotation/mangleprop_annotation_and_key",
+  "corpus": "compress",
+  "name": "mangleprop_annotation_and_key",
+  "origin": {
+    "file": "test/compress/mangleprops-mangleprop-annotation.js",
+    "line": 146,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const object = {\n            /**@__MANGLE_PROP__*/someprop: \"ppppppppp\",\n            o: 'o',\n        }\n\n        \"someprop\" in object;\n        /*@__KEY__*/\"someprop\" in object;\n        object.hasOwnProperty(\"someprop\");\n        object.hasOwnProperty(/*@__KEY__*/\"someprop\");\n\n        console.log(Object.values(object));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "only_annotated": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true\n}",
+    "mangle": "{\n    properties: {\n        only_annotated: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const object={p:\"ppppppppp\",o:\"o\"};\"p\"in object;\"p\"in object;object.hasOwnProperty(\"someprop\");object.hasOwnProperty(\"p\");console.log(Object.values(object));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

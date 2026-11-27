@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/typeof/duplicate_lambda_arg_name",
+  "corpus": "compress",
+  "name": "duplicate_lambda_arg_name",
+  "origin": {
+    "file": "test/compress/typeof.js",
+    "line": 159,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function long_name(long_name) {\n            return typeof long_name;\n        }());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_vars": true,
+      "typeofs": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_vars: true,\n    typeofs: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function long_name(long_name){return typeof long_name}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

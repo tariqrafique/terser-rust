@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_side_effects_1",
+  "corpus": "compress",
+  "name": "collapse_vars_side_effects_1",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            var e = 7;\n            var s = \"abcdef\";\n            var i = 2;\n            var log = console.log.bind(console);\n            var x = s.charAt(i++);\n            var y = s.charAt(i++);\n            var z = s.charAt(i++);\n            log(x, y, z, e);\n        }\n        function f2() {\n            var e = 7;\n            var log = console.log.bind(console);\n            var s = \"abcdef\";\n            var i = 2;\n            var x = s.charAt(i++);\n            var y = s.charAt(i++);\n            var z = s.charAt(i++);\n            log(x, i, y, z, e);\n        }\n        function f3() {\n            var e = 7;\n            var s = \"abcdef\";\n            var i = 2;\n            var log = console.log.bind(console);\n            var x = s.charAt(i++);\n            var y = s.charAt(i++);\n            var z = s.charAt(i++);\n            log(x, z, y, e);\n        }\n        function f4() {\n            var log = console.log.bind(console),\n                i = 10,\n                x = i += 2,\n                y = i += 3,\n                z = i += 4;\n            log(x, z, y, i);\n        }\n        f1(), f2(), f3(), f4();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){var s=\"abcdef\",i=2;console.log.bind(console)(s.charAt(i++),s.charAt(i++),s.charAt(i++),7)}function f2(){var s=\"abcdef\",i=2;console.log.bind(console)(s.charAt(i++),5,s.charAt(i++),s.charAt(i++),7)}function f3(){var s=\"abcdef\",i=2,log=console.log.bind(console),x=s.charAt(i++),y=s.charAt(i++);log(x,s.charAt(i++),y,7)}function f4(){var i=10,x=i+=2,y=i+=3;console.log.bind(console)(x,i+=4,y,19)}f1(),f2(),f3(),f4();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

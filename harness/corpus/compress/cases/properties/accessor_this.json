@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/properties/accessor_this",
+  "corpus": "compress",
+  "name": "accessor_this",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 732,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 1;\n        var b = {\n            get this() {\n                return a;\n            },\n            set this(c) {\n                a = c;\n            }\n        };\n        console.log(b.this, b.this = 2, b.this);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=1;var b={get this(){return a},set this(c){a=c}};console.log(b.this,b.this=2,b.this);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 2 2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

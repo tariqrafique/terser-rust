@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/class_used_within_itself_8",
+  "corpus": "compress",
+  "name": "class_used_within_itself_8",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3456,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var RippleState = /* @__PURE__ */ ((RippleState2) => leak(RippleState2))(RippleState)\n\n        class RippleRenderer {\n            static prop = (this.sideEffect = sideEffect())\n\n            _onPointerUp = RippleState.VISIBLE\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "side_effects": true,
+      "passes": 2,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true,\n    side_effects: true,\n    passes: 2\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var RippleState=(RippleState2=>leak(RippleState2))(RippleState);class RippleRenderer{static prop=this.sideEffect=sideEffect();_onPointerUp=RippleState.VISIBLE}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=20.0.0",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

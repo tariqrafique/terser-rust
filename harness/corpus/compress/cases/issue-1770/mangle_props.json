@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1770/mangle_props",
+  "corpus": "compress",
+  "name": "mangle_props",
+  "origin": {
+    "file": "test/compress/issue-1770.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj = {\n            undefined: 1,\n            NaN: 2,\n            Infinity: 3,\n            \"-Infinity\": 4,\n            null: 5,\n        };\n        console.log(\n            obj[void 0],\n            obj[undefined],\n            obj[\"undefined\"],\n            obj[0/0],\n            obj[NaN],\n            obj[\"NaN\"],\n            obj[1/0],\n            obj[Infinity],\n            obj[\"Infinity\"],\n            obj[-1/0],\n            obj[-Infinity],\n            obj[\"-Infinity\"],\n            obj[null],\n            obj[\"null\"]\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj={undefined:1,NaN:2,Infinity:3,\"-Infinity\":4,null:5};console.log(obj[void 0],obj[void 0],obj[\"undefined\"],obj[0/0],obj[NaN],obj[\"NaN\"],obj[1/0],obj[1/0],obj[\"Infinity\"],obj[-1/0],obj[-1/0],obj[\"-Infinity\"],obj[null],obj[\"null\"]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 1 1 2 2 2 3 3 3 4 4 4 5 5\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

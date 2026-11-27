@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/functions/scope_funs_strict",
+  "corpus": "compress",
+  "name": "scope_funs_strict",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 255,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        'use strict';\n        function x() {\n            if (true) {\n                let name1 = \"nnnnffff\"\n                function name2() {}\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";function x(){if(true){let n=\"nnnnffff\";function f(){}}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

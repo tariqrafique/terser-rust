@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/pure_getters/issue_2938_2",
+  "corpus": "compress",
+  "name": "issue_2938_2",
+  "origin": {
+    "file": "test/compress/pure_getters.js",
+    "line": 872,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var Parser = function Parser() {};\n        var p = Parser.prototype;\n        p.initialContext = function initialContext() {\n            console.log(\"PASS\");\n        };\n        p.braceIsBlock = function() {};\n        (new Parser).initialContext();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var Parser=function(){};var p=Parser.prototype;p.initialContext=function(){console.log(\"PASS\")};p.braceIsBlock=function(){};(new Parser).initialContext();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

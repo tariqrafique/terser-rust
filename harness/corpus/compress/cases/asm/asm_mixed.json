@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "id": "compress/asm/asm_mixed",
+  "corpus": "compress",
+  "name": "asm_mixed",
+  "origin": {
+    "file": "test/compress/asm.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // adapted from http://asmjs.org/spec/latest/\n        function asm_GeometricMean(stdlib, foreign, buffer) {\n          \"use asm\";\n          var exp = stdlib.Math.exp;\n          var log = stdlib.Math.log;\n          var values = new stdlib.Float64Array(buffer);\n          function logSum(start, end) {\n            start = start|0;\n            end = end|0;\n            var sum = 0.0, p = 0, q = 0;\n            // asm.js forces byte addressing of the heap by requiring shifting by 3\n            for (p = start << 3, q = end << 3; (p|0) < (q|0); p = (p + 8)|0) {\n              sum = sum + +log(values[p>>3]);\n            }\n            return +sum;\n          }\n          function geometricMean(start, end) {\n            start = start|0;\n            end = end|0;\n            return +exp(+logSum(start, end) / +((end - start)|0));\n          }\n          return { geometricMean: geometricMean };\n        }\n        function no_asm_GeometricMean(stdlib, foreign, buffer) {\n          var exp = stdlib.Math.exp;\n          var log = stdlib.Math.log;\n          var values = new stdlib.Float64Array(buffer);\n          function logSum(start, end) {\n            start = start|0;\n            end = end|0;\n            var sum = 0.0, p = 0, q = 0;\n            // asm.js forces byte addressing of the heap by requiring shifting by 3\n            for (p = start << 3, q = end << 3; (p|0) < (q|0); p = (p + 8)|0) {\n              sum = sum + +log(values[p>>3]);\n            }\n            return +sum;\n          }\n          function geometricMean(start, end) {\n            start = start|0;\n            end = end|0;\n            return +exp(+logSum(start, end) / +((end - start)|0));\n          }\n          return { geometricMean: geometricMean };\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "drop_debugger": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "hoist_vars": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "keep_fnames": false,
+      "lhs_constants": true,
+      "loops": true,
+      "negate_iife": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    drop_debugger: true,\n    evaluate: true,\n    hoist_funs: true,\n    hoist_vars: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    keep_fnames: false,\n    lhs_constants: true,\n    loops: true,\n    negate_iife: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function asm_GeometricMean(stdlib,foreign,buffer){\"use asm\";var exp=stdlib.Math.exp;var log=stdlib.Math.log;var values=new stdlib.Float64Array(buffer);function logSum(start,end){start=start|0;end=end|0;var sum=0.0,p=0,q=0;for(p=start<<3,q=end<<3;(p|0)<(q|0);p=p+8|0){sum=sum+ +log(values[p>>3])}return+sum}function geometricMean(start,end){start=start|0;end=end|0;return+exp(+logSum(start,end)/+(end-start|0))}return{geometricMean:geometricMean}}function no_asm_GeometricMean(stdlib,foreign,buffer){function logSum(start,end){start|=0,end|=0;var sum=0,p=0,q=0;for(p=start<<3,q=end<<3;(0|p)<(0|q);p=p+8|0)sum+=+log(values[p>>3]);return+sum}function geometricMean(start,end){return start|=0,end|=0,+exp(+logSum(start,end)/+(end-start|0))}var exp=stdlib.Math.exp,log=stdlib.Math.log,values=new stdlib.Float64Array(buffer);return{geometricMean:geometricMean}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

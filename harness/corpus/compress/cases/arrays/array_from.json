@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/arrays/array_from",
+  "corpus": "compress",
+  "name": "array_from",
+  "origin": {
+    "file": "test/compress/arrays.js",
+    "line": 318,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = Array.from([1]);\n        var b = Array.from([1], a => a);\n        var c = Array.from(1);\n        var d = Array.from(\"String\");\n        var e = Array.from({  });\n        console.log(a[0], b[0], c, d[3], e);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=[1];var b=Array.from([1],a=>a);var c=Array.from(1);var d=Array.from(\"String\");var e=Array.from({});console.log(a[0],b[0],c,d[3],e);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 1 [] i []\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/properties/issue_2321",
+  "corpus": "compress",
+  "name": "issue_2321",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1045,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var f = {\n            foo: function(){ console.log(\"foo\") },\n            bar() { console.log(\"bar\") }\n        };\n        var foo = new f.foo();\n        var bar =     f.bar();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ecma": 2015,
+      "unsafe_methods": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ecma: 2015,\n    unsafe_methods: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var f={foo:function(){console.log(\"foo\")},bar(){console.log(\"bar\")}};var foo=new f.foo;var bar=f.bar();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "foo\nbar\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

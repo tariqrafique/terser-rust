@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/destructuring_arguments_2",
+  "corpus": "compress",
+  "name": "destructuring_arguments_2",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 116,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function([]) {});\n        (function({}) {});\n        (function([,,,,,]) {});\n        (function ([a, {b: c}]) {});\n        (function ([...args]) {});\n        (function ({x,}) {});\n        class a { *method({ [thrower()]: x } = {}) {}};\n        (function(a, b, c, d, [{e: [...f]}]){})(1, 2, 3, 4, [{e: [1, 2, 3]}]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function([]){});(function({}){});(function([,,,,,]){});(function([a,{b:c}]){});(function([...args]){});(function({x:x}){});class a{*method({[thrower()]:x}={}){}}(function(a,b,c,d,[{e:[...f]}]){})(1,2,3,4,[{e:[1,2,3]}]);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/unused_destructuring_decl_6",
+  "corpus": "compress",
+  "name": "unused_destructuring_decl_6",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 926,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const { a, b: c, ...d } = { b: 7 };\n        let { e, f: g, ...h } = { e: 8 };\n        var { w, x: y, ...z } = { w: 4, x: 5, y: 6 };\n        console.log(c, e, z.y);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const{a:a,b:c,...d}={b:7};let{e:e,f:g,...h}={e:8};var{w:w,x:y,...z}={w:4,x:5,y:6};console.log(c,e,z.y);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "7 8 6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

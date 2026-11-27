@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2101",
+  "corpus": "compress",
+  "name": "issue_2101",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 394,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        a = {};\n        console.log(function() {\n            return function() {\n                return this.a;\n            }();\n        }() === function() {\n            return a;\n        }());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a={};console.log(function(){return this.a}()===a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

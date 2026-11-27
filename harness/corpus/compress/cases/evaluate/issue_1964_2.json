@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_1964_2",
+  "corpus": "compress",
+  "name": "issue_1964_2",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1412,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            var long_variable_name = /\\s/;\n            console.log(long_variable_name.source);\n            return \"a b c\".split(long_variable_name)[1];\n        }\n        console.log(f());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unsafe_regexp": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    unsafe_regexp: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){console.log(/\\s/.source);return\"a b c\".split(/\\s/)[1]}console.log(f());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "\\s\nb\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

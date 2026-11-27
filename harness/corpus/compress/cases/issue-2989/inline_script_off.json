@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/issue-2989/inline_script_off",
+  "corpus": "compress",
+  "name": "inline_script_off",
+  "origin": {
+    "file": "test/compress/issue-2989.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(\"</sCrIpT>\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "inline_script": false
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    inline_script: false\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"</sCrIpT>\");",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "</sCrIpT>\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

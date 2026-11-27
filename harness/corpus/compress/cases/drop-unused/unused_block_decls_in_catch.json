@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/unused_block_decls_in_catch",
+  "corpus": "compress",
+  "name": "unused_block_decls_in_catch",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 187,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            try {\n                foo();\n            } catch(ex) {\n                let x = 10;\n                const y = 10;\n                class Zee {};\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){try{foo()}catch(ex){}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/throw_assignment",
+  "corpus": "compress",
+  "name": "throw_assignment",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 822,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            throw a = x();\n        }\n        function f2(a) {\n            throw a = x();\n        }\n        function f3() {\n            var a;\n            throw a = x();\n        }\n        function f4() {\n            try {\n                throw a = x();\n            } catch (b) {\n                console.log(a);\n            }\n        }\n        function f5(a) {\n            try {\n                throw a = x();\n            } catch (b) {\n                console.log(a);\n            }\n        }\n        function f6() {\n            var a;\n            try {\n                throw a = x();\n            } catch (b) {\n                console.log(a);\n            }\n        }\n        function f7() {\n            try {\n                throw a = x();\n            } finally {\n                console.log(a);\n            }\n        }\n        function f8(a) {\n            try {\n                throw a = x();\n            } finally {\n                console.log(a);\n            }\n        }\n        function f9() {\n            var a;\n            try {\n                throw a = x();\n            } finally {\n                console.log(a);\n            }\n        }\n        function test(inc) {\n            var counter = 0;\n            x = function() {\n                counter += inc;\n                if (inc < 0) throw counter;\n                return counter;\n            };\n            [ f1, f2, f3, f4, f5, f6, f7, f8, f9 ].forEach(function(f, i) {\n                a = null;\n                try {\n                    f(10 * (1 + i));\n                } catch (x) {\n                    console.log(\"caught \" + x);\n                }\n                if (null !== a) console.log(\"a: \" + a);\n            });\n        }\n        var x, a;\n        test(1);\n        test(-1);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){throw a=x()}function f2(a){throw x()}function f3(){throw x()}function f4(){try{throw a=x()}catch(b){console.log(a)}}function f5(a){try{throw a=x()}catch(b){console.log(a)}}function f6(){var a;try{throw a=x()}catch(b){console.log(a)}}function f7(){try{throw a=x()}finally{console.log(a)}}function f8(a){try{throw a=x()}finally{console.log(a)}}function f9(){var a;try{throw a=x()}finally{console.log(a)}}function test(inc){var counter=0;x=function(){counter+=inc;if(inc<0)throw counter;return counter};[f1,f2,f3,f4,f5,f6,f7,f8,f9].forEach(function(f,i){a=null;try{f(10*(1+i))}catch(x){console.log(\"caught \"+x)}if(null!==a)console.log(\"a: \"+a)})}var x,a;test(1);test(-1);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "caught 1\na: 1\ncaught 2\ncaught 3\n4\na: 4\n5\n6\n7\ncaught 7\na: 7\n8\ncaught 8\n9\ncaught 9\ncaught -1\ncaught -2\ncaught -3\nnull\n50\nundefined\nnull\ncaught -7\n80\ncaught -8\nundefined\ncaught -9\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

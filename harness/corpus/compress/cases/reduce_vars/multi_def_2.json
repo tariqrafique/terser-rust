@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/multi_def_2",
+  "corpus": "compress",
+  "name": "multi_def_2",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 745,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(){\n            if (code == 16)\n                var bitsLength = 2, bitsOffset = 3, what = len;\n            else if (code == 17)\n                var bitsLength = 3, bitsOffset = 3, what = (len = 0);\n            else if (code == 18)\n                var bitsLength = 7, bitsOffset = 11, what = (len = 0);\n            var repeatLength = this.getBits(bitsLength) + bitsOffset;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){if(code==16)var bitsLength=2,bitsOffset=3,what=len;else if(code==17)var bitsLength=3,bitsOffset=3,what=len=0;else if(code==18)var bitsLength=7,bitsOffset=11,what=len=0;var repeatLength=this.getBits(bitsLength)+bitsOffset}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

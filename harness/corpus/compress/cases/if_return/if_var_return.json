@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/if_var_return",
+  "corpus": "compress",
+  "name": "if_var_return",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 386,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            var a;\n            return;\n            var b;\n        }\n        function g() {\n            var a;\n            if (u()) {\n                var b;\n                return v();\n                var c;\n            }\n            var d;\n            if (w()) {\n                var e;\n                return x();\n                var f;\n            } else {\n                var g;\n                y();\n                var h;\n            }\n            var i;\n            z();\n            var j;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "join_vars": true,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true,\n    join_vars: true,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){var a,b}function g(){var a,b,c,d,e,f,g,h,i,j;return u()?v():w()?x():(y(),z(),void 0)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

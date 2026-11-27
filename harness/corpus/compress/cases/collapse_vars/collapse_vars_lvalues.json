@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_lvalues",
+  "corpus": "compress",
+  "name": "collapse_vars_lvalues",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 808,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f0(x) { var i = ++x; return x += i; }\n        function f1(x) { var a = (x -= 3); return x += a; }\n        function f2(x) { var z = x, a = ++z; return z += a; }\n        function f3(x) { var a = (x -= 3), b = x + a; return b; }\n        function f4(x) { var a = (x -= 3); return x + a; }\n        function f5(x) { var w = e1(), v = e2(), c = v = --x, b = w = x; return b - c; }\n        function f6(x) { var w = e1(), v = e2(), c = v = --x, b = w = x; return c - b; }\n        function f7(x) { var w = e1(), v = e2(), c = v - x, b = w = x; return b - c; }\n        function f8(x) { var w = e1(), v = e2(), b = w = x, c = v - x; return b - c; }\n        function f9(x) { var w = e1(), v = e2(), b = w = x, c = v - x; return c - b; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": "keep_assign",
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: \"keep_assign\"\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f0(x){var i=++x;return x+=i}function f1(x){var a=x-=3;return x+=a}function f2(x){var z=x,a=++z;return z+=a}function f3(x){var a=x-=3;return x+a}function f4(x){var a=x-=3;return x+a}function f5(x){var w=e1(),v=e2(),c=v=--x;return(w=x)-c}function f6(x){var w=e1(),v=e2();return(v=--x)-(w=x)}function f7(x){var w=e1();return(w=x)-(e2()-x)}function f8(x){var w=e1();return(w=x)-(e2()-x)}function f9(x){var w=e1();return e2()-x-(w=x)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

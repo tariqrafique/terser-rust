@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue_1014/ternary_and_private_methods",
+  "corpus": "compress",
+  "name": "ternary_and_private_methods",
+  "origin": {
+    "file": "test/compress/issue_1014.js",
+    "line": 55,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class A {\n            #fail() { return false; }\n            get #pass() { return \"PASS\"; }\n            print() {\n                console.log(this.#fail() ? this.#fail() : this.#pass);\n            }\n        }\n        new A().print();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class A{#fail(){return false}get#pass(){return\"PASS\"}print(){console.log(this.#fail()?this.#fail():this.#pass)}}(new A).print();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

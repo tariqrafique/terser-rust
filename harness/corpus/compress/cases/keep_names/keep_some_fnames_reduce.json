@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/keep_names/keep_some_fnames_reduce",
+  "corpus": "compress",
+  "name": "keep_some_fnames_reduce",
+  "origin": {
+    "file": "test/compress/keep_names.js",
+    "line": 106,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            var array = [];\n            function bar() {}\n            array.map(bar);\n            function barElement() {}\n            array.map(barElement);\n            var aElement = () => {};\n            array.map(aElement);\n            array.map(aElement);\n            var bElement = function () {};\n            array.map(bElement);\n            array.map(bElement);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "unused": true,
+      "keep_fnames": {
+        "__terser_type": "RegExp",
+        "source": "Element$",
+        "flags": ""
+      },
+      "defaults": false
+    },
+    "mangle": {
+      "keep_fnames": {
+        "__terser_type": "RegExp",
+        "source": "Element$",
+        "flags": ""
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    unused: true,\n    keep_fnames: /Element$/\n}",
+    "mangle": "{\n    keep_fnames: /Element$/\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){var a=[];a.map(function(){});a.map(function barElement(){});var aElement=()=>{};a.map(aElement);a.map(aElement);var bElement=function(){};a.map(bElement);a.map(bElement)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

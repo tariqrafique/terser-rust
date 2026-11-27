@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/expansions/avoid_spread_in_ternary",
+  "corpus": "compress",
+  "name": "avoid_spread_in_ternary",
+  "origin": {
+    "file": "test/compress/expansions.js",
+    "line": 29,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function print(...x) {\n            console.log(...x);\n        }\n        var a = [1, 2], b = [3, 4], m = Math;\n\n        if (m)\n            print(a);\n        else\n            print(b);\n\n        if (m)\n            print(...a);\n        else\n            print(b);\n\n        if (m.no_such_property)\n            print(a);\n        else\n            print(...b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "comparisons": true,
+      "conditionals": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    comparisons: true,\n    conditionals: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function print(...x){console.log(...x)}var a=[1,2],b=[3,4],m=Math;print(m?a:b);m?print(...a):print(b);m.no_such_property?print(a):print(...b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "[ 1, 2 ]\n1 2\n3 4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

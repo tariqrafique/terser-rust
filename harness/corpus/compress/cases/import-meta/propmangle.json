@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/import-meta/propmangle",
+  "corpus": "compress",
+  "name": "propmangle",
+  "origin": {
+    "file": "test/compress/import-meta.js",
+    "line": 18,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import.meta\n        import.meta.prop1\n        import.meta[\"kept\"]\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": "strict",
+        "undeclared": true,
+        "debug": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: {\n        keep_quoted: \"strict\",\n        undeclared: true,\n        debug: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import.meta;import.meta._$prop1$_;import.meta[\"kept\"];",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

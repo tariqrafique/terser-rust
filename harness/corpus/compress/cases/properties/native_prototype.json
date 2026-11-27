@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/properties/native_prototype",
+  "corpus": "compress",
+  "name": "native_prototype",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 606,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        Array.prototype.splice.apply(a, [1, 2, b, c]);\n        Function.prototype.call.apply(console.log, console, [ \"foo\" ]);\n        Number.prototype.toFixed.call(Math.PI, 2);\n        Object.prototype.hasOwnProperty.call(d, \"foo\");\n        RegExp.prototype.test.call(/foo/, \"bar\");\n        String.prototype.indexOf.call(e, \"bar\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe_proto": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe_proto: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "[].splice.apply(a,[1,2,b,c]);(function(){}).call.apply(console.log,console,[\"foo\"]);(0).toFixed.call(Math.PI,2);({}).hasOwnProperty.call(d,\"foo\");/t/.test.call(/foo/,\"bar\");\"\".indexOf.call(e,\"bar\");",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/classes/class_recursive_refs",
+  "corpus": "compress",
+  "name": "class_recursive_refs",
+  "origin": {
+    "file": "test/compress/classes.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class a {\n          set() {\n            class b {\n              set [b] (c) {}\n            }\n          }\n        }\n\n        class b {\n            constructor() {\n                b();\n            }\n        }\n\n        class c {\n            [c] = 42;\n        }\n\n        class d {\n            dee = d;\n        }\n\n        class e {\n            static eee = e;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "toplevel": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

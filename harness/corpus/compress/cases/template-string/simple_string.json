@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/simple_string",
+  "corpus": "compress",
+  "name": "simple_string",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 406,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log( `world`, {[`foo`]: 1}[`foo`], `hi` == \"hi\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "computed_props": true,
+      "evaluate": true,
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    computed_props: true,\n    evaluate: true,\n    properties: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"world\",[1][0],true);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "world 1 true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

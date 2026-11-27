@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/loops/drop_if_break_4",
+  "corpus": "compress",
+  "name": "drop_if_break_4",
+  "origin": {
+    "file": "test/compress/loops.js",
+    "line": 58,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (;bar();) {\n            x();\n            y();\n            if (foo()) break;\n            z();\n            k();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "loops": true,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    loops: true,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(;bar()&&(x(),y(),!foo());)z(),k();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

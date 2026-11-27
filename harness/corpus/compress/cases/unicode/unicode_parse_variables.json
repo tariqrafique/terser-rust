@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/unicode/unicode_parse_variables",
+  "corpus": "compress",
+  "name": "unicode_parse_variables",
+  "origin": {
+    "file": "test/compress/unicode.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = {};\n        a.你好 = 456;\n\n        var ↂωↂ = 123;\n        var l০ = 3; // 2nd char is a unicode digit\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a={};a.你好=456;var ↂωↂ=123;var l০=3;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

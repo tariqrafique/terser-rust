@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1639/issue_1639_1",
+  "corpus": "compress",
+  "name": "issue_1639_1",
+  "origin": {
+    "file": "test/compress/issue-1639.js",
+    "line": 2,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 100, b = 10;\n\n        var L1 = 5;\n        while (--L1 > 0) {\n            if ((--b), false) {\n                if (b) {\n                    var ignore = 0;\n                }\n            }\n        }\n\n        console.log(a, b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "conditionals": true,
+      "evaluate": true,
+      "join_vars": true,
+      "loops": true,
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    conditionals: true,\n    evaluate: true,\n    join_vars: true,\n    loops: true,\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(var a=100,b=10,L1=5;--L1>0;)if(--b,0)var ignore=0;console.log(a,b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2437",
+  "corpus": "compress",
+  "name": "issue_2437",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3767,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            bar();\n        }\n        function bar() {\n            if (xhrDesc) {\n                var req = new XMLHttpRequest();\n                var result = !!req.onreadystatechange;\n                Object.defineProperty(XMLHttpRequest.prototype, 'onreadystatechange', xhrDesc || {});\n                return result;\n            } else {\n                var req = new XMLHttpRequest();\n                var detectFunc = function () {};\n                req.onreadystatechange = detectFunc;\n                var result = req[SYMBOL_FAKE_ONREADYSTATECHANGE_1] === detectFunc;\n                req.onreadystatechange = null;\n                return result;\n            }\n        }\n        foo();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "conditionals": true,
+      "inline": true,
+      "join_vars": true,
+      "passes": 2,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    conditionals: true,\n    inline: true,\n    join_vars: true,\n    passes: 2,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){if(xhrDesc){var result=!!(req=new XMLHttpRequest).onreadystatechange;return Object.defineProperty(XMLHttpRequest.prototype,\"onreadystatechange\",xhrDesc||{}),result}var req,detectFunc=function(){};(req=new XMLHttpRequest).onreadystatechange=detectFunc,result=req[SYMBOL_FAKE_ONREADYSTATECHANGE_1]===detectFunc,req.onreadystatechange=null}();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

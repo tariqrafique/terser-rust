@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/unsafe_evaluate_array_1",
+  "corpus": "compress",
+  "name": "unsafe_evaluate_array_1",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 464,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f0(){\n            var a = 1;\n            var b = [];\n            b[a] = 2;\n            console.log(a + 3);\n        }\n\n        function f1(){\n            var a = [1];\n            a[2] = 3;\n            console.log(a.length);\n        }\n\n        function f2(){\n            var a = [1];\n            a.push(2);\n            console.log(a.length);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f0(){var a=1;var b=[];b[1]=2;console.log(4)}function f1(){var a=[1];a[2]=3;console.log(a.length)}function f2(){var a=[1];a.push(2);console.log(a.length)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

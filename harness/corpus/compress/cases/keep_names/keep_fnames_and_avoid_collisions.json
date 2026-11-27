@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/keep_names/keep_fnames_and_avoid_collisions",
+  "corpus": "compress",
+  "name": "keep_fnames_and_avoid_collisions",
+  "origin": {
+    "file": "test/compress/keep_names.js",
+    "line": 163,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        global.t = 'ttttttttttttttttttttt';\n        (function testBug() {\n            var param1 = 'PASS'\n            return () => {\n                console.log(param1)\n                var t = function () {};\n                return t;\n            };\n        })()()\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "keep_fnames": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    keep_fnames: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

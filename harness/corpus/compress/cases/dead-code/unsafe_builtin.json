@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/unsafe_builtin",
+  "corpus": "compress",
+  "name": "unsafe_builtin",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 1160,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (!w).constructor(x);\n        Math.abs(y);\n        [ 1, 2, z ].valueOf();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "w,x;y;z;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

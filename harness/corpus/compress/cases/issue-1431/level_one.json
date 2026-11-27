@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1431/level_one",
+  "corpus": "compress",
+  "name": "level_one",
+  "origin": {
+    "file": "test/compress/issue-1431.js",
+    "line": 30,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(x) {\n            return function() {\n                function n(a) {\n                    return a * a;\n                }\n                return x(n);\n            };\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "keep_fnames": true,
+      "defaults": false
+    },
+    "mangle": {
+      "keep_fnames": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    keep_fnames: true\n}",
+    "mangle": "{\n    keep_fnames: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(r){return function(){function n(r){return r*r}return r(n)}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/class_expression_not_constant",
+  "corpus": "compress",
+  "name": "class_expression_not_constant",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 116,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const obj = {};\n        leak();\n        obj.Class1 = class { static foo = leak() };\n        obj.Class2 = class extends Obj.Class1 {};\n        new obj.Class2();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "join_vars": true,
+      "properties": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    join_vars: true,\n    properties: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const obj={};leak();obj.Class1=class{static foo=leak()};obj.Class2=class extends Obj.Class1{};new obj.Class2;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

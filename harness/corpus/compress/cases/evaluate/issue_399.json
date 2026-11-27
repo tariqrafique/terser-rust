@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_399",
+  "corpus": "compress",
+  "name": "issue_399",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1928,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(RegExp(\"\\\\\\nfo\\n[\\n]o\\\\bbb\"));\n        console.log(RegExp(\"\\n\"));\n        console.log(RegExp(\"\\\\n\"));\n        console.log(RegExp(\"\\\\\\n\"));\n        console.log(RegExp(\"\\\\\\\\n\"));\n        console.log(RegExp(\"\\\\\\\\\\n\"));\n        console.log(RegExp(\"\\\\\\\\\\\\n\"));\n        console.log(RegExp(\"\\\\\\\\\\\\\\n\"));\n        console.log(RegExp(\"\\r\"));\n        console.log(RegExp(\"\\u2028\"));\n        console.log(RegExp(\"\\u2029\"));\n        console.log(RegExp(\"\\n\\r\\u2028\\u2029\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe": true,
+      "evaluate": true,
+      "unsafe_regexp": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe: true,\n    evaluate: true,\n    unsafe_regexp: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(/\\nfo\\n[\\n]o\\bbb/);console.log(/\\n/);console.log(/\\n/);console.log(/\\n/);console.log(/\\\\n/);console.log(/\\\\\\n/);console.log(/\\\\\\n/);console.log(/\\\\\\n/);console.log(/\\r/);console.log(/\\u2028/);console.log(/\\u2029/);console.log(/\\n\\r\\u2028\\u2029/);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

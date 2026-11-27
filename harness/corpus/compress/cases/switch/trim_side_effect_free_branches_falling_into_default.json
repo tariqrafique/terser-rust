@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/switch/trim_side_effect_free_branches_falling_into_default",
+  "corpus": "compress",
+  "name": "trim_side_effect_free_branches_falling_into_default",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 2851,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        switch (id(1)) {\n            case 0:\n                \"no side effect\"\n            case 1:\n                // Not here either\n            default:\n                console.log(\"PASS default\")\n            case 2:\n                console.log(\"PASS 2\")\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "switches": true,
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    switches: true,\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "switch(id(1)){case 0:\"no side effect\";case 1:default:console.log(\"PASS default\");case 2:console.log(\"PASS 2\")}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

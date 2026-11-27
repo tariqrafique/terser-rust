@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/arrays/constant_join_2",
+  "corpus": "compress",
+  "name": "constant_join_2",
+  "origin": {
+    "file": "test/compress/arrays.js",
+    "line": 67,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = [ \"foo\", \"bar\", boo(), \"baz\", \"x\", \"y\" ].join(\"\");\n        var b = [ \"foo\", \"bar\", boo(), \"baz\", \"x\", \"y\" ].join(\"-\");\n        var c = [ \"foo\", \"bar\", boo(), \"baz\", \"x\", \"y\" ].join(\"really-long-separator\");\n        var d = [ \"foo\", \"bar\", boo(),\n                  [ \"foo\", 1, 2, 3, \"bar\" ].join(\"+\"),\n                  \"baz\", \"x\", \"y\" ].join(\"-\");\n        var e = [ \"foo\", \"bar\", boo(),\n                  [ \"foo\", 1, 2, 3, \"bar\" ].join(\"+\"),\n                  \"baz\", \"x\", \"y\" ].join(\"really-long-separator\");\n        var f = [ \"str\", \"str\" + variable, \"foo\", \"bar\", \"moo\" + foo ].join(\"\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=\"foobar\"+boo()+\"bazxy\";var b=[\"foo-bar\",boo(),\"baz-x-y\"].join(\"-\");var c=[\"foo\",\"bar\",boo(),\"baz\",\"x\",\"y\"].join(\"really-long-separator\");var d=[\"foo-bar\",boo(),\"foo+1+2+3+bar-baz-x-y\"].join(\"-\");var e=[\"foo\",\"bar\",boo(),\"foo+1+2+3+bar\",\"baz\",\"x\",\"y\"].join(\"really-long-separator\");var f=\"strstr\"+variable+\"foobarmoo\"+foo;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

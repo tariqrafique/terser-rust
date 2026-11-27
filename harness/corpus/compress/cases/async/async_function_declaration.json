@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/async/async_function_declaration",
+  "corpus": "compress",
+  "name": "async_function_declaration",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 33,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        async function f0() {}\n        async function f1() { await x + y; }\n        async function f2() { await (x + y); }\n        async function f3() { await x + await y; }\n        async function f4() { await (x + await y); }\n        async function f5() { await x; await y; }\n        async function f6() { await x, await y; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "async function f0(){}async function f1(){await x,y}async function f2(){await(x+y)}async function f3(){await x,await y}async function f4(){await(x+await y)}async function f5(){await x;await y}async function f6(){await x,await y}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/if_return_8",
+  "corpus": "compress",
+  "name": "if_return_8",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 177,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(e) {\n            if (2 == e) return foo();\n            if (3 == e) return bar();\n            if (4 == e) return baz();\n            fail(e);\n        }\n\n        function g(e) {\n            if (a(e)) return foo();\n            if (b(e)) return bar();\n            if (c(e)) return baz();\n            fail(e);\n        }\n\n        function h(e) {\n            if (a(e)) return foo();\n            else if (b(e)) return bar();\n            else if (c(e)) return baz();\n            else fail(e);\n        }\n\n        function i(e) {\n            if (a(e)) return foo();\n            else if (b(e)) return bar();\n            else if (c(e)) return baz();\n            fail(e);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true,\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(e){return 2==e?foo():3==e?bar():4==e?baz():void fail(e)}function g(e){return a(e)?foo():b(e)?bar():c(e)?baz():void fail(e)}function h(e){return a(e)?foo():b(e)?bar():c(e)?baz():void fail(e)}function i(e){return a(e)?foo():b(e)?bar():c(e)?baz():void fail(e)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

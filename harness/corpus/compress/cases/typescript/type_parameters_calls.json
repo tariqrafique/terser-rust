@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/type_parameters_calls",
+  "corpus": "compress",
+  "name": "type_parameters_calls",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 143,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        callExpression<T>(arg);\n        optionalCallExpression?.<T>(arg);\n        optionalCallExpression2<T>?.(arg);\n        method.call<T>(arg);\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "callExpression(arg);optionalCallExpression?.(arg);optionalCallExpression2?.(arg);method.call(arg);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

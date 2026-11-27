@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/do_not_optimize_tagged_template_1",
+  "corpus": "compress",
+  "name": "do_not_optimize_tagged_template_1",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 253,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = tag`Shall not be optimized. ${\"But \" + \"this \" + \"is \" + \"fine.\"}`;\n        var bar = tag`Don't even mind changing my quotes!`;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "quote_style": 0
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": "{\n    quote_style: 0\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=tag`Shall not be optimized. ${\"But this is fine.\"}`;var bar=tag`Don't even mind changing my quotes!`;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

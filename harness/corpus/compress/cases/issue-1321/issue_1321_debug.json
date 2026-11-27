@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1321/issue_1321_debug",
+  "corpus": "compress",
+  "name": "issue_1321_debug",
+  "origin": {
+    "file": "test/compress/issue-1321.js",
+    "line": 19,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var x = {};\n        x.foo = 1;\n        x[\"_$foo$_\"] = 2 * x.foo;\n        console.log(x.foo, x[\"_$foo$_\"]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "debug": "",
+        "keep_quoted": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: {\n        debug: \"\",\n        keep_quoted: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x={};x.o=1;x[\"_$foo$_\"]=2*x.o;console.log(x.o,x[\"_$foo$_\"]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

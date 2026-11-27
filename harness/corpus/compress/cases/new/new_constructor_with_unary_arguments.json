@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/new/new_constructor_with_unary_arguments",
+  "corpus": "compress",
+  "name": "new_constructor_with_unary_arguments",
+  "origin": {
+    "file": "test/compress/new.js",
+    "line": 56,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        new x();\n        new x(-1);\n        new x(-1, -2);\n        new x(void 1, +2, -3, ~4, !5, --a, ++b, c--, d++, typeof e, delete f);\n        new (-1);     // should parse despite being invalid at runtime.\n        new (-1)();   // should parse despite being invalid at runtime.\n        new (-1)(-2); // should parse despite being invalid at runtime.\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "new x;new x(-1);new x(-1,-2);new x(void 1,+2,-3,~4,!5,--a,++b,c--,d++,typeof e,delete f);new(-1);new(-1);new(-1)(-2);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

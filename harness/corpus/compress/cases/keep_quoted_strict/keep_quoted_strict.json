@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/keep_quoted_strict/keep_quoted_strict",
+  "corpus": "compress",
+  "name": "keep_quoted_strict",
+  "origin": {
+    "file": "test/compress/keep_quoted_strict.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = {\n            propa: 1,\n            get propb() { return 2; },\n            propc: 3,\n            get propd() { return 4; },\n        };\n        var b = {\n            \"propa\": 5,\n            get \"propb\"() { return 6; },\n            \"propc\": 7,\n            get \"propd\"() { return 8; },\n        };\n        var c = {};\n        Object.defineProperty(c, \"propa\", {\"value\": 9});\n        Object.defineProperty(c, \"propc\", {\"value\": 10});\n        console.log(a.propa, a.propb, a.propc, a[\"propc\"], a.propd, a[\"propd\"]);\n        console.log(b[\"propa\"], b[\"propb\"], b.propc, b[\"propc\"], b.propd, b[\"propd\"]);\n        console.log(c.propa, c[\"propc\"]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": "strict",
+        "reserved": [
+          "propc",
+          "propd"
+        ]
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    properties: true\n}",
+    "mangle": "{\n    properties: {\n        keep_quoted: \"strict\",\n        reserved: [ \"propc\", \"propd\" ]\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a={p:1,get o(){return 2},propc:3,get propd(){return 4}};var b={propa:5,get propb(){return 6},propc:7,get propd(){return 8}};var c={};Object.defineProperty(c,\"p\",{value:9});Object.defineProperty(c,\"propc\",{value:10});console.log(a.p,a.o,a.propc,a.propc,a.propd,a.propd);console.log(b.propa,b.propb,b.propc,b.propc,b.propd,b.propd);console.log(c.p,c.propc);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 2 3 3 4 4\n5 6 7 7 8 8\n9 10\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

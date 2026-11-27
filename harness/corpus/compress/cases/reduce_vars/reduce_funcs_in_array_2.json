@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/reduce_funcs_in_array_2",
+  "corpus": "compress",
+  "name": "reduce_funcs_in_array_2",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 7041,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function Foo() {\n                return 123;\n            }\n            function bar(val) {\n                return [val || Foo].concat([2]);\n            }\n            var a = [bar(), bar()];\n            console.log(a[0][0] === a[1][0], a[0][0]());\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true 123\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_1715_4",
+  "corpus": "compress",
+  "name": "issue_1715_4",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1094,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 1;\n        !function a() {\n            a++;\n            try {\n                x();\n            } catch (a) {\n                var a;\n            }\n        }();\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=1;!function(){a++;try{x()}catch(a){var a}}();console.log(a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

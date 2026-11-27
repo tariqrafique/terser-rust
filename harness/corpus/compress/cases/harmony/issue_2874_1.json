@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_2874_1",
+  "corpus": "compress",
+  "name": "issue_2874_1",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1804,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function foo() {\n                let letters = [\"A\", \"B\", \"C\"];\n                let result = [2, 1, 0].map(key => bar(letters[key] + key));\n                return result;\n            }\n            function bar(value) {\n                return () => console.log(value);\n            }\n            foo().map(fn => fn());\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "inline": 3,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    inline: 3,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){let letters=[\"A\",\"B\",\"C\"];return[2,1,0].map(key=>{return value=letters[key]+key,()=>console.log(value);var value})})().map(fn=>fn());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "C2\nB1\nA0\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/global_defs/keyword",
+  "corpus": "compress",
+  "name": "keyword",
+  "origin": {
+    "file": "test/compress/global_defs.js",
+    "line": 15,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(undefined, NaN, Infinity);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "global_defs": {
+        "undefined": 0,
+        "NaN": 1,
+        "Infinity": 2
+      },
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    global_defs: {\n        undefined: 0,\n        NaN: 1,\n        Infinity: 2\n    }\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(0,1,2);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

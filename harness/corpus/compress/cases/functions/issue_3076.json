@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_3076",
+  "corpus": "compress",
+  "name": "issue_3076",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2507,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var c = \"PASS\";\n        (function(b) {\n            var n = 2;\n            while (--b + function() {\n                e && (c = \"FAIL\");\n                e = 5;\n                return 1;\n                try {\n                    var a = 5;\n                } catch (e) {\n                    var e;\n                }\n            }().toString() && --n > 0);\n        })(2);\n        console.log(c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "inline": true,
+      "sequences": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    inline: true,\n    sequences: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

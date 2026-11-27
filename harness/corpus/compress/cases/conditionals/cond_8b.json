@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/cond_8b",
+  "corpus": "compress",
+  "name": "cond_8b",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 446,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a;\n        // compress these\n        a = condition ? true : false;\n        a = !condition ? true : false;\n        a = condition() ? true : false;\n\n        a = condition ? !0 : !1;\n        a = !condition ? !null : !2;\n        a = condition() ? !0 : !-3.5;\n\n        if (condition) {\n            a = true;\n        } else {\n            a = false;\n        }\n\n        if (condition) {\n            a = !0;\n        } else {\n            a = !1;\n        }\n\n        a = condition ? false : true;\n        a = !condition ? false : true;\n        a = condition() ? false : true;\n\n        a = condition ? !3 : !0;\n        a = !condition ? !2 : !0;\n        a = condition() ? !1 : !0;\n\n        if (condition) {\n            a = false;\n        } else {\n            a = true;\n        }\n\n        if (condition) {\n            a = !1;\n        } else {\n            a = !0;\n        }\n\n        a = condition ? 1 : false;\n        a = !condition ? true : 0;\n        a = condition ? 1 : 0;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a;a=!!condition;a=!condition;a=!!condition();a=!!condition;a=!condition;a=!!condition();a=!!condition;a=!!condition;a=!condition;a=!!condition;a=!condition();a=!condition;a=!!condition;a=!condition();a=!condition;a=!condition;a=!!condition&&1;a=!condition||0;a=condition?1:0;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

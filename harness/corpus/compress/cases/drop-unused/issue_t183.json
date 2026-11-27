@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_t183",
+  "corpus": "compress",
+  "name": "issue_t183",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2726,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(val) {\n            function bar(x) {\n                if (x) return x;\n                bar(x-1);\n            }\n            return bar(val);\n        }\n        console.log(foo(\"PASS\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "top_retain": []
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    top_retain: []\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function bar(x){if(x)return x;bar(x-1)}(\"PASS\"));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

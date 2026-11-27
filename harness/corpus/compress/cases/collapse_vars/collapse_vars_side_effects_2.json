@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_side_effects_2",
+  "corpus": "compress",
+  "name": "collapse_vars_side_effects_2",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 90,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function fn(x) { return console.log(x), x; }\n\n        function p1() { var a = foo(), b = bar(), c = baz(); return a + b + c; }\n        function p2() { var a = foo(), c = bar(), b = baz(); return a + b + c; }\n        function p3() { var b = foo(), a = bar(), c = baz(); return a + b + c; }\n        function p4() { var b = foo(), c = bar(), a = baz(); return a + b + c; }\n        function p5() { var c = foo(), a = bar(), b = baz(); return a + b + c; }\n        function p6() { var c = foo(), b = bar(), a = baz(); return a + b + c; }\n\n        function q1() { var a = foo(), b = bar(), c = baz(); return fn(a + b + c); }\n        function q2() { var a = foo(), c = bar(), b = baz(); return fn(a + b + c); }\n        function q3() { var b = foo(), a = bar(), c = baz(); return fn(a + b + c); }\n        function q4() { var b = foo(), c = bar(), a = baz(); return fn(a + b + c); }\n        function q5() { var c = foo(), a = bar(), b = baz(); return fn(a + b + c); }\n        function q6() { var c = foo(), b = bar(), a = baz(); return fn(a + b + c); }\n\n        function r1() { var a = foo(), b = bar(), c = baz(); return fn(a) + fn(b) + fn(c); }\n        function r2() { var a = foo(), c = bar(), b = baz(); return fn(a) + fn(b) + fn(c); }\n        function r3() { var b = foo(), a = bar(), c = baz(); return fn(a) + fn(b) + fn(c); }\n        function r4() { var b = foo(), c = bar(), a = baz(); return fn(a) + fn(b) + fn(c); }\n        function r5() { var c = foo(), a = bar(), b = baz(); return fn(a) + fn(b) + fn(c); }\n        function r6() { var c = foo(), b = bar(), a = baz(); return fn(a) + fn(b) + fn(c); }\n\n        function s1() { var a = foo(), b = bar(), c = baz(); return g(a + b + c); }\n        function s6() { var c = foo(), b = bar(), a = baz(); return g(a + b + c); }\n\n        function t1() { var a = foo(), b = bar(), c = baz(); return g(a) + g(b) + g(c); }\n        function t6() { var c = foo(), b = bar(), a = baz(); return g(a) + g(b) + g(c); }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function fn(x){return console.log(x),x}function p1(){return foo()+bar()+baz()}function p2(){var a=foo(),c=bar();return a+baz()+c}function p3(){var b=foo();return bar()+b+baz()}function p4(){var b=foo(),c=bar();return baz()+b+c}function p5(){var c=foo();return bar()+baz()+c}function p6(){var c=foo(),b=bar();return baz()+b+c}function q1(){return fn(foo()+bar()+baz())}function q2(){var a=foo(),c=bar();return fn(a+baz()+c)}function q3(){var b=foo();return fn(bar()+b+baz())}function q4(){var b=foo(),c=bar();return fn(baz()+b+c)}function q5(){var c=foo();return fn(bar()+baz()+c)}function q6(){var c=foo(),b=bar();return fn(baz()+b+c)}function r1(){var a=foo(),b=bar(),c=baz();return fn(a)+fn(b)+fn(c)}function r2(){var a=foo(),c=bar(),b=baz();return fn(a)+fn(b)+fn(c)}function r3(){var b=foo(),a=bar(),c=baz();return fn(a)+fn(b)+fn(c)}function r4(){var b=foo(),c=bar();return fn(baz())+fn(b)+fn(c)}function r5(){var c=foo(),a=bar(),b=baz();return fn(a)+fn(b)+fn(c)}function r6(){var c=foo(),b=bar();return fn(baz())+fn(b)+fn(c)}function s1(){var a=foo(),b=bar(),c=baz();return g(a+b+c)}function s6(){var c=foo(),b=bar(),a=baz();return g(a+b+c)}function t1(){var a=foo(),b=bar(),c=baz();return g(a)+g(b)+g(c)}function t6(){var c=foo(),b=bar(),a=baz();return g(a)+g(b)+g(c)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

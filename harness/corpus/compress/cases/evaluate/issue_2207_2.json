@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_2207_2",
+  "corpus": "compress",
+  "name": "issue_2207_2",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1491,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(Math.E);\n        console.log(Math.LN10);\n        console.log(Math.LN2);\n        console.log(Math.LOG2E);\n        console.log(Math.LOG10E);\n        console.log(Math.PI);\n        console.log(Math.SQRT1_2);\n        console.log(Math.SQRT2);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(Math.E);console.log(Math.LN10);console.log(Math.LN2);console.log(Math.LOG2E);console.log(Math.LOG10E);console.log(Math.PI);console.log(Math.SQRT1_2);console.log(Math.SQRT2);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

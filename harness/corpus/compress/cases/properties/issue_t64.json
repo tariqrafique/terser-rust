@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/properties/issue_t64",
+  "corpus": "compress",
+  "name": "issue_t64",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 2382,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj = {};\n        obj.Base = class {\n            constructor() {\n                this.id = \"PASS\";\n            }\n        };\n        obj.Derived = class extends obj.Base {\n            constructor() {\n                super();\n                console.log(this.id);\n            }\n        };\n        new obj.Derived;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "join_vars": true,
+      "properties": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    join_vars: true,\n    properties: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj={Base:class{constructor(){this.id=\"PASS\"}}};obj.Derived=class extends obj.Base{constructor(){super();console.log(this.id)}};new obj.Derived;",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/arrow_functions_without_body",
+  "corpus": "compress",
+  "name": "arrow_functions_without_body",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a1 = () => 42;\n        var a2 = (p) => p;\n        var a3 = p => p;\n        var a4 = (...p) => p;\n        var a5 = (b, c) => b + c;\n        var a6 = (b, ...c) => b + c[0];\n        var a7 = (...b) => b.join();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a1=()=>42;var a2=p=>p;var a3=p=>p;var a4=(...p)=>p;var a5=(b,c)=>b+c;var a6=(b,...c)=>b+c[0];var a7=(...b)=>b.join();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

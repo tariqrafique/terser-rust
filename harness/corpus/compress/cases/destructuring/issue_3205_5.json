@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/issue_3205_5",
+  "corpus": "compress",
+  "name": "issue_3205_5",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 793,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function f(g) {\n                var o = g, {a: x} = o;\n                console.log(x);\n            }\n            f({ a: \"PASS\" });\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": 3,
+      "passes": 4,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: 3,\n    passes: 4,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){var{a:x}={a:\"PASS\"};console.log(x)}();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

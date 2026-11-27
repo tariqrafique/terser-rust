@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/unused_destructuring_object_method_param",
+  "corpus": "compress",
+  "name": "unused_destructuring_object_method_param",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 993,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        ({\n            baz({w = console.log(\"side effect\"), x, y: z}) {\n                console.log(x);\n            }\n        }).baz({x: 7, y: 8, z: 9});\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "({baz({w:w=console.log(\"side effect\"),x:x}){console.log(x)}}).baz({x:7,y:8,z:9});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "side effect\n7\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

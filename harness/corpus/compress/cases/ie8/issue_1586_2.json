@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/ie8/issue_1586_2",
+  "corpus": "compress",
+  "name": "issue_1586_2",
+  "origin": {
+    "file": "test/compress/ie8.js",
+    "line": 241,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            try {\n                x();\n            } catch (err) {\n                console.log(err.message);\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ie8": false,
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": false
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ie8: false\n}",
+    "mangle": "{\n    ie8: false\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){try{x()}catch(c){console.log(c.message)}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

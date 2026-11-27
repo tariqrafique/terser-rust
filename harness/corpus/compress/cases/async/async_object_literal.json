@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/async/async_object_literal",
+  "corpus": "compress",
+  "name": "async_object_literal",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 108,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var obj = {\n            async a() {\n                await foo(1 + 0);\n            },\n            anon: async function(){\n                await foo(2 + 0);\n            }\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var obj={async a(){await foo(1)},anon:async function(){await foo(2)}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

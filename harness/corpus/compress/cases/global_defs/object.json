@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/global_defs/object",
+  "corpus": "compress",
+  "name": "object",
+  "origin": {
+    "file": "test/compress/global_defs.js",
+    "line": 31,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(CONFIG) {\n            // CONFIG not global - do not replace\n            return CONFIG.VALUE;\n        }\n        function g() {\n            var CONFIG = { VALUE: 1 };\n            // CONFIG not global - do not replace\n            return CONFIG.VALUE;\n        }\n        function h() {\n            return CONFIG.VALUE;\n        }\n        if (CONFIG.DEBUG[0])\n            console.debug(\"foo\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "global_defs": {
+        "CONFIG": {
+          "DEBUG": [
+            0
+          ],
+          "VALUE": 42
+        }
+      },
+      "side_effects": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    global_defs: {\n        CONFIG: {\n            DEBUG: [ 0 ],\n            VALUE: 42\n        }\n    },\n    side_effects: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(CONFIG){return CONFIG.VALUE}function g(){var CONFIG={VALUE:1};return CONFIG.VALUE}function h(){return 42}if(0)console.debug(\"foo\");",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

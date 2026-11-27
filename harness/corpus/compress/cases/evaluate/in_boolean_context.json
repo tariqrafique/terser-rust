@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/in_boolean_context",
+  "corpus": "compress",
+  "name": "in_boolean_context",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1073,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(\n            !42,\n            !\"foo\",\n            ![1, 2],\n            !/foo/,\n            !b(42),\n            !b(\"foo\"),\n            !b([1, 2]),\n            !b(/foo/),\n            ![1, foo()],\n            ![1, foo(), 2]\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "evaluate": true,
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    evaluate: true,\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(!1,!1,!1,!1,!b(42),!b(\"foo\"),!b([1,2]),!b(/foo/),![1,foo()],(foo(),!1));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

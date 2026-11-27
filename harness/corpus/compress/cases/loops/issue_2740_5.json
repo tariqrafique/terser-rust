@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/loops/issue_2740_5",
+  "corpus": "compress",
+  "name": "issue_2740_5",
+  "origin": {
+    "file": "test/compress/loops.js",
+    "line": 661,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        L1: for (var x = 0; x < 3; x++) {\n            break L1;\n            L2: for (var y = 0; y < 2; y++) {\n                break L2;\n            }\n        }\n        console.log(x, y);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "loops": true,
+      "passes": 2,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    loops: true,\n    passes: 2\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x=0;x<3;var y;console.log(x,y);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "0 undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

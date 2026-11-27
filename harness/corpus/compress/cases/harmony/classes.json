@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/classes",
+  "corpus": "compress",
+  "name": "classes",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 28,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class SomeClass {\n            constructor() {\n            };\n            foo() {};\n        };\n        class NoSemi {\n            constructor(...args) {\n            }\n            foo() {}\n        };\n        class ChildClass extends SomeClass {};\n        var asExpression = class AsExpression {};\n        var nameless = class {};\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class SomeClass{constructor(){}foo(){}}class NoSemi{constructor(...args){}foo(){}}class ChildClass extends SomeClass{}var asExpression=class AsExpression{};var nameless=class{};",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

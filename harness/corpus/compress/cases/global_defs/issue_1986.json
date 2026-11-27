@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/global_defs/issue_1986",
+  "corpus": "compress",
+  "name": "issue_1986",
+  "origin": {
+    "file": "test/compress/global_defs.js",
+    "line": 160,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        alert(42);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "global_defs": {
+        "@alert": "console.log"
+      },
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    global_defs: {\n        \"@alert\": \"console.log\"\n    }\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(42);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

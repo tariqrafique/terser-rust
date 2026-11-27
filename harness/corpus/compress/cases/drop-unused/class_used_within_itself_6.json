@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/class_used_within_itself_6",
+  "corpus": "compress",
+  "name": "class_used_within_itself_6",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3421,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class X {\n            static prop = \"X\"\n            static Y = class Y extends this { }\n        }\n\n        console.log(X.Y.prop)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "unused": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    unused: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class X{static prop=\"X\";static Y=class extends(this){}}console.log(X.Y.prop);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "X\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=20.0.0",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/properties/unsafe_methods_regex",
+  "corpus": "compress",
+  "name": "unsafe_methods_regex",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1076,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var f = {\n            123: function(){ console.log(\"123\") },\n            foo: function(){ console.log(\"foo\") },\n            bar() { console.log(\"bar\") },\n            Baz: function(){ console.log(\"baz\") },\n            BOO: function(){ console.log(\"boo\") },\n            null: function(){ console.log(\"null\") },\n            undefined: function(){ console.log(\"undefined\") },\n        };\n        f[123]();\n        new f.foo();\n        f.bar();\n        f.Baz();\n        f.BOO();\n        new f.null();\n        new f.undefined();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ecma": 2015,
+      "unsafe_methods": {
+        "__terser_type": "RegExp",
+        "source": "^[A-Z1]",
+        "flags": ""
+      },
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ecma: 2015,\n    unsafe_methods: /^[A-Z1]/\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var f={123(){console.log(\"123\")},foo:function(){console.log(\"foo\")},bar(){console.log(\"bar\")},Baz(){console.log(\"baz\")},BOO(){console.log(\"boo\")},null:function(){console.log(\"null\")},undefined:function(){console.log(\"undefined\")}};f[123]();new f.foo;f.bar();f.Baz();f.BOO();new f.null;new f.undefined;",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "123\nfoo\nbar\nbaz\nboo\nnull\nundefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

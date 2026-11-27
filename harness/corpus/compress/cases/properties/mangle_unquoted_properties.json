@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/properties/mangle_unquoted_properties",
+  "corpus": "compress",
+  "name": "mangle_unquoted_properties",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 160,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = {};\n        a.top = 1;\n        function f1() {\n            a[\"foo\"] = \"bar\";\n            a.color = \"red\";\n            a.stuff = 2;\n            x = {\"bar\": 10, size: 7};\n            a.size = 9;\n        }\n        function f2() {\n            a.foo = \"bar\";\n            a['color'] = \"red\";\n            x = {bar: 10, size: 7};\n            a.size = 9;\n            a.stuff = 3;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "properties": false,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "builtins": true,
+        "keep_quoted": true
+      }
+    },
+    "format": {
+      "beautify": false,
+      "quote_style": 3,
+      "keep_quoted_props": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    properties: false\n}",
+    "mangle": "{\n    properties: {\n        builtins: true,\n        keep_quoted: true\n    }\n}",
+    "format": "{\n    beautify: false,\n    quote_style: 3,\n    keep_quoted_props: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a={};a.a=1;function f1(){a[\"foo\"]=\"bar\";a.color=\"red\";a.r=2;x={\"bar\":10,b:7};a.b=9}function f2(){a.foo=\"bar\";a['color']=\"red\";x={bar:10,b:7};a.b=9;a.r=3}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

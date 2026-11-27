@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/issue-208/mixed",
+  "corpus": "compress",
+  "name": "mixed",
+  "origin": {
+    "file": "test/compress/issue-208.js",
+    "line": 35,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const ENV = 3;\n        var FOO = 4;\n        f(ENV * 10);\n        --FOO;\n        DEBUG = 1;\n        DEBUG++;\n        DEBUG += 1;\n        f(DEBUG);\n        x = DEBUG;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "global_defs": {
+        "DEBUG": 0,
+        "ENV": 1,
+        "FOO": 2
+      },
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    global_defs: {\n        DEBUG: 0,\n        ENV: 1,\n        FOO: 2\n    }\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const ENV=3;var FOO=4;f(10);--FOO;DEBUG=1;DEBUG++;DEBUG+=1;f(0);x=0;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

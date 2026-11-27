@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/global_fns",
+  "corpus": "compress",
+  "name": "global_fns",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 507,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        Boolean(1, 2);\n        decodeURI(1, 2);\n        decodeURIComponent(1, 2);\n        Date(1, 2);\n        encodeURI(1, 2);\n        encodeURIComponent(1, 2);\n        Error(1, 2);\n        escape(1, 2);\n        EvalError(1, 2);\n        isFinite(1, 2);\n        isNaN(1, 2);\n        Number(1, 2);\n        Object(1, 2);\n        parseFloat(1, 2);\n        parseInt(1, 2);\n        RangeError(1, 2);\n        ReferenceError(1, 2);\n        String(1, 2);\n        SyntaxError(1, 2);\n        TypeError(1, 2);\n        unescape(1, 2);\n        URIError(1, 2);\n        try {\n            Function(1, 2);\n        } catch (e) {\n            console.log(e.name);\n        }\n        try {\n            RegExp(1, 2);\n        } catch (e) {\n            console.log(e.name);\n        }\n        try {\n            Array(NaN);\n        } catch (e) {\n            console.log(e.name);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "try{Function(1,2)}catch(e){console.log(e.name)}try{RegExp(1,2)}catch(e){console.log(e.name)}try{Array(NaN)}catch(e){console.log(e.name)}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "SyntaxError\nSyntaxError\nRangeError\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

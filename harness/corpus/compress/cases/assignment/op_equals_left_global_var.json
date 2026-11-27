@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/assignment/op_equals_left_global_var",
+  "corpus": "compress",
+  "name": "op_equals_left_global_var",
+  "origin": {
+    "file": "test/compress/assignment.js",
+    "line": 124,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        x = x +   3;\n        x = x -   3;\n        x = x /   3;\n        x = x *   3;\n        x = x >>  3;\n        x = x <<  3;\n        x = x >>> 3;\n        x = x |   3;\n        x = x ^   3;\n        x = x %   3;\n        x = x &   3;\n\n        x = x +   g();\n        x = x -   g();\n        x = x /   g();\n        x = x *   g();\n        x = x >>  g();\n        x = x <<  g();\n        x = x >>> g();\n        x = x |   g();\n        x = x ^   g();\n        x = x %   g();\n        x = x &   g();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "x+=3;x-=3;x/=3;x*=3;x>>=3;x<<=3;x>>>=3;x|=3;x^=3;x%=3;x&=3;x+=g();x-=g();x/=g();x*=g();x>>=g();x<<=g();x>>>=g();x|=g();x^=g();x%=g();x&=g();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/mangleprops-mangleprop-annotation/mangleprop_annotation_in_propassign",
+  "corpus": "compress",
+  "name": "mangleprop_annotation_in_propassign",
+  "origin": {
+    "file": "test/compress/mangleprops-mangleprop-annotation.js",
+    "line": 182,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        /*@__MANGLE_PROP__*/ this.keepthis.manglethis = \"manglethis\";\n        /*@__MANGLE_PROP__*/ this.keepthis.manglethis = \"manglethis\";\n        (/*@__MANGLE_PROP__*/ this.manglethis_).keepthis_ = \"manglethis_\";\n        (/*@__MANGLE_PROP__*/ this.manglethis_).keepthis_ = \"manglethis_\";\n        /*@__MANGLE_PROP__*/ this.keepthis__[\"manglethis__\"] = \"manglethis__\";\n        /*@__MANGLE_PROP__*/ this.keepthis__[\"manglethis__\"] = \"manglethis__\";\n        (/*@__MANGLE_PROP__*/ this[\"manglethis___\"]).keepthis___ = \"manglethis___\";\n        (/*@__MANGLE_PROP__*/ this[\"manglethis___\"]).keepthis___ = \"manglethis___\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "only_annotated": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true\n}",
+    "mangle": "{\n    properties: {\n        only_annotated: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "this.keepthis.h=\"manglethis\";this.keepthis.h=\"manglethis\";this.i.keepthis_=\"manglethis_\";this.i.keepthis_=\"manglethis_\";this.keepthis__[\"t\"]=\"manglethis__\";this.keepthis__[\"t\"]=\"manglethis__\";this[\"_\"].keepthis___=\"manglethis___\";this[\"_\"].keepthis___=\"manglethis___\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

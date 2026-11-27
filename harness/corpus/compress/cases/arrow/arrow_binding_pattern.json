@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/arrow_binding_pattern",
+  "corpus": "compress",
+  "name": "arrow_binding_pattern",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 94,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = ([]) => \"foo\";\n        var bar = ({}) => \"bar\";\n        var with_default = (foo = \"default\") => foo;\n        var object_with_default = ({foo = \"default\", bar: baz = \"default\"}) => foo;\n        var array_after_spread = (...[foo]) => foo;\n        var array_after_spread = (...{foo}) => foo;\n        var computed = ({ [compute()]: x }) => {};\n        var array_hole = ([, , ...x] = [1, 2]) => {};\n        var object_trailing_elision = ({foo,}) => {};\n        var spread_empty_array = (...[]) => \"foo\";\n        var spread_empty_object = (...{}) => \"foo\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=([])=>\"foo\";var bar=({})=>\"bar\";var with_default=(foo=\"default\")=>foo;var object_with_default=({foo:foo=\"default\",bar:baz=\"default\"})=>foo;var array_after_spread=(...[foo])=>foo;var array_after_spread=(...{foo:foo})=>foo;var computed=({[compute()]:x})=>{};var array_hole=([,,...x]=[1,2])=>{};var object_trailing_elision=({foo:foo})=>{};var spread_empty_array=(...[])=>\"foo\";var spread_empty_object=(...{})=>\"foo\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

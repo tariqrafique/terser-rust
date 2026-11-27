@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/switch/issue_1680_2",
+  "corpus": "compress",
+  "name": "issue_1680_2",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 2103,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 100, b = 10;\n        switch (b) {\n          case a--:\n            break;\n          case b:\n            var c;\n            break;\n          case a:\n            break;\n          case a--:\n            break;\n        }\n        console.log(a, b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "switches": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    switches: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=100,b=10;switch(b){case a--:case b:var c;case a:case a--:}console.log(a,b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "99 10\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

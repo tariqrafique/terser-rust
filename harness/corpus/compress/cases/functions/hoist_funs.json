@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/functions/hoist_funs",
+  "corpus": "compress",
+  "name": "hoist_funs",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 179,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(typeof f, typeof g, 1);\n        if (console.log(typeof f, typeof g, 2))\n            console.log(typeof f, typeof g, 3);\n        else {\n            console.log(typeof f, typeof g, 4);\n            function f() {}\n            console.log(typeof f, typeof g, 5);\n        }\n        function g() {}\n        console.log(typeof f, typeof g, 6);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "hoist_funs": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    hoist_funs: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function g(){}console.log(typeof f,typeof g,1);if(console.log(typeof f,typeof g,2))console.log(typeof f,typeof g,3);else{console.log(typeof f,typeof g,4);function f(){}console.log(typeof f,typeof g,5)}console.log(typeof f,typeof g,6);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined function 1\nundefined function 2\nfunction function 4\nfunction function 5\nfunction function 6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

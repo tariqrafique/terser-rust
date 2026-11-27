@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/issue-2652/unary_postfix",
+  "corpus": "compress",
+  "name": "unary_postfix",
+  "origin": {
+    "file": "test/compress/issue-2652.js",
+    "line": 18,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        a\n        /* foo */++b\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": true,
+      "comments": "all"
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    beautify: true,\n    comments: \"all\"\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a\n/* foo */;\n\n++b;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

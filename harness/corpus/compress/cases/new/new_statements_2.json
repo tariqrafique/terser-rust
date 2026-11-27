@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/new/new_statements_2",
+  "corpus": "compress",
+  "name": "new_statements_2",
+  "origin": {
+    "file": "test/compress/new.js",
+    "line": 14,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        new x;\n        new new x;\n        new new new x;\n        new true;\n        new (0);\n        new (!0);\n        new (bar = function(foo) {this.foo=foo;})(123);\n        new (bar = function(foo) {this.foo=foo;})();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "new x;new(new x);new(new(new x));new true;new 0;new(!0);new(bar=function(foo){this.foo=foo})(123);new(bar=function(foo){this.foo=foo});",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

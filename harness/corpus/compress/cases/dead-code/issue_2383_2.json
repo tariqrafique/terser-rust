@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/issue_2383_2",
+  "corpus": "compress",
+  "name": "issue_2383_2",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 592,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (0) {\n            var {\n                x = 0,\n                y: [ w, , { z, p: q = 7 } ] = [ 1, 2, { z: 3 } ]\n            } = {};\n        }\n        console.log(x, q, w, z);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var x,w,z,q;console.log(x,q,w,z);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined undefined undefined undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

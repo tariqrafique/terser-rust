@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/try-catch/broken_safari_catch_scope",
+  "corpus": "compress",
+  "name": "broken_safari_catch_scope",
+  "origin": {
+    "file": "test/compress/try-catch.js",
+    "line": 14,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"AAAAAAAA\";\n        \"BBBBBBB\";\n        new class {\n            f(x) {\n                try {\n                    throw {\n                        m: \"PASS\"\n                    };\n                } catch ({m: s}) {\n                    console.log(s);\n                }\n            }\n        }().f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "safari10": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    safari10: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"AAAAAAAA\";\"BBBBBBB\";(new class{f(A){try{throw{m:\"PASS\"}}catch({m:B}){console.log(B)}}}).f();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

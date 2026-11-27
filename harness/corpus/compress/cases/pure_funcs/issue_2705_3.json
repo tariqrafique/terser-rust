@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/pure_funcs/issue_2705_3",
+  "corpus": "compress",
+  "name": "issue_2705_3",
+  "origin": {
+    "file": "test/compress/pure_funcs.js",
+    "line": 460,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        /*@__PURE__*/ new a.x(1).y(2).z(3);\n        /*@__PURE__*/ new (b.x)(1).y(2).z(3);\n        /*@__PURE__*/ new (c.x(1)).y(2).z(3);\n        /*@__PURE__*/ new (d.x(1).y)(2).z(3);\n        /*@__PURE__*/ new (e.x(1).y(2)).z(3);\n        /*@__PURE__*/ new (f.x(1).y(2).z)(3);\n        /*@__PURE__*/ new (g.x(1).y(2).z(3));\n        new (/*@__PURE__*/ h).x(1).y(2).z(3);\n        /* */ new (/*@__PURE__*/ i.x)(1).y(2).z(3);\n        (/*@__PURE__*/ new j.x(1)).y(2).z(3);\n        (/*@__PURE__*/ new k.x(1).y)(2).z(3);\n        (/*@__PURE__*/ new l.x(1).y(2)).z(3);\n        (/*@__PURE__*/ new m.x(1).y(2).z)(3);\n        (/*@__PURE__*/ new n.x(1).y(2).z(3));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "preserve_annotations": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true\n}",
+    "mangle": null,
+    "format": "{\n    preserve_annotations: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "new/*@__PURE__*/h.x(1).y(2).z(3);new/*@__PURE__*/i.x(1).y(2).z(3);\n/*@__PURE__*/new j.x(1).y(2).z(3);\n/*@__PURE__*/new k.x(1).y(2).z(3);\n/*@__PURE__*/new l.x(1).y(2).z(3);\n/*@__PURE__*/new m.x(1).y(2).z(3);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

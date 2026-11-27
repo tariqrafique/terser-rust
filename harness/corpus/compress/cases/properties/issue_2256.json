@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/properties/issue_2256",
+  "corpus": "compress",
+  "name": "issue_2256",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 1025,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var g = {};\n        ({ \"keep\": 1 });\n        g.keep = g.change;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true\n}",
+    "mangle": "{\n    properties: {\n        keep_quoted: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var g={};g.keep=g.v;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

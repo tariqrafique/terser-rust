@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/export/name_cache_do_not_mangle_export_var_name",
+  "corpus": "compress",
+  "name": "name_cache_do_not_mangle_export_var_name",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 528,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export var add = 1;\n        var sub = 2, mul = 3;\n        console.log(add, add, sub, sub, mul, mul);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "reduce_vars": false,
+      "toplevel": true
+    },
+    "mangle": {
+      "cache": {
+        "props": {
+          "$add": "_$ADD$_",
+          "$sub": "_$SUB$_"
+        }
+      },
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    reduce_vars: false,\n    toplevel: true\n}",
+    "mangle": "{\n    cache: {\n        props: {\n            $add: \"_$ADD$_\",\n            $sub: \"_$SUB$_\"\n        }\n    },\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export var add=1;var _$SUB$_=2,d=3;console.log(add,add,_$SUB$_,_$SUB$_,d,d);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

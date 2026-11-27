@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/string-literal/octal_escape_sequence",
+  "corpus": "compress",
+  "name": "octal_escape_sequence",
+  "origin": {
+    "file": "test/compress/string-literal.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var boundaries = \"\\0\\7\\00\\07\\70\\77\\000\\077\\300\\377\";\n        var border_check = \"\\400\\700\\0000\\3000\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var boundaries=\"\\0\u0007\\0\u00078?\\0?Àÿ\";var border_check=\" 080\\x000À0\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

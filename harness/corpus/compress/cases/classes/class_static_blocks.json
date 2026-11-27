@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/classes/class_static_blocks",
+  "corpus": "compress",
+  "name": "class_static_blocks",
+  "origin": {
+    "file": "test/compress/classes.js",
+    "line": 206,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class A {\n            static {\n                this.hello = 'PASS'\n            }\n            print() {\n                console.log(A.hello)\n            }\n        }\n        new A().print();\n        console.log(A.hello + \"2\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class A{static{this.hello=\"PASS\"}print(){console.log(A.hello)}}(new A).print();console.log(A.hello+\"2\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=16",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

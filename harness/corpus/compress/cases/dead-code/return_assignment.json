@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/return_assignment",
+  "corpus": "compress",
+  "name": "return_assignment",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 691,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1(a, b, c) {\n            return a = x(), b = y(), b = a && (c >>= 5);\n        }\n        function f2() {\n            return e = x();\n        }\n        function f3(e) {\n            return e = x();\n        }\n        function f4() {\n            var e;\n            return e = x();\n        }\n        function f5(a) {\n            try {\n                return a = x();\n            } catch (b) {\n                console.log(a);\n            }\n        }\n        function f6(a) {\n            try {\n                return a = x();\n            } finally {\n                console.log(a);\n            }\n        }\n        function y() {\n            console.log(\"y\");\n        }\n        function test(inc) {\n            var counter = 0;\n            x = function() {\n                counter += inc;\n                if (inc < 0) throw counter;\n                return counter;\n            };\n            [ f1, f2, f3, f4, f5, f6 ].forEach(function(f, i) {\n                e = null;\n                try {\n                    i += 1;\n                    console.log(\"result \" + f(10 * i, 100 * i, 1000 * i));\n                } catch (x) {\n                    console.log(\"caught \" + x);\n                }\n                if (null !== e) console.log(\"e: \" + e);\n            });\n        }\n        var x, e;\n        test(1);\n        test(-1);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(a,b,c){return a=x(),y(),a&&c>>5}function f2(){return e=x()}function f3(e){return x()}function f4(){return x()}function f5(a){try{return x()}catch(b){console.log(a)}}function f6(a){try{return a=x()}finally{console.log(a)}}function y(){console.log(\"y\")}function test(inc){var counter=0;x=function(){counter+=inc;if(inc<0)throw counter;return counter};[f1,f2,f3,f4,f5,f6].forEach(function(f,i){e=null;try{i+=1;console.log(\"result \"+f(10*i,100*i,1e3*i))}catch(x){console.log(\"caught \"+x)}if(null!==e)console.log(\"e: \"+e)})}var x,e;test(1);test(-1);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "y\nresult 31\nresult 2\ne: 2\nresult 3\nresult 4\nresult 5\n6\nresult 6\ncaught -1\ncaught -2\ncaught -3\ncaught -4\n50\nresult undefined\n60\ncaught -6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

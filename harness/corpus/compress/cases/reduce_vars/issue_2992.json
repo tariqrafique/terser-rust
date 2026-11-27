@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2992",
+  "corpus": "compress",
+  "name": "issue_2992",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6352,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var c = \"PASS\";\n        (function f(b) {\n            switch (0) {\n            case 0:\n            case b = 1:\n                b && (c = \"FAIL\");\n            }\n        })();\n        console.log(c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var c=\"PASS\";(function f(b){switch(0){case 0:case b=1:b&&(c=\"FAIL\")}})();console.log(c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

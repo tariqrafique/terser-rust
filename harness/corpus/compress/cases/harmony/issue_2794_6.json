@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_2794_6",
+  "corpus": "compress",
+  "name": "issue_2794_6",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1756,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // TODO (or not): have parser flag invalid for-of expression.\n        // Consider it an uglify extension in the meantime.\n        for (let e of [1,2], [3,4,5]) {\n            console.log(e);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(let e of([1,2],[3,4,5]))console.log(e);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "3\n4\n5\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

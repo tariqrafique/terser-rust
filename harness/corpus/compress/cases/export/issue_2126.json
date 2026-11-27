@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/export/issue_2126",
+  "corpus": "compress",
+  "name": "issue_2126",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 43,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import { foo as bar, cat as dog } from \"stuff\";\n        console.log(bar, dog);\n        export { bar as qux };\n        export { dog };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import{foo as o,cat as s}from\"stuff\";console.log(o,s);export{o as qux};export{s as dog};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

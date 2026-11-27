@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_805_1",
+  "corpus": "compress",
+  "name": "issue_805_1",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2141,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(a) {\n            var unused = function() {};\n            unused.prototype[a()] = 42;\n            (unused.prototype.bar = function() {\n                console.log(\"bar\");\n            })();\n            return unused;\n        })(function() {\n            console.log(\"foo\");\n            return \"foo\";\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "passes": 2,
+      "pure_getters": "strict",
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    passes: 2,\n    pure_getters: \"strict\",\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "foo\nbar\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/object_spread_unsafe",
+  "corpus": "compress",
+  "name": "object_spread_unsafe",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 902,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var o1 = { x: 1, y: 2 };\n        var o2 = { x: 3, z: 4 };\n        var cloned = { ...o1 };\n        var merged = { ...o1, ...o2 };\n        console.log(cloned, merged);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "join_vars": true,
+      "passes": 3,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unsafe": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    join_vars: true,\n    passes: 3,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true,\n    unsafe: true,\n    unused: true\n}",
+    "mangle": "{\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var o={x:1,y:2},l={...o},x={...o,x:3,z:4};console.log(l,x);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

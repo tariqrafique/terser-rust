@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/object/getter_setter",
+  "corpus": "compress",
+  "name": "getter_setter",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var get = \"bar\";\n        var a = {\n            get,\n            set: \"foo\",\n            get bar() {\n                return this.get;\n            },\n            get 5() {\n                return \"five\";\n            },\n            get 0xf55() {\n                return \"f five five\";\n            },\n            get \"five\"() {\n                return 5;\n            },\n            set one(value) {\n                this._one = value;\n            },\n            set 9(value) {\n                this._nine = value;\n            },\n            set 0b1010(value) {\n                this._ten = value;\n            },\n            set \"eleven\"(value) {\n                this._eleven = value;\n            }\n        };\n        var b = {\n            get() { return \"gift\"; },\n            set: function(code) { return \"Storing code \" + code; }\n        };\n        var c = {\n            [\"get\"]: \"foo\",\n            [\"set\"]: \"bar\"\n        };\n        var d = {\n            get: \"foo\",\n            set: \"bar\"\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var get=\"bar\";var a={get:get,set:\"foo\",get bar(){return this.get},get 5(){return\"five\"},get 3925(){return\"f five five\"},get five(){return 5},set one(value){this._one=value},set 9(value){this._nine=value},set 10(value){this._ten=value},set eleven(value){this._eleven=value}};var b={get(){return\"gift\"},set:function(code){return\"Storing code \"+code}};var c={[\"get\"]:\"foo\",[\"set\"]:\"bar\"};var d={get:\"foo\",set:\"bar\"};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

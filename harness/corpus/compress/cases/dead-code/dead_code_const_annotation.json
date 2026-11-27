@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/dead_code_const_annotation",
+  "corpus": "compress",
+  "name": "dead_code_const_annotation",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 227,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var unused;\n        /** @const */ var CONST_FOO_ANN = false;\n        if (CONST_FOO_ANN) {\n            console.log(\"unreachable\");\n            var moo;\n            function bar() {}\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "loops": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    loops: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var unused;var CONST_FOO_ANN=!1;var moo;var bar;",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

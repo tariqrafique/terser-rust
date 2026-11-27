@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/inline/noinline_annotation_3",
+  "corpus": "compress",
+  "name": "noinline_annotation_3",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 347,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function foo(val) { return val; }\n            function bar() {\n                var pass = 1;\n                pass = /*@__NOINLINE__*/ foo(pass);\n                window.data = pass;\n            }\n            window.bar = bar;\n            bar();\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "inline": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    inline: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){function foo(val){return val}function bar(){var pass=1;pass=foo(pass);window.data=pass}window.bar=bar;bar()})();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

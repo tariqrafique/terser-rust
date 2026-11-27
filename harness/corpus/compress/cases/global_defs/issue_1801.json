@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/global_defs/issue_1801",
+  "corpus": "compress",
+  "name": "issue_1801",
+  "origin": {
+    "file": "test/compress/global_defs.js",
+    "line": 145,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(CONFIG.FOO.BAR);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "global_defs": {
+        "CONFIG.FOO.BAR": true
+      },
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    global_defs: {\n        \"CONFIG.FOO.BAR\": true\n    }\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(!0);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

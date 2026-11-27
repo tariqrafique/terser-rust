@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/dead_code_2_should_warn_strict",
+  "corpus": "compress",
+  "name": "dead_code_2_should_warn_strict",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 65,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\";\n        function f() {\n            g();\n            x = 10;\n            throw new Error(\"foo\");\n            // completely discarding the `if` would introduce some\n            // bugs.  UglifyJS v1 doesn't deal with this issue; in v2\n            // we copy any declarations to the upper scope.\n            if (x) {\n                y();\n                var x;\n                function g(){};\n                // but nested declarations should not be kept.\n                (function(){\n                    var q;\n                    function y(){};\n                })();\n            }\n        }\n        f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";function f(){g();x=10;throw new Error(\"foo\");var x}f();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": false,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

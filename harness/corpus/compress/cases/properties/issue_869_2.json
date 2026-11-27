@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/properties/issue_869_2",
+  "corpus": "compress",
+  "name": "issue_869_2",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 2256,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var o = { p: \"FAIL\" };\n        Object.defineProperties(o, {\n            p: {\n                get: function() {\n                    return \"PASS\";\n                }\n            }\n        });\n        console.log(o.p);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "reserved": [
+          "get"
+        ]
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: {\n        reserved: [ \"get\" ]\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var o={o:\"FAIL\"};Object.defineProperties(o,{o:{get:function(){return\"PASS\"}}});console.log(o.o);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

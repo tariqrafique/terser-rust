@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/null_conditional_chain_eval_2",
+  "corpus": "compress",
+  "name": "null_conditional_chain_eval_2",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 2002,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        null.deep?.unused\n        null.deep?.[side_effect()]\n        null.deep?.unused.but_might_throw\n        null.deep?.call(1)\n        null.deep?.(2)\n        null.deep?.maybe_call?.(3)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "null.deep;null.deep?.[side_effect()];null.deep?.unused.but_might_throw;null.deep?.call(1);null.deep?.(2);null.deep?.maybe_call?.(3);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

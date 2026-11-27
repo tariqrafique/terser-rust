@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/yield/yield_as_identifier_in_function_in_generator",
+  "corpus": "compress",
+  "name": "yield_as_identifier_in_function_in_generator",
+  "origin": {
+    "file": "test/compress/yield.js",
+    "line": 106,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var g = function*() {\n            function h() {\n                yield = 1;\n            }\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var g=function*(){function h(){yield=1}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/cond_5",
+  "corpus": "compress",
+  "name": "cond_5",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 252,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if (some_condition()) {\n            if (some_other_condition()) {\n                do_something();\n            } else {\n                alternate();\n            }\n        } else {\n            alternate();\n        }\n\n        if (some_condition()) {\n            if (some_other_condition()) {\n                do_something();\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "some_condition()&&some_other_condition()?do_something():alternate();some_condition()&&some_other_condition()&&do_something();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

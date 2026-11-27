@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/ie8/dont_screw",
+  "corpus": "compress",
+  "name": "dont_screw",
+  "origin": {
+    "file": "test/compress/ie8.js",
+    "line": 15,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        f(\"\\v\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ie8": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ie8": true,
+      "ascii_only": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ie8: true\n}",
+    "mangle": null,
+    "format": "{\n    ie8: true,\n    ascii_only: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "f(\"\\x0B\");",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

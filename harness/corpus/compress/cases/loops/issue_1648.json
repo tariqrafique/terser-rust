@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/loops/issue_1648",
+  "corpus": "compress",
+  "name": "issue_1648",
+  "origin": {
+    "file": "test/compress/loops.js",
+    "line": 469,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            x();\n            var b = 1;\n            while (1);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "join_vars": true,
+      "loops": true,
+      "passes": 2,
+      "sequences": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    join_vars: true,\n    loops: true,\n    passes: 2,\n    sequences: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){for(x();1;);}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

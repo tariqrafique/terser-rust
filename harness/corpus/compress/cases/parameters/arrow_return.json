@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/parameters/arrow_return",
+  "corpus": "compress",
+  "name": "arrow_return",
+  "origin": {
+    "file": "test/compress/parameters.js",
+    "line": 18,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        () => {};\n        () => { return; };\n        a => { return 1; }\n        a => { return -b }\n        a => { return b; var b; }\n        (x, y) => { return x - y; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "()=>{};()=>{};a=>1;a=>-b;a=>{return b;var b};(x,y)=>x-y;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

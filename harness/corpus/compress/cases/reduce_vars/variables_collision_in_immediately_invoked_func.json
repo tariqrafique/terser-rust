@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/variables_collision_in_immediately_invoked_func",
+  "corpus": "compress",
+  "name": "variables_collision_in_immediately_invoked_func",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 7167,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(callback) {\n            callback();\n        })(function() {\n            window.used = function() {\n                var A = window.foo,\n                    B = window.bar,\n                    C = window.foobar;\n\n                return (function(A, c) {\n                    if (-1 === c) return A;\n                    return $(A, c);\n                })(B, C);\n            }.call(this);\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){window.used=function(){return window.foo,function(A,c){return-1===c?A:$(A,c)}(window.bar,window.foobar)}.call(this)}();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

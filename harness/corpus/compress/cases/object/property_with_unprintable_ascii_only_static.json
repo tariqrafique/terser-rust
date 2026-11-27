@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/object/property_with_unprintable_ascii_only_static",
+  "corpus": "compress",
+  "name": "property_with_unprintable_ascii_only_static",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 549,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class foo {\n            static get \"\\x02\\x03\"() {\n                return \"bar\";\n            }\n            static set \"\\x04\\x05\"(foo) {\n                save(foo);\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ascii_only": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ascii_only: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class foo{static get\"\\x02\\x03\"(){return\"bar\"}static set\"\\x04\\x05\"(foo){save(foo)}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

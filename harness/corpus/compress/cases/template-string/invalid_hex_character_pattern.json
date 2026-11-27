@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/invalid_hex_character_pattern",
+  "corpus": "compress",
+  "name": "invalid_hex_character_pattern",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 679,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log('\\u{-1}')\n    ",
+  "input_kind": "template",
+  "bad_input": true,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": null,
+  "expect_error": {
+    "name": "SyntaxError",
+    "message": "Invalid hex-character pattern in string",
+    "line": 2,
+    "col": 20
+  },
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

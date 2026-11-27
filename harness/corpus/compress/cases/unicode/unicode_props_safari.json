@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/unicode/unicode_props_safari",
+  "corpus": "compress",
+  "name": "unicode_props_safari",
+  "origin": {
+    "file": "test/compress/unicode.js",
+    "line": 35,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log({ 𝒶: \"foo\" })\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "safari10": true,
+      "ecma": 2020
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    safari10: true,\n    ecma: 2020\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log({\"𝒶\":\"foo\"});",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

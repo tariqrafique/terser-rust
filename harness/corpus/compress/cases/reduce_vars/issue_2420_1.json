@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2420_1",
+  "corpus": "compress",
+  "name": "issue_2420_1",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 3931,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function run() {\n            var self = this;\n            if (self.count++)\n                self.foo();\n            else\n                self.bar();\n        }\n        var o = {\n            count: 0,\n            foo: function() { console.log(\"foo\"); },\n            bar: function() { console.log(\"bar\"); },\n        };\n        run.call(o);\n        run.call(o);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function run(){if(this.count++)this.foo();else this.bar()}var o={count:0,foo:function(){console.log(\"foo\")},bar:function(){console.log(\"bar\")}};run.call(o);run.call(o);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "bar\nfoo\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

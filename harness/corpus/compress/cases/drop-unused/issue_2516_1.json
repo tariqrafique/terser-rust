@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_2516_1",
+  "corpus": "compress",
+  "name": "issue_2516_1",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 1639,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            function qux(x) {\n                bar.call(null, x);\n            }\n            function bar(x) {\n                var FOUR = 4;\n                var trouble = x || never_called();\n                var value = (FOUR - 1) * trouble;\n                console.log(value == 6 ? \"PASS\" : value);\n            }\n            Baz = qux;\n        }\n        var Baz;\n        foo();\n        Baz(2);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){function bar(x){var value=(4-1)*(x||never_called());console.log(value==6?\"PASS\":value)}Baz=function(x){bar.call(null,x)}}var Baz;foo();Baz(2);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

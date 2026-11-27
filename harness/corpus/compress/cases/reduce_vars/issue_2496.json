@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2496",
+  "corpus": "compress",
+  "name": "issue_2496",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 4909,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function execute(callback) {\n            callback();\n        }\n        class Foo {\n            constructor(message) {\n                this.message = message;\n            }\n            go() {\n                this.message = \"PASS\";\n                console.log(this.message);\n            }\n            run() {\n                execute(() => {\n                    this.go();\n                });\n            }\n        }\n        new Foo(\"FAIL\").run();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "passes": 2,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    passes: 2,\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "new class{constructor(message){this.message=message}go(){this.message=\"PASS\";console.log(this.message)}run(){(function(callback){callback()})(()=>{this.go()})}}(\"FAIL\").run();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

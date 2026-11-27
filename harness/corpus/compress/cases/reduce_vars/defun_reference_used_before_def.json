@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/defun_reference_used_before_def",
+  "corpus": "compress",
+  "name": "defun_reference_used_before_def",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 1411,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var first = log_on();\n        var on = true;\n        function log_on() {\n            console.log(on)\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "reduce_vars": true,
+      "unused": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    reduce_vars: true,\n    unused: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){console.log(on)})();var on=true;",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

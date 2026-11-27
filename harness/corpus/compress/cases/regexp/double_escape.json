@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/regexp/double_escape",
+  "corpus": "compress",
+  "name": "double_escape",
+  "origin": {
+    "file": "test/compress/regexp.js",
+    "line": 66,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        /\\🏳0\\🌈️\\☺/\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ascii_only": true
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ascii_only: true\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "/\\ud83c\\udff30\\ud83c\\udf08\\ufe0f\\u263a/;",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

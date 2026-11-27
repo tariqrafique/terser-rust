@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/export/export_named_string",
+  "corpus": "compress",
+  "name": "export_named_string",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 971,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export { Foo as \"F-oo\" };\n        export { Bar as \"B-ar\" } from \"lel\";\n        export { star as \"*\" } from \"lel\";\n        export { \"B-ax\" } from \"lel\";\n        export { \"B-ar\" as \"F-oo\" } from \"lel\";\n        export { \"*\" } from \"lel\";\n        export { \"*\" as star } from \"lel\";\n        export { \"*\" as \"s-tar\" } from \"lel\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export{Foo as\"F-oo\"};export{Bar as\"B-ar\"}from\"lel\";export{star as\"*\"}from\"lel\";export{\"B-ax\"}from\"lel\";export{\"B-ar\"as\"F-oo\"}from\"lel\";export{\"*\"}from\"lel\";export{\"*\"as star}from\"lel\";export{\"*\"as\"s-tar\"}from\"lel\";",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

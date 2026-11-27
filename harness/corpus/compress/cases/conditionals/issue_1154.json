@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_1154",
+  "corpus": "compress",
+  "name": "issue_1154",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 816,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1(x) { return x ? -1 : -1; }\n        function f2(x) { return x ? +2 : +2; }\n        function f3(x) { return x ? ~3 : ~3; }\n        function f4(x) { return x ? !4 : !4; }\n        function f5(x) { return x ? void 5 : void 5; }\n        function f6(x) { return x ? typeof 6 : typeof 6; }\n\n        function g1() { return g() ? -1 : -1; }\n        function g2() { return g() ? +2 : +2; }\n        function g3() { return g() ? ~3 : ~3; }\n        function g4() { return g() ? !4 : !4; }\n        function g5() { return g() ? void 5 : void 5; }\n        function g6() { return g() ? typeof 6 : typeof 6; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(x){return-1}function f2(x){return 2}function f3(x){return-4}function f4(x){return!1}function f5(x){return}function f6(x){return\"number\"}function g1(){return g(),-1}function g2(){return g(),2}function g3(){return g(),-4}function g4(){return g(),!1}function g5(){return void g()}function g6(){return g(),\"number\"}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

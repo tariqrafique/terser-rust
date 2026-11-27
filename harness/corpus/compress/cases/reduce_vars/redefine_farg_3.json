@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/redefine_farg_3",
+  "corpus": "compress",
+  "name": "redefine_farg_3",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 2419,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a) {\n            var a;\n            return typeof a;\n        }\n        function g(a) {\n            var a = 42;\n            return typeof a;\n        }\n        function h(a, b) {\n            var a = b;\n            return typeof a;\n        }\n        console.log(f([]), g([]), h([]));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "inline": true,
+      "keep_fargs": false,
+      "passes": 3,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    inline: true,\n    keep_fargs: false,\n    passes: 3,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(typeof[],\"number\",\"undefined\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "object number undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_t80",
+  "corpus": "compress",
+  "name": "issue_t80",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 2025,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(data = []) {\n            var u, v = \"unused\";\n            if (arguments.length == 1) {\n                data = [data];\n            }\n            return data;\n        }\n        console.log(JSON.stringify([foo(), foo(null), foo(5, 6)]));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(data=[]){if(arguments.length==1)data=[data];return data}console.log(JSON.stringify([foo(),foo(null),foo(5,6)]));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "[[],[null],5]\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

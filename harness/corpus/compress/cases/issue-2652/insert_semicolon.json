@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/issue-2652/insert_semicolon",
+  "corpus": "compress",
+  "name": "insert_semicolon",
+  "origin": {
+    "file": "test/compress/issue-2652.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a\n        /* foo */ var b\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": true,
+      "comments": "all"
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    beautify: true,\n    comments: \"all\"\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a\n/* foo */;\n\nvar b;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

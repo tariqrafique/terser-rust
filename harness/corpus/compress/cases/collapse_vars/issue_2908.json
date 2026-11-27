@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2908",
+  "corpus": "compress",
+  "name": "issue_2908",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 5281,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 0, b = 0;\n        function f(c) {\n            if (1 == c) return;\n            a++;\n            if (2 == c) b = a;\n        }\n        f(0);\n        f(2);\n        console.log(b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=0,b=0;function f(c){if(1==c)return;a++;if(2==c)b=a}f(0);f(2);console.log(b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

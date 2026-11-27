@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/issue-203/compress_new_function_with_destruct_arrows",
+  "corpus": "compress",
+  "name": "compress_new_function_with_destruct_arrows",
+  "origin": {
+    "file": "test/compress/issue-203.js",
+    "line": 36,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        new Function(\"aa, [bb]\", 'return aa;');\n        new Function(\"aa, {bb}\", 'return aa;');\n        new Function(\"[[aa]], [{bb}]\", 'return aa;');\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "unsafe_arrows": true,
+      "unsafe": true,
+      "unsafe_Function": true,
+      "ecma": 2015,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true,\n    unsafe_arrows: true,\n    unsafe: true,\n    unsafe_Function: true,\n    ecma: 2015\n}",
+    "mangle": null,
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "Function(\"n,[a]\",\"return n\");Function(\"b,{bb:n}\",\"return b\");Function(\"[[b]],[{bb:n}]\",\"return b\");",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

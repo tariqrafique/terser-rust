@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/cascade_switch",
+  "corpus": "compress",
+  "name": "cascade_switch",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 4709,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a, b) {\n            switch(a = x(), a) {\n              case a = x(), b(a):\n                break;\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a,b){switch(a=x()){case b(a=x()):break}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/functions/inline_function_expressions",
+  "corpus": "compress",
+  "name": "inline_function_expressions",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2237,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (async()=>2)().catch(x=>null);\n        (async function(){ return 3; })().catch(x => null);\n        (() => 4)();\n        (function(){ return 5; })();\n        (function*(){ return 6; })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": 2,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: 2\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(async()=>2)().catch(x=>null);(async function(){return 3})().catch(x=>null);4;5;(function*(){return 6})();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

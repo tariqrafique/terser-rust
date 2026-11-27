@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/issue_t1606_2",
+  "corpus": "compress",
+  "name": "issue_t1606_2",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 588,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (() => {\n            if (!true) ; else {\n                const fileName = \"PASS\";\n                ((fileName) => {\n                    console.log(fileName);\n                })(fileName);\n                return;\n            }\n        })()\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "sequences": true,
+      "side_effects": true,
+      "if_return": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    sequences: true,\n    side_effects: true,\n    if_return: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(()=>{if(!true);else{const fileName=\"PASS\";(fileName=>{console.log(fileName)})(fileName)}})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

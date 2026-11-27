@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "compress/mangleprops-strict-computed/no_computed_props_keep_quoted_inlined_sub_7",
+  "corpus": "compress",
+  "name": "no_computed_props_keep_quoted_inlined_sub_7",
+  "origin": {
+    "file": "test/compress/mangleprops-strict-computed.js",
+    "line": 369,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let prop = '_foo';\n        let o = new class {\n            [prop] = 'bar'\n        };\n        console.log(o[id('_foo')]);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false,
+      "reduce_vars": true,
+      "unused": true,
+      "toplevel": true,
+      "computed_props": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": "strict"
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: false,\n    reduce_vars: true,\n    unused: true,\n    toplevel: true,\n    computed_props: false\n}",
+    "mangle": "{\n    properties: {\n        keep_quoted: \"strict\"\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "bar\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

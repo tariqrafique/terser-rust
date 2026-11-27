@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/inline/do_not_repeat_when_variable_larger_than_inlined_node_3",
+  "corpus": "compress",
+  "name": "do_not_repeat_when_variable_larger_than_inlined_node_3",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 547,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const a = \"string\";\n        const b = \"string\";\n        const c = a + b;\n        console.log(c, c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "reduce_vars": true,
+      "evaluate": true,
+      "unused": true,
+      "inline": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    reduce_vars: true,\n    evaluate: true,\n    unused: true,\n    inline: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const c=\"stringstring\";console.log(c,c);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

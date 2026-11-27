@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1466/same_variable_in_multiple_for_loop",
+  "corpus": "compress",
+  "name": "same_variable_in_multiple_for_loop",
+  "origin": {
+    "file": "test/compress/issue-1466.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (let i = 0; i < 3; i++) {\n            let a = 100;\n            console.log(i, a);\n            for (let i = 0; i < 2; i++) {\n                console.log(i, a);\n                let c = 2;\n                console.log(c);\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "hoist_funs": true,
+      "dead_code": true,
+      "conditionals": true,
+      "comparisons": true,
+      "evaluate": true,
+      "booleans": true,
+      "loops": true,
+      "unused": true,
+      "keep_fargs": true,
+      "if_return": true,
+      "join_vars": true,
+      "side_effects": true,
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    hoist_funs: true,\n    dead_code: true,\n    conditionals: true,\n    comparisons: true,\n    evaluate: true,\n    booleans: true,\n    loops: true,\n    unused: true,\n    keep_fargs: true,\n    if_return: true,\n    join_vars: true,\n    side_effects: true,\n    collapse_vars: true\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(let o=0;o<3;o++){let l=100;console.log(o,l);for(let o=0;o<2;o++){console.log(o,l);let e=2;console.log(e)}}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

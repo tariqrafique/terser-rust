@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/negate-iife/sequence_off",
+  "corpus": "compress",
+  "name": "sequence_off",
+  "origin": {
+    "file": "test/compress/negate-iife.js",
+    "line": 137,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            (function(){ return t })() ? console.log(true) : console.log(false);\n            (function(){\n                console.log(\"something\");\n            })();\n        }\n        function g() {\n            (function(){\n                console.log(\"something\");\n            })();\n            (function(){ return t })() ? console.log(true) : console.log(false);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "negate_iife": false,
+      "passes": 2,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    negate_iife: false,\n    passes: 2,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){!function(){return t}()?console.log(false):console.log(true),function(){console.log(\"something\")}()}function g(){(function(){console.log(\"something\")})(),function(){return t}()?console.log(true):console.log(false)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

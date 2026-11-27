@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/join-vars/join_vars_lose_other_var",
+  "corpus": "compress",
+  "name": "join_vars_lose_other_var",
+  "origin": {
+    "file": "test/compress/join-vars.js",
+    "line": 42,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        global.exports = {\n            set a(a) {\n                console.log(a().get_b())\n                const incremented = a()\n                incremented.inc_b()\n                console.log(incremented.get_b())\n            }\n        };\n\n        (function (factory) {\n            factory(exports)\n        })((function (exports) {\n            exports.a = function () {\n                var b = \"PASS\",\n                    _this = {};\n                _this.get_b = function () {\n                    return b;\n                }\n                _this.inc_b = function () {\n                    b += \"PASS\";\n                }\n                return _this;\n            };\n        }));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false,
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "side_effects": true,
+      "join_vars": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: false,\n    inline: true,\n    reduce_vars: true,\n    unused: true,\n    side_effects: true,\n    join_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASSPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

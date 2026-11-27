@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/inline/inline_into_scope_conflict_enclosed",
+  "corpus": "compress",
+  "name": "inline_into_scope_conflict_enclosed",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 190,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        global.same_name = \"PASS\"\n\n        function $(same_name) {\n            if (same_name) indirection_1(same_name)\n        }\n        function indirection_2() {\n            console.log(same_name)\n        }\n        function indirection_1() {\n            indirection_2()\n        }\n        $(\"FAIL\")\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "inline": true,
+      "unused": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    inline: true,\n    unused: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

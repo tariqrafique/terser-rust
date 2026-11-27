@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/pow_sequence_with_constants_and_parens",
+  "corpus": "compress",
+  "name": "pow_sequence_with_constants_and_parens",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 535,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log((4 ** 1) ** 2, (4 ** 1) ** (1 / 2));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(16,2);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "16 2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=8",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

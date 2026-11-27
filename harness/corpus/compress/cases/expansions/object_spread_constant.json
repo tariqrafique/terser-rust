@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/expansions/object_spread_constant",
+  "corpus": "compress",
+  "name": "object_spread_constant",
+  "origin": {
+    "file": "test/compress/expansions.js",
+    "line": 106,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        id({\n            ...null,\n            ...undefined,\n            ...true,\n            ...void 0,\n            ...!0,\n            ...~\"foo\",\n            .../baz/,\n            ...-/baz2/,\n\n            // Several unary prefixes\n            ...!!0,\n            ...~!-+0,\n            ...void !1,\n            ...!~\"foo\",\n            ...+!/foo/,\n            ...!!!!!!!null,\n            ...!~void +-42,\n\n            ...\"bar\",\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": false,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: false\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "id({...\"bar\"});",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

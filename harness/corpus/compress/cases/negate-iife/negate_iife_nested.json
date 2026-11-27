@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/negate-iife/negate_iife_nested",
+  "corpus": "compress",
+  "name": "negate_iife_nested",
+  "origin": {
+    "file": "test/compress/negate-iife.js",
+    "line": 218,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function Foo(f) {\n            this.f = f;\n        }\n        new Foo(function() {\n            (function(x) {\n                (function(y) {\n                    console.log(y);\n                })(x);\n            })(7);\n        }).f();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "negate_iife": true,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    negate_iife: true,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function Foo(f){this.f=f}new Foo(function(){!function(x){!function(y){console.log(y)}(x)}(7)}).f();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

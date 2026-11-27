@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/syntax-errors/invalid_delete",
+  "corpus": "compress",
+  "name": "invalid_delete",
+  "origin": {
+    "file": "test/compress/syntax-errors.js",
+    "line": 122,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(x) {\n            delete 42;\n            delete (0, x);\n            delete null;\n            delete x;\n        }\n\n        function g(x) {\n            \"use strict\";\n            delete 42;\n            delete (0, x);\n            delete null;\n            delete x;\n        }\n    ",
+  "input_kind": "template",
+  "bad_input": true,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": null,
+  "expect_error": {
+    "name": "SyntaxError",
+    "message": "Calling delete on expression not allowed in strict mode",
+    "line": 14,
+    "col": 19
+  },
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

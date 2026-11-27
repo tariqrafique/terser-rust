@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2663_2",
+  "corpus": "compress",
+  "name": "issue_2663_2",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 1713,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            var i;\n            function fn(j) {\n                return function() {\n                    console.log(j);\n                }();\n            }\n            for (i in { a: 1, b: 2, c: 3 })\n                fn(i);\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){var i;function fn(j){return void console.log(j)}for(i in{a:1,b:2,c:3})fn(i)})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "a\nb\nc\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

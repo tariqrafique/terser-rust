@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/ifs_5",
+  "corpus": "compress",
+  "name": "ifs_5",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 96,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            if (foo) return;\n            bar();\n            baz();\n        }\n        function g() {\n            if (foo) return;\n            if (bar) return;\n            if (baz) return;\n            if (baa) return;\n            a();\n            b();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "comparisons": true,
+      "conditionals": true,
+      "if_return": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    comparisons: true,\n    conditionals: true,\n    if_return: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){if(!foo){bar();baz()}}function g(){if(!(foo||bar||baz||baa)){a();b()}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

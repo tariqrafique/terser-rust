@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/nullish/nullish_coalescing_parens",
+  "corpus": "compress",
+  "name": "nullish_coalescing_parens",
+  "origin": {
+    "file": "test/compress/nullish.js",
+    "line": 131,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log((false || null) ?? \"PASS\");\n        console.log(null ?? (true && \"PASS\"));\n        console.log((null ?? 0) || \"PASS\");\n        console.log(null || (null ?? \"PASS\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS\nPASS\nPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=14",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

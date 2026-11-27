@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/collapse_vars_issue_721",
+  "corpus": "compress",
+  "name": "collapse_vars_issue_721",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 170,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        define([\"require\", \"exports\", 'handlebars'], function (require, exports, hb) {\n            var win = window;\n            var _hb = win.Handlebars = hb;\n            return _hb;\n        });\n        def(function (hb) {\n            var win = window;\n            var prop = 'Handlebars';\n            var _hb = win[prop] = hb;\n            return _hb;\n        });\n        def(function (hb) {\n            var prop = 'Handlebars';\n            var win = window;\n            var _hb = win[prop] = hb;\n            return _hb;\n        });\n        def(function (hb) {\n            var prop = 'Handlebars';\n            var win = g();\n            var _hb = win[prop] = hb;\n            return _hb;\n        });\n        def(function (hb) {\n            var prop = g1();\n            var win = g2();\n            var _hb = win[prop] = hb;\n            return _hb;\n        });\n        def(function (hb) {\n            var win = g2();\n            var prop = g1();\n            var _hb = win[prop] = hb;\n            return _hb;\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "passes": 2,
+      "properties": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    passes: 2,\n    properties: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "define([\"require\",\"exports\",\"handlebars\"],function(require,exports,hb){return window.Handlebars=hb}),def(function(hb){return window.Handlebars=hb}),def(function(hb){return window.Handlebars=hb}),def(function(hb){return g().Handlebars=hb}),def(function(hb){var prop=g1();return g2()[prop]=hb}),def(function(hb){return g2()[g1()]=hb});",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

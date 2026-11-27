@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/classes/private_class_methods",
+  "corpus": "compress",
+  "name": "private_class_methods",
+  "origin": {
+    "file": "test/compress/classes.js",
+    "line": 120,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class A {\n            #method() {\n                return \"PA\"\n            }\n            static async* #method2() {\n                return \"S\"\n            }\n            [\"#method\"]() {\n                return \"S\"\n            }\n            async print() {\n                console.log(this.#method() + (await A.#method2().next()).value + this[\"#method\"]());\n            }\n        }\n        new A().print();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class A{#method(){return\"PA\"}static async*#method2(){return\"S\"}[\"#method\"](){return\"S\"}async print(){console.log(this.#method()+(await A.#method2().next()).value+this[\"#method\"]())}}(new A).print();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

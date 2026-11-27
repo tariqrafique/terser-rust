@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/block-scope/regression_block_scope_resolves",
+  "corpus": "compress",
+  "name": "regression_block_scope_resolves",
+  "origin": {
+    "file": "test/compress/block-scope.js",
+    "line": 111,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function () {\n            if (1) {\n                let x;\n                const y = 1;\n                class Zee {};\n            }\n            if (1) {\n                let ex;\n                const why = 2;\n                class Zi {};\n            }\n            console.log(typeof x, typeof y, typeof Zee, typeof ex, typeof why, typeof Zi);\n        }());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": false,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: false\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){if(1){let e;const o=1;class t{}}if(1){let e;const o=2;class t{}}console.log(typeof x,typeof y,typeof Zee,typeof ex,typeof why,typeof Zi)})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined undefined undefined undefined undefined undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

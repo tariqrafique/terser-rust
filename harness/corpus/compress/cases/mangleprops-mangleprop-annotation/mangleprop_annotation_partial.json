@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/mangleprops-mangleprop-annotation/mangleprop_annotation_partial",
+  "corpus": "compress",
+  "name": "mangleprop_annotation_partial",
+  "origin": {
+    "file": "test/compress/mangleprops-mangleprop-annotation.js",
+    "line": 39,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class Foo {\n            /*@__MANGLE_PROP__*/ manglethis = \"manglethis\"\n            manglethistoo = \"manglethistoo\"\n            dontmanglethis = \"dontmanglethis\"\n        }\n\n        const foo = {\n            manglethis: \"manglethis\",\n            /*@__MANGLE_PROP__*/ manglethistoo: \"manglethistoo\",\n            dontmanglethis: \"dontmanglethis\"\n        }\n\n        console.log(new Foo().manglethis, foo.manglethis);\n        console.log(new Foo().manglethistoo, foo.manglethistoo);\n        console.log(new Foo().dontmanglethis, foo.dontmanglethis);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "only_annotated": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true\n}",
+    "mangle": "{\n    properties: {\n        only_annotated: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class Foo{o=\"manglethis\";t=\"manglethistoo\";dontmanglethis=\"dontmanglethis\"}const foo={o:\"manglethis\",t:\"manglethistoo\",dontmanglethis:\"dontmanglethis\"};console.log((new Foo).o,foo.o);console.log((new Foo).t,foo.t);console.log((new Foo).dontmanglethis,foo.dontmanglethis);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "manglethis manglethis\nmanglethistoo manglethistoo\ndontmanglethis dontmanglethis\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/expression/pow_with_parentheses",
+  "corpus": "compress",
+  "name": "pow_with_parentheses",
+  "origin": {
+    "file": "test/compress/expression.js",
+    "line": 33,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var g = (-7) ** (0.5);\n        var h = 2324334 ** 34343443;\n        var i = (-2324334) ** 34343443;\n        var j = 2 ** (-3);\n        var k = 2.0 ** -3;\n        var l = 2.0 ** (5 - 7);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var g=(-7)**.5;var h=2324334**34343443;var i=(-2324334)**34343443;var j=2**-3;var k=2**-3;var l=2**(5-7);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

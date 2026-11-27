@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/blocks/issue_t1155_function_in_block",
+  "corpus": "compress",
+  "name": "issue_t1155_function_in_block",
+  "origin": {
+    "file": "test/compress/blocks.js",
+    "line": 186,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1() {\n            if (\"aaaaaaa\") {\n                function f2() {\n                    return 1;\n                }\n        \n                const var1 = \"bbbbbbb\";\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": false,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: false\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(){if(\"aaaaaaa\"){function a(){return 1}const b=\"bbbbbbb\"}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

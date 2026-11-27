@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/function_argument_modified_by_function_statement",
+  "corpus": "compress",
+  "name": "function_argument_modified_by_function_statement",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2071,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var printTest = function(ret) {\n            function ret() {\n                console.log(\"PASS\");\n            }\n            return ret;\n        }(\"FAIL\");\n        printTest();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true,\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

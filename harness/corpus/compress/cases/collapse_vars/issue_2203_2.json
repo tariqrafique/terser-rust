@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2203_2",
+  "corpus": "compress",
+  "name": "issue_2203_2",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 2911,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        a = \"PASS\";\n        console.log({\n            a: \"FAIL\",\n            b: function() {\n                return function(c) {\n                    return c.a;\n                }((String, (Object, function() {\n                    return this;\n                }())));\n            }\n        }.b());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "a=\"PASS\";console.log({a:\"FAIL\",b:function(){return function(){return(String,Object,function(){return this}()).a}()}}.b());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/rename/mangle_catch_var_ie8",
+  "corpus": "compress",
+  "name": "mangle_catch_var_ie8",
+  "origin": {
+    "file": "test/compress/rename.js",
+    "line": 70,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = \"FAIL\";\n        try {\n            throw 1;\n        } catch (args) {\n            var a = \"PASS\";\n        }\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ie8": true,
+      "toplevel": false,
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": true,
+      "toplevel": false
+    },
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": "{\n    ie8: true,\n    toplevel: false\n}",
+    "mangle": "{\n    ie8: true,\n    toplevel: false\n}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "var a=\"FAIL\";try{throw 1}catch(args){var a=\"PASS\"}console.log(a);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

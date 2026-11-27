@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/regex_2",
+  "corpus": "compress",
+  "name": "regex_2",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 440,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(`${/a/} ${6/2} ${/b/.test(\"b\")} ${1?/c/:/d/}`);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"/a/ 3 true /c/\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "/a/ 3 true /c/\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/issue_1317",
+  "corpus": "compress",
+  "name": "issue_1317",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 330,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        !function(a) {\n            if (a) return;\n            let b = 1;\n            function g() {\n                return b;\n            }\n            console.log(g());\n        }();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "if_return": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    if_return: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(a){if(a)return;let b=1;function g(){return b}console.log(g())}();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

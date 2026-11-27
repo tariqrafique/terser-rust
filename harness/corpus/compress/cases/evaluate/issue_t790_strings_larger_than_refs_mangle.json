@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/issue_t790_strings_larger_than_refs_mangle",
+  "corpus": "compress",
+  "name": "issue_t790_strings_larger_than_refs_mangle",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 2088,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const aaaaa = \"aaa\";\n\n        aa(aaaaa);\n        aa(aaaaa);\n        aa(aaaaa);\n        aa(aaaaa);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "sequences": false
+    },
+    "mangle": {
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    sequences: false\n}",
+    "mangle": "{\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const a=\"aaa\";aa(a);aa(a);aa(a);aa(a);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2298",
+  "corpus": "compress",
+  "name": "issue_2298",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3100,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        !function() {\n            function f() {\n                var a = undefined;\n                var undefined = a++;\n                try {\n                    !function g(b) {\n                        b[1] = \"foo\";\n                    }();\n                    console.log(\"FAIL\");\n                } catch (e) {\n                    console.log(\"PASS\");\n                }\n            }\n            f();\n        }();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "passes": 2,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    passes: 2,\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){(function(){var a=undefined;var undefined=a++;try{!function(){(void 0)[1]=\"foo\"}();console.log(\"FAIL\")}catch(e){console.log(\"PASS\")}})()}();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

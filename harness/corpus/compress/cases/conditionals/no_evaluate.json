@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/no_evaluate",
+  "corpus": "compress",
+  "name": "no_evaluate",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 855,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(b) {\n            a = b ? !0 : !0;\n            a = b ? ~1 : ~1;\n            a = b ? -2 : -2;\n            a = b ? +3 : +3;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": false,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: false,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(b){a=!0;a=~1;a=-2;a=+3}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

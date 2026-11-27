@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/global_hasOwnProperty",
+  "corpus": "compress",
+  "name": "global_hasOwnProperty",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1912,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        hasOwnProperty.call(a, b)\n        hasOwnProperty.call(a.b, b)\n        hasOwnProperty.call(a['b'], b)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "hasOwnProperty.call(a,b);hasOwnProperty.call(a.b,b);hasOwnProperty.call(a[\"b\"],b);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

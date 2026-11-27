@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_3042_1",
+  "corpus": "compress",
+  "name": "issue_3042_1",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6174,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {}\n        var a = [ 1, 2 ].map(function() {\n            return new f();\n        });\n        console.log(a[0].constructor === a[1].constructor);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){}var a=[1,2].map(function(){return new f});console.log(a[0].constructor===a[1].constructor);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

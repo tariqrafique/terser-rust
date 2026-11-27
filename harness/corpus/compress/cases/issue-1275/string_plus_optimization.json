@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1275/string_plus_optimization",
+  "corpus": "compress",
+  "name": "string_plus_optimization",
+  "origin": {
+    "file": "test/compress/issue-1275.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(anything) {\n            function throwing_function() {\n                throw \"nope\";\n            }\n            try {\n                console.log('0' + throwing_function() ? \"yes\" : \"no\");\n            } catch (ex) {\n                console.log(ex);\n            }\n            console.log('0' + anything ? \"yes\" : \"no\");\n            console.log(anything + '0' ? \"Yes\" : \"No\");\n            console.log('' + anything);\n            console.log(anything + '');\n        }\n        foo();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(anything){function throwing_function(){throw\"nope\"}try{console.log((throwing_function(),\"yes\"))}catch(ex){console.log(ex)}console.log(\"yes\");console.log(\"Yes\");console.log(\"\"+anything);console.log(anything+\"\")}foo();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

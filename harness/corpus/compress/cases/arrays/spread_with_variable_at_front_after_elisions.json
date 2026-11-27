@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/arrays/spread_with_variable_at_front_after_elisions",
+  "corpus": "compress",
+  "name": "spread_with_variable_at_front_after_elisions",
+  "origin": {
+    "file": "test/compress/arrays.js",
+    "line": 129,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var values = [1, 2, 3];\n        var a = [,,,...values, 4, 5, 6];\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var values=[1,2,3];var a=[,,,...values,4,5,6];",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

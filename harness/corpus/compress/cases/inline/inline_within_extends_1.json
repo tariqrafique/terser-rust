@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/inline/inline_within_extends_1",
+  "corpus": "compress",
+  "name": "inline_within_extends_1",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function foo(foo_base) {\n                return class extends foo_base {};\n            }\n            function bar(bar_base) {\n                return class extends bar_base {};\n            }\n            console.log((new class extends (foo(bar(Array))){}).concat([\"PASS\"])[0]);\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "inline": 3,
+      "passes": 1,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    inline: 3,\n    passes: 1,\n    reduce_funcs: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log((new class extends(function(foo_base){return class extends foo_base{}}(function(bar_base){return class extends bar_base{}}(Array))){}).concat([\"PASS\"])[0]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

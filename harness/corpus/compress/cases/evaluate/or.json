@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/or",
+  "corpus": "compress",
+  "name": "or",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 78,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a;\n        // compress these\n\n        a = true     || condition;\n        a = 1        || console.log(\"a\");\n        a = 2 * 3    || 2 * condition;\n        a = 5 == 5   || condition + 3;\n        a = \"string\" || 4 - condition;\n        a = 5 + \"\"   || condition / 5;\n        a = -4.5     || 6 << condition;\n        a = 6        || 7;\n\n        a = false     || condition;\n        a = 0         || console.log(\"b\");\n        a = NaN       || console.log(\"c\");\n        a = undefined || 2 * condition;\n        a = null      || condition + 3;\n        a = 2 * 3 - 6 || 4 - condition;\n        a = 10 == 7   || condition / 5;\n        a = !\"string\" || 6 % condition;\n        a = null      || 7;\n\n        a = console.log(undefined && condition || null);\n        a = console.log(undefined || condition && null);\n\n        // don't compress these\n\n        a = condition        || true;\n        a = console.log(\"a\") || 2;\n        a = 4 - condition    || \"string\";\n        a = 6 << condition   || -4.5;\n\n        a = condition        || false;\n        a = console.log(\"b\") || NaN;\n        a = console.log(\"c\") || 0;\n        a = 2 * condition    || undefined;\n        a = condition + 3    || null;\n\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a;a=true;a=1;a=6;a=true;a=\"string\";a=\"5\";a=-4.5;a=6;a=condition;a=console.log(\"b\");a=console.log(\"c\");a=2*condition;a=condition+3;a=4-condition;a=condition/5;a=6%condition;a=7;a=console.log(null);a=console.log(condition&&null);a=condition||true;a=console.log(\"a\")||2;a=4-condition||\"string\";a=6<<condition||-4.5;a=condition||false;a=console.log(\"b\")||NaN;a=console.log(\"c\")||0;a=2*condition||void 0;a=condition+3||null;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

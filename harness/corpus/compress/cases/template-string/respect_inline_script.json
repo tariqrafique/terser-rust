@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/respect_inline_script",
+  "corpus": "compress",
+  "name": "respect_inline_script",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 240,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = `</script>${content}`;\n        var bar = `<!--`;\n        var baz = `-->`;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "inline_script": true,
+      "quote_style": 3
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    inline_script: true,\n    quote_style: 3\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=`<\\/script>${content}`;var bar=`\\x3c!--`;var baz=`--\\x3e`;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

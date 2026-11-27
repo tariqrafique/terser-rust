@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2954_1",
+  "corpus": "compress",
+  "name": "issue_2954_1",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 5427,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = \"PASS\", b;\n        try {\n            do {\n                b = function() {\n                    throw 0;\n                }();\n                a = \"FAIL\";\n                b && b.c;\n            } while (0);\n        } catch (e) {\n        }\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=\"PASS\",b;try{do{b=function(){throw 0}();a=\"FAIL\";b&&b.c}while(0)}catch(e){}console.log(a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

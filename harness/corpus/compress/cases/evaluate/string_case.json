@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/string_case",
+  "corpus": "compress",
+  "name": "string_case",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 1719,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(\"İ\".toLowerCase().charCodeAt(0));\n        console.log(\"I\".toLowerCase().charCodeAt(0));\n        console.log(\"Ş\".toLowerCase().charCodeAt(0));\n        console.log(\"Ğ\".toLowerCase().charCodeAt(0));\n        console.log(\"Ü\".toLowerCase().charCodeAt(0));\n        console.log(\"Ö\".toLowerCase().charCodeAt(0));\n        console.log(\"Ç\".toLowerCase().charCodeAt(0));\n        console.log(\"i\".toUpperCase().charCodeAt(0));\n        console.log(\"ı\".toUpperCase().charCodeAt(0));\n        console.log(\"ş\".toUpperCase().charCodeAt(0));\n        console.log(\"ğ\".toUpperCase().charCodeAt(0));\n        console.log(\"ü\".toUpperCase().charCodeAt(0));\n        console.log(\"ö\".toUpperCase().charCodeAt(0));\n        console.log(\"ç\".toUpperCase().charCodeAt(0));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "unsafe": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    unsafe: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(105);console.log(105);console.log(351);console.log(287);console.log(252);console.log(246);console.log(231);console.log(73);console.log(73);console.log(350);console.log(286);console.log(220);console.log(214);console.log(199);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "105\n105\n351\n287\n252\n246\n231\n73\n73\n350\n286\n220\n214\n199\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

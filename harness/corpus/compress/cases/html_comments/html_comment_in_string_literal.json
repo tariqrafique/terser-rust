@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/html_comments/html_comment_in_string_literal",
+  "corpus": "compress",
+  "name": "html_comment_in_string_literal",
+  "origin": {
+    "file": "test/compress/html_comments.js",
+    "line": 50,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() { return \"<!--HTML-->comment in<!--string literal-->\"; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){return\"\\x3c!--HTML--\\x3ecomment in\\x3c!--string literal--\\x3e\"}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

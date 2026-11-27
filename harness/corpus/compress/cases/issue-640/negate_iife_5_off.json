@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/issue-640/negate_iife_5_off",
+  "corpus": "compress",
+  "name": "negate_iife_5_off",
+  "origin": {
+    "file": "test/compress/issue-640.js",
+    "line": 192,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        if ((function(){ return t })()) {\n            foo(true);\n        } else {\n            bar(false);\n        }\n        (function(){\n            console.log(\"something\");\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "expression": true,
+      "negate_iife": false,
+      "sequences": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    expression: true,\n    negate_iife: false,\n    sequences: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(){return t}()?bar(false):foo(true),function(){console.log(\"something\")}();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/safe_array_string_length",
+  "corpus": "compress",
+  "name": "safe_array_string_length",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 978,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const array_ref = [1, leak(\"side effect\")]\n        console.log(\n            \"Hi!!\".length,\n            [1, 2].length,\n            array_ref.length,\n            [id(\"side eff\")]\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const array_ref=[1,leak(\"side effect\")];console.log(4,2,array_ref.length,[id(\"side eff\")]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "4 2 2 [ 'side eff' ]\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

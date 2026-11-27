@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/functions/drop_lone_use_strict_arrows_1",
+  "corpus": "compress",
+  "name": "drop_lone_use_strict_arrows_1",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2580,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var f0 = () => 0;\n        var f1 = () => {\n            \"use strict\";\n        }\n        var f2 = () => {\n            \"use strict\";\n            var f3 = () => {\n                \"use strict\";\n            }\n        }\n        (() => {\n            \"use strict\";\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "side_effects": true,
+      "directives": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    side_effects: true,\n    directives: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var f0=()=>0;var f1=()=>{};var f2=()=>{\"use strict\";var f3=()=>{}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

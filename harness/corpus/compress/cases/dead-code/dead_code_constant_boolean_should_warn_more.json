@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/dead_code_constant_boolean_should_warn_more",
+  "corpus": "compress",
+  "name": "dead_code_constant_boolean_should_warn_more",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 105,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        while (!((foo && bar) || (x + \"0\"))) {\n            console.log(\"unreachable\");\n            var foo;\n            function bar() {}\n        }\n        for (var x = 10, y; x && (y || x) && (!typeof x); ++x) {\n            asdf();\n            foo();\n            var moo;\n        }\n        bar();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "loops": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    loops: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo;var bar;var moo;var x=10,y;bar();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": false,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

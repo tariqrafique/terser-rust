@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/issue_2136_2",
+  "corpus": "compress",
+  "name": "issue_2136_2",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 366,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(x) {\n            console.log(x);\n        }\n        !function(a, ...b) {\n            f(b[0]);\n        }(1, 2, 3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "collapse_vars": true,
+      "ecma": 2015,
+      "inline": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true,\n    collapse_vars: true,\n    ecma: 2015,\n    inline: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(x){console.log(x)}f([2,3][0]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

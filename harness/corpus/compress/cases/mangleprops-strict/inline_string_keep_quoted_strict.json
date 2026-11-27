@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/mangleprops-strict/inline_string_keep_quoted_strict",
+  "corpus": "compress",
+  "name": "inline_string_keep_quoted_strict",
+  "origin": {
+    "file": "test/compress/mangleprops-strict.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let quoted_obj = {\n            '_obj_prop': 'bar',\n            '_obj_method'() {},\n            get '_obj_getter'() {},\n        };\n        let quoted_static_class = class {\n            static '_static_prop' = 'bar';\n            static '_static_method'() {}\n            static get '_static_getter'() {}\n        };\n        let quoted_instance_class = class {\n            '_instance_prop' = 'bar';\n            '_instance_method'() {}\n            get '_instance_getter'() {}\n        };\n        global['_sub'];\n        global?.['_optional_sub'];\n        global?.deep['_deep_optional_sub'];\n        let { '_destructure': quoted_destructure } = global;\n\n        let obj = {\n            _obj_prop: 'bar',\n            _obj_method() {},\n            get _obj_getter() {},\n        };\n        let static_class = class {\n            static _static_prop = 'bar';\n            static _static_method() {}\n            static get _static_getter() {}\n        };\n        let instance_class = class {\n            _instance_prop = 'bar';\n            _instance_method() {}\n            get _instance_getter() {}\n        };\n        global._sub;\n        global?._optional_sub;\n        global?.deep._deep_optional_sub;\n        let { _destructure: destructure } = global;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": "strict"
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: false\n}",
+    "mangle": "{\n    properties: {\n        keep_quoted: \"strict\"\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let quoted_obj={_obj_prop:\"bar\",_obj_method(){},get _obj_getter(){}};let quoted_static_class=class{static _static_prop=\"bar\";static _static_method(){}static get _static_getter(){}};let quoted_instance_class=class{_instance_prop=\"bar\";_instance_method(){}get _instance_getter(){}};global[\"_sub\"];global?.[\"_optional_sub\"];global?.deep[\"_deep_optional_sub\"];let{_destructure:quoted_destructure}=global;let obj={t:\"bar\",_(){},get l(){}};let static_class=class{static o=\"bar\";static i(){}static get p(){}};let instance_class=class{u=\"bar\";j(){}get h(){}};global._sub;global?._optional_sub;global?.deep._deep_optional_sub;let{m:destructure}=global;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

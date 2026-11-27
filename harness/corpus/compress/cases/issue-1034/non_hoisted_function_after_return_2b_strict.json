@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1034/non_hoisted_function_after_return_2b_strict",
+  "corpus": "compress",
+  "name": "non_hoisted_function_after_return_2b_strict",
+  "origin": {
+    "file": "test/compress/issue-1034.js",
+    "line": 212,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        \"use strict\";\n        function foo(x) {\n            if (x) {\n                return bar(1);\n            } else {\n                return bar(2);\n                var b;\n            }\n            var c = bar(3);\n            function bar(x) {\n                return 7 - x;\n            }\n            return b || c;\n        }\n        console.log(foo(0), foo(1));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "collapse_vars": false,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": false,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "loops": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    collapse_vars: false,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: false,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    loops: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "\"use strict\";function foo(x){return bar(x?1:2);function bar(x){return 7-x}}console.log(foo(0),foo(1));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "5 6\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

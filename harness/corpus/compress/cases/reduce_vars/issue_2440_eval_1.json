@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2440_eval_1",
+  "corpus": "compress",
+  "name": "issue_2440_eval_1",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 4229,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            return bar();\n        }\n        baz = {\n            quux: foo\n        };\n        exec = function() {\n            return eval(\"foo()\");\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){return bar()}baz={quux:foo};exec=function(){return eval(\"foo()\")};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

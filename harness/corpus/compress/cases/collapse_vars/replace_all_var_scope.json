@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/replace_all_var_scope",
+  "corpus": "compress",
+  "name": "replace_all_var_scope",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 5976,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 100, b = 10;\n        (function(r, a) {\n            switch (~a) {\n            case (b += a):\n            case a++:\n            }\n        })(--b, a);\n        console.log(a, b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": true
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    unused: true\n}",
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": "true"
+  },
+  "expect": "var a=100,b=10;(function(c,o){switch(~a){case b+=a:case o++:}})(--b,a);console.log(a,b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "100 109\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/issue_2383_3",
+  "corpus": "compress",
+  "name": "issue_2383_3",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 615,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var b = 7, y = 8;\n        if (0) {\n            var a = 1, [ x, y, z ] = [ 2, 3, 4 ], b = 5;\n        }\n        console.log(a, x, y, z, b);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var b=7,y=8;var a,x,y,z,b;console.log(a,x,y,z,b);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined undefined 8 undefined 7\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

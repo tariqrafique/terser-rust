@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/call_args",
+  "corpus": "compress",
+  "name": "call_args",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 421,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const a = 1;\n        console.log(a);\n        +function(a) {\n            return a;\n        }(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "ecma": 2015,
+      "evaluate": true,
+      "inline": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true,\n    ecma: 2015,\n    evaluate: true,\n    inline: true,\n    reduce_funcs: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const a=1;console.log(1);+(1,1);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

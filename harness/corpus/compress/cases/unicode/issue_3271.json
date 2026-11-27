@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/unicode/issue_3271",
+  "corpus": "compress",
+  "name": "issue_3271",
+  "origin": {
+    "file": "test/compress/unicode.js",
+    "line": 186,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function string2buf(str) {\n            var i=0,\n                buf = new Array(2),\n                c = str.charCodeAt(0);\n            if (c < 0x800) {\n                /* two byte char */\n                buf[i++] = 0xC0 | (c >>> 6);\n                buf[i++] = 0x80 | (c & 0x3f);\n            } else {\n                /* three byte char */\n                buf[i++] = 0xE0 | (c >>> 12);\n                buf[i++] = 0x80 | (c >>> 6 & 0x3f);\n                buf[i++] = 0x80 | (c & 0x3f);\n            }\n            return buf;\n        };\n        console.log(string2buf(\"é\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "[ 195, 169 ]\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

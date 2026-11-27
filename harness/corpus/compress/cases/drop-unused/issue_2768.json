@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_2768",
+  "corpus": "compress",
+  "name": "issue_2768",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 2088,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = \"FAIL\", c = 1;\n        var c = function(b) {\n            var d = b = a;\n            var e = --b + (d && (a = \"PASS\"));\n        }();\n        console.log(a, typeof c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=\"FAIL\";var c=(d=a,void(d&&(a=\"PASS\")));var d;console.log(a,typeof c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

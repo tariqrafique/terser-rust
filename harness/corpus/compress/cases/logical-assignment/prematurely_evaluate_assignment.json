@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/logical-assignment/prematurely_evaluate_assignment",
+  "corpus": "compress",
+  "name": "prematurely_evaluate_assignment",
+  "origin": {
+    "file": "test/compress/logical-assignment.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var or = null\n        var null_coalesce = null\n        var and = 'FAIL'\n\n        or ||= 'PASS'\n        null_coalesce ??= 'PASS'\n        and &&= 'PASS'\n\n        console.log(or, null_coalesce, and)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "reduce_vars": true,
+      "evaluate": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    reduce_vars: true,\n    evaluate: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var or=null;var null_coalesce=null;var and=\"FAIL\";or||=\"PASS\";null_coalesce??=\"PASS\";and&&=\"PASS\";console.log(or,null_coalesce,and);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS PASS PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=15",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

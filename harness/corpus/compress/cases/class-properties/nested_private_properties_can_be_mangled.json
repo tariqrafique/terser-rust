@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/class-properties/nested_private_properties_can_be_mangled",
+  "corpus": "compress",
+  "name": "nested_private_properties_can_be_mangled",
+  "origin": {
+    "file": "test/compress/class-properties.js",
+    "line": 395,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class X {\n            #test = \"PASS\"\n            #aaaaaa = this;\n            #bbbbbb() {\n                return this;\n            }\n            get #cccccc() { return this; }\n            log() {\n                console.log(this.#test);\n                console.log(this.#aaaaaa.#test);\n                console.log(this.#bbbbbb().#test);\n                console.log(this.#cccccc.#test);\n                console.log(this?.#test);\n                console.log(this?.#aaaaaa.#test);\n                console.log(this?.#bbbbbb().#test);\n                console.log(this?.#cccccc.#test);\n                console.log(this.#test);\n                console.log(this.#aaaaaa?.#test);\n                console.log(this.#bbbbbb?.().#test);\n                console.log(this.#bbbbbb()?.#test);\n                console.log(this.#cccccc?.#test);\n            }\n        }\n\n        new X().log()\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "properties": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    properties: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class X{#s=\"PASS\";#o=this;#t(){return this}get#c(){return this}log(){console.log(this.#s);console.log(this.#o.#s);console.log(this.#t().#s);console.log(this.#c.#s);console.log(this?.#s);console.log(this?.#o.#s);console.log(this?.#t().#s);console.log(this?.#c.#s);console.log(this.#s);console.log(this.#o?.#s);console.log(this.#t?.().#s);console.log(this.#t()?.#s);console.log(this.#c?.#s)}}(new X).log();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

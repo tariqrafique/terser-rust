@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/export/module_mangle_export_default_class",
+  "corpus": "compress",
+  "name": "module_mangle_export_default_class",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 707,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export default class foo {}\n        export class bar {}\n        class baz { meth(){} }\n        class qux {}\n        console.log(foo, bar, baz, qux);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "module": true,
+      "passes": 3
+    },
+    "mangle": {
+      "module": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    module: true,\n    passes: 3\n}",
+    "mangle": "{\n    module: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export default class s{}export class bar{}console.log(s,bar,class{meth(){}},class{});",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_2994",
+  "corpus": "compress",
+  "name": "issue_2994",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 1245,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(condition1, condition2, condition3) {\n            if (condition1) {\n                if (condition2) {\n                    return aValue;\n                } else {\n                    const variable1 = 'something';\n                    if (condition3) {\n                        const variable2 = 'else';\n                        return anotherValue;\n                    } else {\n                        return undefined;\n                    }\n                }\n            }\n        }\n        let aValue = 2, anotherValue = 3;\n        for (let i = 0; i < 8; ++i) {\n            console.log(f(i & 4, i & 2, i & 1));\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "if_return": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    if_return: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(condition1,condition2,condition3){if(condition1){if(condition2)return aValue;{const variable1=\"something\";if(condition3){const variable2=\"else\";return anotherValue}return}}}let aValue=2,anotherValue=3;for(let i=0;i<8;++i)console.log(f(i&4,i&2,i&1));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\nundefined\nundefined\nundefined\nundefined\n3\n2\n2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

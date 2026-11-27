@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/escape_expansion",
+  "corpus": "compress",
+  "name": "escape_expansion",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 5320,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function main() {\n            var thing = baz();\n            if (thing !== (thing = baz()))\n                console.log(\"FAIL\");\n            else\n                console.log(\"PASS\");\n        }\n        function foo() {}\n        function bar(...x) {\n            return x[0];\n        }\n        function baz() {\n            return bar(...[ foo ]);\n        }\n        main();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){}function baz(){return function(...x){return x[0]}(foo)}(function(){var thing=baz();if(thing!==(thing=baz()))console.log(\"FAIL\");else console.log(\"PASS\")})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/default_assign",
+  "corpus": "compress",
+  "name": "default_assign",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 539,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a, b = 3) {\n            console.log(a);\n        }\n\n        g = ([[] = 123]) => {};\n        h = ([[x, y, z] = [4, 5, 6]] = []) => {};\n\n        function i([[x, y, z] = [4, 5, 6]] = []) {\n            console.log(b);\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "keep_fargs": false,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    keep_fargs: false,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a){console.log(a)}g=([[]=123])=>{};h=([[x,y,z]=[4,5,6]]=[])=>{};function i([[x,y,z]=[4,5,6]]=[]){console.log(b)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

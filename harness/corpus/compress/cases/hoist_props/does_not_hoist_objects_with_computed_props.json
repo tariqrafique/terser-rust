@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/hoist_props/does_not_hoist_objects_with_computed_props",
+  "corpus": "compress",
+  "name": "does_not_hoist_objects_with_computed_props",
+  "origin": {
+    "file": "test/compress/hoist_props.js",
+    "line": 1090,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const x = { [console.log(\"PASS\")]: 123 }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "hoist_props": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    hoist_props: true,\n    reduce_vars: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

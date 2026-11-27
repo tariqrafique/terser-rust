@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/unused_destructuring_getter_side_effect_1",
+  "corpus": "compress",
+  "name": "unused_destructuring_getter_side_effect_1",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 1043,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function extract(obj) {\n            const { a, b } = obj;\n            console.log(b);\n        }\n        extract({a: 1, b: 2});\n        extract({\n            get a() {\n                var s = \"side effect\";\n                console.log(s);\n                return s;\n            },\n            b: 4,\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_getters": false,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_getters: false,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function extract(obj){const{a:a,b:b}=obj;console.log(b)}extract({a:1,b:2});extract({get a(){var s=\"side effect\";console.log(s);return s},b:4});",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2\nside effect\n4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/identity/inline_trivial_fns_unless_arg_is_expansion",
+  "corpus": "compress",
+  "name": "inline_trivial_fns_unless_arg_is_expansion",
+  "origin": {
+    "file": "test/compress/identity.js",
+    "line": 252,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function n (n) {\n            return n;\n        }\n        (function(...o) {\n            const c=n(...o);console.log(c)\n        })(\"PASS\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "inline": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    inline: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

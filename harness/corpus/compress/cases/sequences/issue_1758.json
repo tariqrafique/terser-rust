@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/sequences/issue_1758",
+  "corpus": "compress",
+  "name": "issue_1758",
+  "origin": {
+    "file": "test/compress/sequences.js",
+    "line": 482,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function(c) {\n            var undefined = 42;\n            return function() {\n                c--;\n                c--, c.toString();\n                return;\n            }();\n        }());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "sequences": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    sequences: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(c){var undefined=42;return function(){return c--,c--,void c.toString()}()}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/class_extends",
+  "corpus": "compress",
+  "name": "class_extends",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 710,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            class foo extends bar {}\n            class pro extends some.prop {}\n            class arr extends stuff[1 - 1] {}\n            class bin extends (a || b) {}\n            class seq extends (a, b) {}\n            class ter extends (a ? b : c) {}\n            class uni extends (!0) {}\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(){class foo extends bar{}class pro extends some.prop{}class arr extends stuff[0]{}class bin extends(a||b){}class seq extends(a,b){}class ter extends(a?b:c){}class uni extends(!0){}}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

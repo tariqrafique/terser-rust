@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/unused_null_conditional_chain_3",
+  "corpus": "compress",
+  "name": "unused_null_conditional_chain_3",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3036,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (side_effect(), null)?.unused;\n        (side_effect(), null)?.[side_effect()];\n        (side_effect(), null)?.unused.i_will_throw;\n        (side_effect(), null)?.call(1);\n        (side_effect(), null)?.(2);\n        (side_effect(), null)?.maybe_call?.(3);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": true,
+      "passes": 5
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    defaults: true,\n    passes: 5\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "side_effect(),(side_effect(),null)?.[side_effect()],(side_effect(),null)?.unused.i_will_throw,(side_effect(),null)?.call(1),(side_effect(),null)?.(2),(side_effect(),null)?.maybe_call?.(3);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

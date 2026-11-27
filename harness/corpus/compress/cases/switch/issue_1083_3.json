@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/switch/issue_1083_3",
+  "corpus": "compress",
+  "name": "issue_1083_3",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 3065,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function test(definitely_true, maybe_true) {\n            switch (true) {\n                case maybe_true:\n                    console.log(\"maybe\");\n                    break;\n                default:\n                case definitely_true:\n                    console.log(\"definitely\");\n                    break;\n            }\n        }\n        test(true, false);\n        test(true, true);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "switches": true,
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    switches: true,\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function test(definitely_true,maybe_true){if(true===maybe_true)console.log(\"maybe\");else console.log(\"definitely\")}test(true,false);test(true,true);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "definitely\nmaybe\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

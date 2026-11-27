@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/unicode/unicode_escaped_identifier_es5_as_is",
+  "corpus": "compress",
+  "name": "unicode_escaped_identifier_es5_as_is",
+  "origin": {
+    "file": "test/compress/unicode.js",
+    "line": 60,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var 𐀀 = \"bar\";\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 5
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 5\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var 𐀀=\"bar\";",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

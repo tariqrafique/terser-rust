@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/evaluate/pow_with_number_constants",
+  "corpus": "compress",
+  "name": "pow_with_number_constants",
+  "origin": {
+    "file": "test/compress/evaluate.js",
+    "line": 456,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 5 ** NaN;\n        // NaN exponent results to NaN\n        var b = 42 ** +0;\n        // +0 exponent results to NaN\n        var c = 42 ** -0;\n        // -0 exponent results to NaN\n        var d = NaN ** 1;\n        // NaN with non-zero exponent is NaN\n        var e = 2 ** Infinity;\n        // abs(base) > 1 with Infinity as exponent is Infinity\n        var f = 2 ** -Infinity;\n        // abs(base) > 1 with -Infinity as exponent is +0\n        var g = (-7) ** (0.5);\n        var h = 2324334 ** 34343443;\n        var i = (-2324334) ** 34343443;\n        var j = 2 ** (-3);\n        var k = 2.0 ** -3;\n        var l = 2.0 ** (5 - 7);\n        var m = 3 ** -10;  // Result will be 0.000016935087808430286, which is too long\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=NaN;var b=1;var c=1;var d=NaN;var e=1/0;var f=0;var g=NaN;var h=1/0;var i=-1/0;var j=.125;var k=.125;var l=.25;var m=3**-10;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

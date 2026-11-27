@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/nullish/conditional_to_nullish_coalescing_2",
+  "corpus": "compress",
+  "name": "conditional_to_nullish_coalescing_2",
+  "origin": {
+    "file": "test/compress/nullish.js",
+    "line": 22,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const foo = id('something')\n\n        console.log('negative cases')\n        foo === null || foo === null ? bar : foo;\n        foo === undefined || foo === undefined ? bar : foo;\n        foo === null || foo === undefined ? foo : bar;\n        some_global === null || some_global === undefined ? bar : some_global;\n\n        console.log('positive cases')\n        foo === null || foo === void 0 ? bar : foo;\n        foo === null || foo === undefined ? bar : foo;\n        foo === undefined || foo === null ? bar : foo;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "ecma": 2020,
+      "toplevel": true,
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    ecma: 2020,\n    toplevel: true,\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const foo=id(\"something\");console.log(\"negative cases\");foo===null||foo===null?bar:foo;foo===void 0||foo===void 0?bar:foo;foo===null||foo===void 0?foo:bar;some_global===null||some_global===void 0?bar:some_global;console.log(\"positive cases\");foo??bar;foo??bar;foo??bar;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/inline/inline_func_with_name_existing_in_block_scope",
+  "corpus": "compress",
+  "name": "inline_func_with_name_existing_in_block_scope",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 420,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let something = \"PASS\";\n        function getSomething() {\n          return something;\n        }\n        function setSomething() {\n          something = { value: 42 };\n        }\n        function main() {\n          if (typeof somethingElse == \"undefined\") {\n            const something = getSomething();\n            console.log(something);\n          }\n        }\n        main();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

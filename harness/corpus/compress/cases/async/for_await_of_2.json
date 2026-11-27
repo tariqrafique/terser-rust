@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/async/for_await_of_2",
+  "corpus": "compress",
+  "name": "for_await_of_2",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 379,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        async function foo(x) {\n            for await (a of x) {}\n            for await (var b of x) {}\n            for await (let c of x) {}\n            for await (const d of x) {}\n        }\n        const bar = async x => {\n            for await (a of x) {}\n            for await (var b of x) {}\n            for await (let c of x) {}\n            for await (const d of x) {}\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "async function foo(x){for await(a of x);for await(var b of x);for await(let c of x);for await(const d of x);}const bar=async x=>{for await(a of x);for await(var b of x);for await(let c of x);for await(const d of x);};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/yield/yield_as_identifier_outside_strict_mode",
+  "corpus": "compress",
+  "name": "yield_as_identifier_outside_strict_mode",
+  "origin": {
+    "file": "test/compress/yield.js",
+    "line": 144,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import yield from \"bar\";\n        yield = 123;\n        while (true) {\n            yield:\n            for(;;) break yield;\n\n            foo();\n        }\n        while (true)\n            yield: for(;;) continue yield;\n        function yield(){}\n        function foo(...yield){}\n        try { new Error(\"\") } catch (yield) {}\n        var yield = \"foo\";\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import yield from\"bar\";yield=123;while(true){yield:for(;;)break yield;foo()}while(true)yield:for(;;)continue yield;function yield(){}function foo(...yield){}try{new Error(\"\")}catch(yield){}var yield=\"foo\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

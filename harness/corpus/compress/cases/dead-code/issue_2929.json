@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/dead-code/issue_2929",
+  "corpus": "compress",
+  "name": "issue_2929",
+  "origin": {
+    "file": "test/compress/dead-code.js",
+    "line": 1215,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function(a) {\n            try {\n                return null.p = a = 1;\n            } catch (e) {\n                return a ? \"PASS\" : \"FAIL\";\n            }\n        }());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(a){try{return null.p=a=1}catch(e){return a?\"PASS\":\"FAIL\"}}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

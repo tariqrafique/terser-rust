@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/functions/drop_lone_use_strict_arrows_2",
+  "corpus": "compress",
+  "name": "drop_lone_use_strict_arrows_2",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2610,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let f0 = () => 0;\n        let f1 = () => {\n            \"use strict\";\n        }\n        let f2 = () => {\n            \"use strict\";\n            let f3 = () => {\n                \"use strict\";\n            }\n        }\n        (() => {\n            \"use strict\";\n            return undefined;\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "passes": 2,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    passes: 2,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let f0=()=>0;let f1=()=>{};let f2=()=>{};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

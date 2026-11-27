@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/pure_funcs/unused",
+  "corpus": "compress",
+  "name": "unused",
+  "origin": {
+    "file": "test/compress/pure_funcs.js",
+    "line": 59,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo() {\n            var u = pure(1);\n            var x = pure(2);\n            var y = pure(x);\n            var z = pure(pure(side_effects()));\n            return pure(3);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "pure_funcs": [
+        "pure"
+      ],
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    pure_funcs: [ \"pure\" ],\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(){side_effects();return pure(3)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/inline/dont_inline_side_effects",
+  "corpus": "compress",
+  "name": "dont_inline_side_effects",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 96,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class X extends (console.log(\"PASS 1\"), null) {\n            static [(console.log(\"PASS 2\"), 'prop')] = \"PASS 4\"\n        }\n\n        console.log(\"PASS 3\")\n\n        console.log(X.prop)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "class X extends(console.log(\"PASS 1\"),null){static[(console.log(\"PASS 2\"),\"prop\")]=\"PASS 4\"}console.log(\"PASS 3\");console.log(X.prop);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS 1\nPASS 2\nPASS 3\nPASS 4\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=14",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

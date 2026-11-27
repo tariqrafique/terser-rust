@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/expression/pow_with_number_constants",
+  "corpus": "compress",
+  "name": "pow_with_number_constants",
+  "origin": {
+    "file": "test/compress/expression.js",
+    "line": 14,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 5 ** NaN;\n        var b = 42 ** +0;\n        var c = 42 ** -0;\n        var d = NaN ** 1;\n        var e = 2 ** Infinity;\n        var f = 2 ** -Infinity;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=5**NaN;var b=42**+0;var c=42**-0;var d=NaN**1;var e=2**(1/0);var f=2**(-1/0);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

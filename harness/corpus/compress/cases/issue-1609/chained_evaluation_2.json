@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1609/chained_evaluation_2",
+  "corpus": "compress",
+  "name": "chained_evaluation_2",
+  "origin": {
+    "file": "test/compress/issue-1609.js",
+    "line": 28,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            var a = \"long piece of string\";\n            (function() {\n                var b = a, c;\n                c = f(b);\n                c.bar = b;\n            })();\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){(function(){var b=\"long piece of string\";f(b).bar=b})()})();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

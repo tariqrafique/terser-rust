@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typed_class_elements",
+  "corpus": "compress",
+  "name": "typed_class_elements",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 212,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        class ClassElements {\n            constructor() // no impl. should not appear in output\n            private constructor(typed: Type) {}\n\n            protected static declared<TypeParams>(arg: Typed) // no impl\n            protected static declared<TypeParams>(arg: Typed) {}\n\n            private static readonly 3: number = 3\n            private static get foo<T>(): Type {}\n            private static set foo<T>(value: Type): Type {}\n\n            [ident: string]: number\n        }\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "class ClassElements{constructor(typed){}static declared(arg){}static 3=3;static get foo(){}static set foo(value){}}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

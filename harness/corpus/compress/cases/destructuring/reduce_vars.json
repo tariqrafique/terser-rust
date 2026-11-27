@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/reduce_vars",
+  "corpus": "compress",
+  "name": "reduce_vars",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 263,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        {const [aa, [bb, cc]] = dd;}\n        {let [aa, [bb, cc]] = dd;}\n        var [aa, [bb, cc]] = dd;\n        [aa, [bb, cc]] = dd;\n        {const {aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}};}\n        {let {aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}};}\n        var {aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}};\n        ({aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}});\n        const [{a},b] = c;\n        let [{d},e] = f;\n        var [{g},h] = i;\n        [{a},b] = c;\n        for (const [x,y] in pairs);\n        for (let [x,y] in pairs);\n        for (var [x,y] in pairs);\n        for ([x,y] in pairs);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_funcs: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "{const[aa,[bb,cc]]=dd}{let[aa,[bb,cc]]=dd}var[aa,[bb,cc]]=dd;[aa,[bb,cc]]=dd;{const{aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}}}{let{aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}}}var{aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}};({aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}});const[{a:a},b]=c;let[{d:d},e]=f;var[{g:g},h]=i;[{a:a},b]=c;for(const[x,y]in pairs);for(let[x,y]in pairs);for(var[x,y]in pairs);for([x,y]in pairs);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

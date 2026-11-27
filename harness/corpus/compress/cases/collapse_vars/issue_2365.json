@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2365",
+  "corpus": "compress",
+  "name": "issue_2365",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3281,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function(a) {\n            var b = a.f;\n            a.f++;\n            return b;\n        }({ f: 1 }));\n        console.log(function() {\n            var a = { f: 1 }, b = a.f;\n            a.f++;\n            return b;\n        }());\n        console.log({\n            f: 1,\n            g: function() {\n                var b = this.f;\n                this.f++;\n                return b;\n            }\n        }.g());\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "pure_getters": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    pure_getters: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(a){var b=a.f;a.f++;return b}({f:1}));console.log(function(){var a={f:1},b=a.f;a.f++;return b}());console.log({f:1,g:function(){var b=this.f;this.f++;return b}}.g());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n1\n1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/concat-strings/concat_5",
+  "corpus": "compress",
+  "name": "concat_5",
+  "origin": {
+    "file": "test/compress/concat-strings.js",
+    "line": 115,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(\n            \"1\" + 2 + (3 + 4 + 5),\n            \"1\" + 2 + (3 + 4 + \"5\"),\n            \"1\" + 2 + (3 + \"4\" + 5),\n            \"1\" + 2 + (3 + \"4\" + \"5\"),\n            \"1\" + 2 + (\"3\" + 4 + 5),\n            \"1\" + 2 + (\"3\" + 4 + \"5\"),\n            \"1\" + 2 + (\"3\" + \"4\" + 5),\n            \"1\" + 2 + (\"3\" + \"4\" + \"5\")\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(\"1\"+2+(3+4+5),\"1\"+2+(3+4)+\"5\",\"1\"+2+3+\"4\"+5,\"1\"+2+3+\"4\"+\"5\",\"1\"+2+\"3\"+4+5,\"1\"+2+\"3\"+4+\"5\",\"1\"+2+\"3\"+\"4\"+5,\"1\"+2+\"3\"+\"4\"+\"5\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

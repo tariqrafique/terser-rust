@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/comments/preserve_comments_by_default",
+  "corpus": "compress",
+  "name": "preserve_comments_by_default",
+  "origin": {
+    "file": "test/compress/comments.js",
+    "line": 21,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = {};\n        /* @license */\n        // @lic\n        /**! foo */\n        /*! foo */\n        /* lost */\n        /* @copyright …info… */\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "comments": "some"
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    comments: \"some\"\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo={};\n/* @license */\n// @lic\n/**! foo */\n/*! foo */\n/* @copyright …info… */",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

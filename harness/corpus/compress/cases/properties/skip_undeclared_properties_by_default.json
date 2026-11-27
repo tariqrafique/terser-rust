@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/properties/skip_undeclared_properties_by_default",
+  "corpus": "compress",
+  "name": "skip_undeclared_properties_by_default",
+  "origin": {
+    "file": "test/compress/properties.js",
+    "line": 2573,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var Foo = { foo: function() { return Bar.bar() } };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "cache": {
+        "props": {
+          "$Bar": "a"
+        }
+      },
+      "properties": {},
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    cache: {\n        props: {\n            $Bar: \"a\"\n        }\n    },\n    properties: {},\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var r={o:function(){return a.bar()}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

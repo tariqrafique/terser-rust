@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/reduce_vars",
+  "corpus": "compress",
+  "name": "reduce_vars",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var A = 1;\n        (function f0() {\n            var a = 2;\n            console.log(a - 5);\n            console.log(A - 5);\n        })();\n        (function f1() {\n            var a = 2;\n            console.log(a - 5);\n            eval(\"console.log(a);\");\n        })();\n        (function f2(eval) {\n            var a = 2;\n            console.log(a - 5);\n            eval(\"console.log(a);\");\n        })(eval);\n        (function f3() {\n            var b = typeof C !== \"undefined\";\n            var c = 4;\n            if (b) {\n                return 'yes';\n            } else {\n                return 'no';\n            }\n        })();\n        console.log(A + 1);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": true,
+      "global_defs": {
+        "C": 0
+      },
+      "inline": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: true,\n    global_defs: {\n        C: 0\n    },\n    inline: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var A=1;(function(){console.log(-3);console.log(A-5)})();(function f1(){var a=2;console.log(a-5);eval(\"console.log(a);\")})();(function f2(eval){var a=2;console.log(a-5);eval(\"console.log(a);\")})(eval);\"yes\";console.log(A+1);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

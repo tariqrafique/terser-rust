@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/logical-assignment/assignment_in_left_part_2",
+  "corpus": "compress",
+  "name": "assignment_in_left_part_2",
+  "origin": {
+    "file": "test/compress/logical-assignment.js",
+    "line": 171,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var status = 'FAIL'\n        var x = {'PASS': false}\n\n        x[status = id('PASS')] ||= 'PASS'\n\n        console.log(status, x.PASS)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "evaluate": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    evaluate: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var status;var x={PASS:false};x[status=id(\"PASS\")]||=\"PASS\";console.log(status,x.PASS);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=15",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

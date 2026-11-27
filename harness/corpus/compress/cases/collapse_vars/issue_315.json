@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_315",
+  "corpus": "compress",
+  "name": "issue_315",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 2692,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(function(s) {\n            var w, _i, _len, _ref, _results;\n            _ref = s.trim().split(\" \");\n            _results = [];\n            for (_i = 0, _len = _ref.length; _i < _len; _i++) {\n                w = _ref[_i];\n                _results.push(w.toLowerCase());\n            }\n            return _results;\n        }(\"test\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "keep_fargs": false,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "sequences": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    keep_fargs: false,\n    reduce_funcs: true,\n    reduce_vars: true,\n    sequences: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(function(){var w,_i,_len,_ref,_results;for(_results=[],_i=0,_len=(_ref=\"test\".trim().split(\" \")).length;_i<_len;_i++)w=_ref[_i],_results.push(w.toLowerCase());return _results}());",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

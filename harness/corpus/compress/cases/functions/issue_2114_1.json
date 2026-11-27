@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2114_1",
+  "corpus": "compress",
+  "name": "issue_2114_1",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 472,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var c = 0;\n        !function(a) {\n            a = 0;\n        }([ {\n            0: c = c + 1,\n            length: c = 1 + c\n        }, typeof void function a() {\n            var b = function f1(a) {\n            }(b && (b.b += (c = c + 1, 0)));\n        }() ]);\n        console.log(c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "if_return": true,
+      "inline": true,
+      "keep_fargs": false,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    if_return: true,\n    inline: true,\n    keep_fargs: false,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var c=0;c=1+(c+=1),function(){var b=void(b&&(b.b+=(c+=1,0)))}();console.log(c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

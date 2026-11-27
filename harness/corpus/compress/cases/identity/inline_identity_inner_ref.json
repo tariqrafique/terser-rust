@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/identity/inline_identity_inner_ref",
+  "corpus": "compress",
+  "name": "inline_identity_inner_ref",
+  "origin": {
+    "file": "test/compress/identity.js",
+    "line": 129,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const id = a => (function() { return a; })();\n        const undef = a => (a => a)();\n        console.log(id(1), id(2), undef(3), undef(4));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "toplevel": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    reduce_vars: true,\n    unused: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(1,2,void 0,void 0);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1 2 undefined undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

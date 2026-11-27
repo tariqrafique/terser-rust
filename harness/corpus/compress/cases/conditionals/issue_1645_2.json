@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_1645_2",
+  "corpus": "compress",
+  "name": "issue_1645_2",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 992,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = 0;\n        function f() {\n            return a++;\n        }\n        f() ? a += 2 : a += 4;\n        console.log(a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=0;function f(){return a++}f()?a+=2:a+=4;console.log(a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

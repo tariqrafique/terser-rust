@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/export_unreferenced_declarations_1",
+  "corpus": "compress",
+  "name": "export_unreferenced_declarations_1",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 1202,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export const { keys } = Object;\n        export let { L, M } = Object;\n        export var { V, W } = Object;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "module": true,
+      "pure_getters": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": false,
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    module: true,\n    pure_getters: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": "{\n    beautify: false,\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export const{keys}=Object;export let{L,M}=Object;export var{V,W}=Object;",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

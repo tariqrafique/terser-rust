@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_294",
+  "corpus": "compress",
+  "name": "issue_294",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 7241,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        module.exports = (function(constructor) {\n            return constructor();\n        })(function() {\n            return function(input) {\n                var keyToMap = input.key;\n                return {\n                    mappedKey: (function(value) {\n                        return value || \"CONDITIONAL_DEFAULT_VALUE\";\n                    })(keyToMap)\n                };\n            };\n        });\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "passes": 2
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    passes: 2\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "module.exports=function(input){var value;return{mappedKey:(value=input.key,value||\"CONDITIONAL_DEFAULT_VALUE\")}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

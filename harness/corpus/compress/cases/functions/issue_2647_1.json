@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2647_1",
+  "corpus": "compress",
+  "name": "issue_2647_1",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 1524,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(n, o = \"FAIL\") {\n            console.log(n);\n        })(\"PASS\");\n        (function(n, o = \"PASS\") {\n            console.log(o);\n        })(\"FAIL\");\n        (function(o = \"PASS\") {\n            console.log(o);\n        })();\n        (function(n, {o = \"FAIL\"}) {\n            console.log(n);\n        })(\"PASS\", {});\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "inline": true,
+      "reduce_vars": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    inline: true,\n    reduce_vars: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\nPASS\nPASS\nPASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

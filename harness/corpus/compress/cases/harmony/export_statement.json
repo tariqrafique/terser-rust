@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/export_statement",
+  "corpus": "compress",
+  "name": "export_statement",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 248,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        export default 1 + 2;\n        export var a = 4;\n        export let b = 6;\n        export const c = 6;\n        export function d() {};\n        export class e {};\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "export default 3;export var a=4;export let b=6;export const c=6;export function d(){}export class e{}",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

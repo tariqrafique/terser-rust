@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/destructuring_vardef_in_loops",
+  "corpus": "compress",
+  "name": "destructuring_vardef_in_loops",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 98,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        for (var [x,y] in pairs);\n        for (var [a] = 0;;);\n        for (var {c} of cees);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 2015
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 2015\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "for(var[x,y]in pairs);for(var[a]=0;;);for(var{c}of cees);",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

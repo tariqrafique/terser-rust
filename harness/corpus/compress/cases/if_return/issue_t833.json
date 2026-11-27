@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/if_return/issue_t833",
+  "corpus": "compress",
+  "name": "issue_t833",
+  "origin": {
+    "file": "test/compress/if_return.js",
+    "line": 532,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var a = id(1), object = {PASS: 1};\n        for (var p in object) {\n            if (a) {\n                test(); continue;\n                function test() {console.log(p)}\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "if_return": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    if_return: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var a=id(1),object={PASS:1};for(var p in object)if(a){test();continue;function test(){console.log(p)}}",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

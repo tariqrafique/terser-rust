@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_3140_1",
+  "corpus": "compress",
+  "name": "issue_3140_1",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 6795,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            var a;\n            function f() {\n            }\n            f.g = function g() {\n                function h() {\n                    console.log(a ? \"PASS\" : \"FAIL\");\n                }\n                a = true;\n                this();\n                a = false;\n                h.g = g;\n                return h;\n            };\n            return f;\n        })().g().g();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){var a;function f(){}f.g=function g(){function h(){console.log(a?\"PASS\":\"FAIL\")}a=true;this();a=false;h.g=g;return h};return f})().g().g();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

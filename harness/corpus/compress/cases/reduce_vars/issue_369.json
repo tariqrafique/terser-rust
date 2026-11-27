@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_369",
+  "corpus": "compress",
+  "name": "issue_369",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 7150,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var printTest = function (ret) {\n            function ret() {\n                console.log(\"Value after override\");\n            }\n            return ret;\n        }(\"Value before override\");\n\n        printTest();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": null,
+  "expect_kind": null,
+  "expect_stdout": {
+    "kind": "string",
+    "value": "Value after override\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

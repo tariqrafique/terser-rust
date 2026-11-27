@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/arrow/concise_methods_with_computed_property2",
+  "corpus": "compress",
+  "name": "concise_methods_with_computed_property2",
+  "origin": {
+    "file": "test/compress/arrow.js",
+    "line": 546,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = {\n            [[1]](v) {\n                return v;\n            }\n        };\n        console.log(foo[[1]](\"PASS\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arrows": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arrows: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo={[[1]]:v=>v};console.log(foo[[1]](\"PASS\"));",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

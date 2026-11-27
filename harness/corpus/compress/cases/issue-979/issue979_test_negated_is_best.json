@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "id": "compress/issue-979/issue979_test_negated_is_best",
+  "corpus": "compress",
+  "name": "issue979_test_negated_is_best",
+  "origin": {
+    "file": "test/compress/issue-979.js",
+    "line": 43,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f3() {\n            if (a == 1 | b == 2) {\n                foo();\n            }\n        }\n        function f4() {\n            if (!(a == 1 | b == 2)) {\n            }\n            else {\n                foo();\n            }\n        }\n        function f5() {\n            if (a == 1 && b == 2) {\n                foo();\n            }\n        }\n        function f6() {\n            if (!(a == 1 && b == 2)) {\n            }\n            else {\n                foo();\n            }\n        }\n        function f7() {\n            if (a == 1 || b == 2) {\n                foo();\n            }\n            else {\n                return bar();\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "dead_code": true,
+      "evaluate": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "keep_fargs": true,
+      "lhs_constants": true,
+      "loops": true,
+      "properties": true,
+      "sequences": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    dead_code: true,\n    evaluate: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    keep_fargs: true,\n    lhs_constants: true,\n    loops: true,\n    properties: true,\n    sequences: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f3(){1==a|2==b&&foo()}function f4(){1==a|2==b&&foo()}function f5(){1==a&&2==b&&foo()}function f6(){1!=a||2!=b||foo()}function f7(){if(1!=a&&2!=b)return bar();foo()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/unused_destructuring_multipass",
+  "corpus": "compress",
+  "name": "unused_destructuring_multipass",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 1295,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let { w, x: y, z } = { x: 1, y: 2, z: 3 };\n        console.log(y);\n        if (0) {\n            console.log(z);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": true,
+      "toplevel": true,
+      "passes": 2,
+      "pure_getters": true,
+      "side_effects": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: true,\n    toplevel: true,\n    passes: 2,\n    pure_getters: true,\n    side_effects: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let{x:y}={x:1,y:2,z:3};console.log(y);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "1\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

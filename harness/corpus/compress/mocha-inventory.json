@@ -1,0 +1,341 @@
+{
+  "terser": "5.51.4",
+  "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20",
+  "note": "Inventory only. These mocha files are not executed and are not part of the byte board.",
+  "files": [
+    {
+      "file": "test/mocha/annotations.js",
+      "describes": [
+        "annotations",
+        "#__PURE__",
+        "#__INLINE__",
+        "#__NOINLINE__"
+      ],
+      "it_calls": 3,
+      "lines": 30
+    },
+    {
+      "file": "test/mocha/arguments.js",
+      "describes": [
+        "arguments"
+      ],
+      "it_calls": 6,
+      "lines": 288
+    },
+    {
+      "file": "test/mocha/arrow.js",
+      "describes": [
+        "Arrow functions"
+      ],
+      "it_calls": 9,
+      "lines": 411
+    },
+    {
+      "file": "test/mocha/builtins.js",
+      "describes": [
+        "builtins"
+      ],
+      "it_calls": 1,
+      "lines": 35
+    },
+    {
+      "file": "test/mocha/class.js",
+      "describes": [
+        "Class"
+      ],
+      "it_calls": 3,
+      "lines": 72
+    },
+    {
+      "file": "test/mocha/cli-2.js",
+      "describes": [
+        "bin/terser (2)"
+      ],
+      "it_calls": 16,
+      "lines": 179
+    },
+    {
+      "file": "test/mocha/cli.js",
+      "describes": [
+        "bin/terser"
+      ],
+      "it_calls": 22,
+      "lines": 281
+    },
+    {
+      "file": "test/mocha/comments.js",
+      "describes": [
+        "comments",
+        "comment before constant",
+        "comment filters",
+        "Huge number of comments."
+      ],
+      "it_calls": 26,
+      "lines": 378
+    },
+    {
+      "file": "test/mocha/destructuring.js",
+      "describes": [
+        "Destructuring"
+      ],
+      "it_calls": 1,
+      "lines": 141
+    },
+    {
+      "file": "test/mocha/directives.js",
+      "describes": [
+        "Directives"
+      ],
+      "it_calls": 9,
+      "lines": 517
+    },
+    {
+      "file": "test/mocha/eof.js",
+      "describes": [
+        "EOF"
+      ],
+      "it_calls": 1,
+      "lines": 28
+    },
+    {
+      "file": "test/mocha/equivalent-to.js",
+      "describes": [
+        "equivalent_to"
+      ],
+      "it_calls": 2,
+      "lines": 20
+    },
+    {
+      "file": "test/mocha/export.js",
+      "describes": [
+        "Export/Import"
+      ],
+      "it_calls": 4,
+      "lines": 77
+    },
+    {
+      "file": "test/mocha/expression.js",
+      "describes": [
+        "Expression"
+      ],
+      "it_calls": 1,
+      "lines": 26
+    },
+    {
+      "file": "test/mocha/function.js",
+      "describes": [
+        "Function"
+      ],
+      "it_calls": 6,
+      "lines": 274
+    },
+    {
+      "file": "test/mocha/glob.js",
+      "describes": [
+        "bin/terser with input file globs"
+      ],
+      "it_calls": 7,
+      "lines": 80
+    },
+    {
+      "file": "test/mocha/input-sourcemaps.js",
+      "describes": [
+        "input sourcemaps"
+      ],
+      "it_calls": 4,
+      "lines": 119
+    },
+    {
+      "file": "test/mocha/issue-585.js",
+      "describes": [
+        "bin/terser"
+      ],
+      "it_calls": 1,
+      "lines": 17
+    },
+    {
+      "file": "test/mocha/lhs-expressions.js",
+      "describes": [
+        "Left-hand side expressions"
+      ],
+      "it_calls": 11,
+      "lines": 273
+    },
+    {
+      "file": "test/mocha/line-endings.js",
+      "describes": [
+        "line-endings"
+      ],
+      "it_calls": 4,
+      "lines": 59
+    },
+    {
+      "file": "test/mocha/minify-file-map.js",
+      "describes": [
+        "Input file as map"
+      ],
+      "it_calls": 3,
+      "lines": 47
+    },
+    {
+      "file": "test/mocha/minify.js",
+      "describes": [
+        "minify",
+        "keep_quoted_props",
+        "mangleProperties",
+        "inSourceMap",
+        "sourceMapInline",
+        "JS_Parse_Error",
+        "global_defs",
+        "rename",
+        "enclose",
+        "for-await-of"
+      ],
+      "it_calls": 38,
+      "lines": 567
+    },
+    {
+      "file": "test/mocha/no-mutate-input.js",
+      "describes": [
+        "no-mutate-input"
+      ],
+      "it_calls": 2,
+      "lines": 35
+    },
+    {
+      "file": "test/mocha/number-literal.js",
+      "describes": [
+        "Number literals"
+      ],
+      "it_calls": 1,
+      "lines": 19
+    },
+    {
+      "file": "test/mocha/object.js",
+      "describes": [
+        "Object"
+      ],
+      "it_calls": 4,
+      "lines": 30
+    },
+    {
+      "file": "test/mocha/operator.js",
+      "describes": [
+        "operator"
+      ],
+      "it_calls": 2,
+      "lines": 493
+    },
+    {
+      "file": "test/mocha/release.js",
+      "describes": [
+        "release",
+        "test/benchmark.cjs",
+        "test/jetstream.cjs"
+      ],
+      "it_calls": 2,
+      "lines": 52
+    },
+    {
+      "file": "test/mocha/scope.js",
+      "describes": [
+        "figure_out_scope"
+      ],
+      "it_calls": 2,
+      "lines": 194
+    },
+    {
+      "file": "test/mocha/size.js",
+      "describes": [
+        "size"
+      ],
+      "it_calls": 3,
+      "lines": 21
+    },
+    {
+      "file": "test/mocha/source-phase-imports.js",
+      "describes": [
+        "Source-phase imports (mozilla AST)",
+        "Source-phase imports (parse errors)"
+      ],
+      "it_calls": 12,
+      "lines": 112
+    },
+    {
+      "file": "test/mocha/sourcemaps.js",
+      "describes": [
+        "sourcemaps",
+        "includeSources: false",
+        "inSourceMap",
+        "sourceMapInline",
+        "input sourcemaps"
+      ],
+      "it_calls": 21,
+      "lines": 398
+    },
+    {
+      "file": "test/mocha/spidermonkey.js",
+      "describes": [
+        "spidermonkey export/import sanity test"
+      ],
+      "it_calls": 11,
+      "lines": 469
+    },
+    {
+      "file": "test/mocha/string-literal.js",
+      "describes": [
+        "String literals"
+      ],
+      "it_calls": 6,
+      "lines": 95
+    },
+    {
+      "file": "test/mocha/template-string.js",
+      "describes": [
+        "Template string"
+      ],
+      "it_calls": 3,
+      "lines": 48
+    },
+    {
+      "file": "test/mocha/tokens.js",
+      "describes": [
+        "tokens"
+      ],
+      "it_calls": 2,
+      "lines": 46
+    },
+    {
+      "file": "test/mocha/unicode.js",
+      "describes": [
+        "Unicode",
+        "narrower ID_Start and ID_Continue (older unicode versions)",
+        "broader ID_Start and ID_Continue (newer unicode versions)"
+      ],
+      "it_calls": 11,
+      "lines": 169
+    },
+    {
+      "file": "test/mocha/utils.js",
+      "describes": [],
+      "it_calls": 0,
+      "lines": 22
+    },
+    {
+      "file": "test/mocha/with.js",
+      "describes": [
+        "With"
+      ],
+      "it_calls": 2,
+      "lines": 21
+    },
+    {
+      "file": "test/mocha/yield.js",
+      "describes": [
+        "Yield"
+      ],
+      "it_calls": 6,
+      "lines": 53
+    }
+  ]
+}

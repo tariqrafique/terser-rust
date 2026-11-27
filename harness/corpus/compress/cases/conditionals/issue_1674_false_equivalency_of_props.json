@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/issue_1674_false_equivalency_of_props",
+  "corpus": "compress",
+  "name": "issue_1674_false_equivalency_of_props",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 1405,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const foo = {\n            bar: () => console.log(\"PASS\")\n        }\n\n        id(false)\n            ? foo[\"bar\"]()\n            : foo.bar();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "evaluate": true,
+      "unused": true,
+      "properties": true,
+      "defaults": false
+    },
+    "mangle": {
+      "properties": {
+        "keep_quoted": "strict",
+        "debug": true
+      }
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true,\n    evaluate: true,\n    unused: true,\n    properties: true\n}",
+    "mangle": "{\n    properties: {\n        keep_quoted: \"strict\",\n        debug: true\n    }\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const foo={_$bar$_:()=>console.log(\"PASS\")};id(false)?foo.bar():foo._$bar$_();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

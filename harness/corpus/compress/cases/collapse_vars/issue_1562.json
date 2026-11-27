@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_1562",
+  "corpus": "compress",
+  "name": "issue_1562",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 1807,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var v = 1, B = 2;\n        for (v in objs) f(B);\n\n        var x = 3, C = 10;\n        while(x + 2) bar(C);\n\n        var y = 4, D = 20;\n        do bar(D); while(y + 2);\n\n        var z = 5, E = 30;\n        for (; f(z + 2) ;) bar(E);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var v=1;for(v in objs)f(2);while(5)bar(10);do{bar(20)}while(6);for(;f(7);)bar(30);",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

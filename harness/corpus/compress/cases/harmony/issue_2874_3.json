@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_2874_3",
+  "corpus": "compress",
+  "name": "issue_2874_3",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1888,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f() {\n            return x + y;\n        }\n        let x, y;\n        let a = (z) => {\n            x = \"A\";\n            y = z;\n            console.log(f());\n        }\n        a(1);\n        a(2);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "inline": 3,
+      "reduce_funcs": false,
+      "reduce_vars": true,
+      "sequences": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    inline: 3,\n    reduce_funcs: false,\n    reduce_vars: true,\n    sequences: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let x,y;let a=z=>{x=\"A\",y=z,console.log(x+y)};a(1),a(2);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "A1\nA2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

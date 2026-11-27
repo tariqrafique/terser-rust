@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/import_statement",
+  "corpus": "compress",
+  "name": "import_statement",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 208,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        import \"mod-name\";\n        import Foo from \"bar\";\n        import { Bar, Baz } from 'lel';\n        import Bar, { Foo } from 'lel';\n        import { Bar as kex, Baz as food } from 'lel';\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "import\"mod-name\";import Foo from\"bar\";import{Bar,Baz}from\"lel\";import Bar,{Foo}from\"lel\";import{Bar as kex,Baz as food}from\"lel\";",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

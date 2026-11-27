@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1261/pure_function_calls_toplevel",
+  "corpus": "compress",
+  "name": "pure_function_calls_toplevel",
+  "origin": {
+    "file": "test/compress/issue-1261.js",
+    "line": 52,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // pure top-level IIFE will be dropped\n        // @__PURE__ - comment\n        (function() {\n            console.log(\"iife0\");\n        })();\n\n        // pure top-level IIFE assigned to unreferenced var will be dropped\n        var iife1 = /*@__PURE__*/(function() {\n            console.log(\"iife1\");\n            function iife1() {}\n            return iife1;\n        })();\n\n        (function(){\n            // pure IIFE in function scope assigned to unreferenced var will be dropped\n            var iife2 = /*#__PURE__*/(function() {\n                console.log(\"iife2\");\n                function iife2() {}\n                return iife2;\n            })();\n        })();\n\n        // pure top-level calls will be dropped regardless of the leading comments position\n        var MyClass = /*#__PURE__*//*@class*/(function(){\n            function MyClass() {}\n            MyClass.prototype.method = function() {};\n            return MyClass;\n        })();\n\n        // comment #__PURE__ comment\n        bar(), baz(), quux();\n        a.b(), /* @__PURE__ */ c.d.e(), f.g();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "comparisons": true,
+      "conditionals": true,
+      "evaluate": true,
+      "if_return": true,
+      "join_vars": true,
+      "negate_iife": true,
+      "side_effects": true,
+      "toplevel": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    comparisons: true,\n    conditionals: true,\n    evaluate: true,\n    if_return: true,\n    join_vars: true,\n    negate_iife: true,\n    side_effects: true,\n    toplevel: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "baz(),quux();a.b(),f.g();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

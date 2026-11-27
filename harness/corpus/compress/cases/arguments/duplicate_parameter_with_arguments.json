@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/arguments/duplicate_parameter_with_arguments",
+  "corpus": "compress",
+  "name": "duplicate_parameter_with_arguments",
+  "origin": {
+    "file": "test/compress/arguments.js",
+    "line": 344,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function(a, a) {\n            console.log(a = \"foo\", arguments[0]);\n        })(\"baz\", \"Bar\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "arguments": true,
+      "defaults": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    arguments: true,\n    defaults: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "!function(a,a){console.log(a=\"foo\",arguments[0])}(\"baz\",\"Bar\");",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "foo baz\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

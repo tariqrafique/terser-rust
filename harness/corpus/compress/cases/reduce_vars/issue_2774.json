@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/reduce_vars/issue_2774",
+  "corpus": "compress",
+  "name": "issue_2774",
+  "origin": {
+    "file": "test/compress/reduce_vars.js",
+    "line": 5928,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log({\n            get a() {\n                var b;\n                (b = true) && b.c;\n                b = void 0;\n            }\n        }.a);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log({get a(){var b;(b=true)&&b.c;b=void 0}}.a);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "undefined\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

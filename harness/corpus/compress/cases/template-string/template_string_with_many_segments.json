@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/template-string/template_string_with_many_segments",
+  "corpus": "compress",
+  "name": "template_string_with_many_segments",
+  "origin": {
+    "file": "test/compress/template-string.js",
+    "line": 148,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var foo = `Hello ${guest()}, welcome to ${location()}${\".\"}`;\n        var bar = `${1}${2}${3}${4}${5}${6}${7}${8}${9}${0}`;\n        var baz = `${foobar()}${foobar()}${foobar()}${foobar()}`;\n        var buzz = `${1}${foobar()}${2}${foobar()}${3}${foobar()}`;\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "quote_style": 3
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    quote_style: 3\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var foo=`Hello ${guest()}, welcome to ${location()}${\".\"}`;var bar=`${1}${2}${3}${4}${5}${6}${7}${8}${9}${0}`;var baz=`${foobar()}${foobar()}${foobar()}${foobar()}`;var buzz=`${1}${foobar()}${2}${foobar()}${3}${foobar()}`;",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/typescript/typescript_export_from",
+  "corpus": "compress",
+  "name": "typescript_export_from",
+  "origin": {
+    "file": "test/compress/typescript.js",
+    "line": 374,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        // fully typescript export-from\n        export type * from 'module'\n        export type * as NamedStar from 'module'\n        export type { X } from 'module'\n        export type { X as Y } from 'module'\n        export type { default } from 'module'\n        export type { 'stringly' as default } from 'module'\n        export type { 'stringly' } from 'module'\n        export type { 'stringly' as 'otherstringly' } from 'module'\n\n        // partially typescript export-from\n        export { a, type X } from 'module'\n        export { a, type X as Y } from 'module'\n        export { a, type default } from 'module'\n        export { a, type 'stringly' as default } from 'module'\n        export { a, type 'stringly' } from 'module'\n        export { a, type 'stringly' as 'otherstringly' } from 'module'\n    ",
+  "input_kind": "template",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": {
+      "experimental_typescript": true
+    },
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": "{\n    experimental_typescript: true\n}",
+    "rename": null
+  },
+  "expect": "export{a}from\"module\";export{a}from\"module\";export{a}from\"module\";export{a}from\"module\";export{a}from\"module\";export{a}from\"module\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

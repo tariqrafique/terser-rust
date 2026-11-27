@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/issue-1704/mangle_catch_redef_3",
+  "corpus": "compress",
+  "name": "mangle_catch_redef_3",
+  "origin": {
+    "file": "test/compress/issue-1704.js",
+    "line": 349,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var o = \"PASS\";\n        try {\n            throw 0;\n        } catch (o) {\n            (function() {\n                function f() {\n                    o = \"FAIL\";\n                }\n                f(), f();\n            })();\n        }\n        console.log(o);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "ie8": false,
+      "toplevel": false
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    ie8: false,\n    toplevel: false\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var o=\"PASS\";try{throw 0}catch(o){(function(){function c(){o=\"FAIL\"}c(),c()})()}console.log(o);",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "PASS\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

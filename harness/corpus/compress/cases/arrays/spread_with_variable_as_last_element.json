@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/arrays/spread_with_variable_as_last_element",
+  "corpus": "compress",
+  "name": "spread_with_variable_as_last_element",
+  "origin": {
+    "file": "test/compress/arrays.js",
+    "line": 96,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var values = [4, 5, 6];\n        var a = [1, 2, 3, ...values];\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var values=[4,5,6];var a=[1,2,3,...values];",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

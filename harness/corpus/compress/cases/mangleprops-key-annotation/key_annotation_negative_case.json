@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/mangleprops-key-annotation/key_annotation_negative_case",
+  "corpus": "compress",
+  "name": "key_annotation_negative_case",
+  "origin": {
+    "file": "test/compress/mangleprops-key-annotation.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function lookup(object, key) {\n            return object[key];\n        }\n        lookup({ someprop: \"bar\" }, \"someprop\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false,
+      "inline": false
+    },
+    "mangle": {
+      "properties": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: false,\n    inline: false\n}",
+    "mangle": "{\n    properties: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function lookup(o,p){return o[p]}lookup({o:\"bar\"},\"someprop\");",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

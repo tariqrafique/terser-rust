@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/issue-597/beautify_off_2",
+  "corpus": "compress",
+  "name": "beautify_off_2",
+  "origin": {
+    "file": "test/compress/issue-597.js",
+    "line": 81,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(\n            null.toString(),\n            undefined.toString()\n        );\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "beautify": false
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true\n}",
+    "mangle": null,
+    "format": "{\n    beautify: false\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(null.toString(),(void 0).toString());",
+  "expect_kind": "exact",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

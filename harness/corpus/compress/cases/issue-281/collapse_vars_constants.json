@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/issue-281/collapse_vars_constants",
+  "corpus": "compress",
+  "name": "collapse_vars_constants",
+  "origin": {
+    "file": "test/compress/issue-281.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f1(x) {\n            var a = 4, b = x.prop, c = 5, d = sideeffect1(), e = sideeffect2();\n            return b + (function() { return d - a * e - c; })();\n        }\n        function f2(x) {\n            var a = 4, b = x.prop, c = 5, not_used = sideeffect1(), e = sideeffect2();\n            return b + (function() { return -a * e - c; })();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "evaluate": true,
+      "inline": true,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    evaluate: true,\n    inline: true,\n    reduce_funcs: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f1(x){var b=x.prop,d=sideeffect1(),e=sideeffect2();return b+(d-4*e-5)}function f2(x){var b=x.prop;sideeffect1();return b+(-4*sideeffect2()-5)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

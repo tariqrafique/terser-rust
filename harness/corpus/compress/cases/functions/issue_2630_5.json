@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_2630_5",
+  "corpus": "compress",
+  "name": "issue_2630_5",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 1488,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var c = 1;\n        !function() {\n            do {\n                c *= 10;\n            } while (f());\n            function f() {\n                return function() {\n                    return (c = 2 + c) < 100;\n                }(c = c + 3);\n            }\n        }();\n        console.log(c);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "inline": true,
+      "reduce_vars": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    inline: true,\n    reduce_vars: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var c=1;!function(){do{c*=10}while(f());function f(){return(c=2+(c+=3))<100}}();console.log(c);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "155\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

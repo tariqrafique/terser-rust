@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/collapse_vars/issue_2364_2",
+  "corpus": "compress",
+  "name": "issue_2364_2",
+  "origin": {
+    "file": "test/compress/collapse_vars.js",
+    "line": 3371,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function callValidate() {\n            var validate = compilation.validate;\n            var result = validate.apply(null, arguments);\n            return callValidate.errors = validate.errors, result;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "collapse_vars": true,
+      "pure_getters": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    collapse_vars: true,\n    pure_getters: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function callValidate(){var validate=compilation.validate;var result=validate.apply(null,arguments);return callValidate.errors=validate.errors,result}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/yield/yield_before_punctuators",
+  "corpus": "compress",
+  "name": "yield_before_punctuators",
+  "origin": {
+    "file": "test/compress/yield.js",
+    "line": 123,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        iter = (function*() {\n            assignmentResult = [ x = yield ] = value;\n        })();\n        function* g1() { (yield) }\n        function* g2() { [yield] }\n        function* g3() { yield, yield; }\n        function* g4() { (yield) ? yield : yield; }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "iter=function*(){assignmentResult=[x=yield]=value}();function*g1(){yield}function*g2(){[yield]}function*g3(){yield,yield}function*g4(){(yield)?yield:yield}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

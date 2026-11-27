@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/harmony/issue_2349",
+  "corpus": "compress",
+  "name": "issue_2349",
+  "origin": {
+    "file": "test/compress/harmony.js",
+    "line": 1035,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(boo, key) {\n            const value = boo.get();\n            return value.map(({[key]: bar}) => bar);\n        }\n        console.log(foo({\n            get: () => [ {\n                blah: 42\n            } ]\n        }, \"blah\"));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {},
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(o,n){const t=o.get();return t.map(({[n]:o})=>o)}console.log(foo({get:()=>[{blah:42}]},\"blah\"));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "[ 42 ]\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": ">=7",
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

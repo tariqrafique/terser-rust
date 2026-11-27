@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/issue-12/setter_with_operator_keys",
+  "corpus": "compress",
+  "name": "setter_with_operator_keys",
+  "origin": {
+    "file": "test/compress/issue-12.js",
+    "line": 17,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var tokenCodes  = {\n            get instanceof(){\n                return test0;\n            },\n            set instanceof(value){\n                test0 = value;\n            },\n            set typeof(value){\n                test1 = value;\n            },\n            get typeof(){\n                return test1;\n            },\n            set else(value){\n                test2 = value;\n            },\n            get else(){\n                return test2;\n            }\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var tokenCodes={get instanceof(){return test0},set instanceof(value){test0=value},set typeof(value){test1=value},get typeof(){return test1},set else(value){test2=value},get else(){return test2}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

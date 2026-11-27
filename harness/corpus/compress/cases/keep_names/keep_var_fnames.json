@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/keep_names/keep_var_fnames",
+  "corpus": "compress",
+  "name": "keep_var_fnames",
+  "origin": {
+    "file": "test/compress/keep_names.js",
+    "line": 41,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        const foo = function () { return \"barfoo\" }\n        const bar = () => \"foobar\"\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": {
+      "keep_fnames": true,
+      "toplevel": true
+    },
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": "{\n    keep_fnames: true,\n    toplevel: true\n}",
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "const foo=function(){return\"barfoo\"};const bar=()=>\"foobar\";",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

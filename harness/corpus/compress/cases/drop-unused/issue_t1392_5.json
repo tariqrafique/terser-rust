@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "id": "compress/drop-unused/issue_t1392_5",
+  "corpus": "compress",
+  "name": "issue_t1392_5",
+  "origin": {
+    "file": "test/compress/drop-unused.js",
+    "line": 3211,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function test() {\n            class RelatedClass {}\n            class BaseClass {}\n        \n            class SubClass extends BaseClass {\n              static field = new RelatedClass;\n            }\n        \n            const subclassUser = {\n              oneUse: SubClass,\n              otherUse() {\n                return new SubClass\n              }\n            };\n        })()\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "unused": true,
+      "side_effects": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    unused: true,\n    side_effects: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "(function(){class RelatedClass{}class BaseClass{}new RelatedClass})();",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "boolean",
+    "value": true
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

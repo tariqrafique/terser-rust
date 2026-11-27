@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/destructuring/destructuring_objects",
+  "corpus": "compress",
+  "name": "destructuring_objects",
+  "origin": {
+    "file": "test/compress/destructuring.js",
+    "line": 33,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        {const {aa, bb} = {aa:1, bb:2};}\n        {const {aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}};}\n        {let {aa, bb} = {aa:1, bb:2};}\n        {let {aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}};}\n        var {aa, bb} = {aa:1, bb:2};\n        var {aa, bb: {cc, dd}} = {aa:1, bb: {cc:2, dd: 3}};\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "{const{aa:aa,bb:bb}={aa:1,bb:2}}{const{aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}}}{let{aa:aa,bb:bb}={aa:1,bb:2}}{let{aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}}}var{aa:aa,bb:bb}={aa:1,bb:2};var{aa:aa,bb:{cc:cc,dd:dd}}={aa:1,bb:{cc:2,dd:3}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

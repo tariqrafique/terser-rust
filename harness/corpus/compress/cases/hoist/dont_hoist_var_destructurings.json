@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "id": "compress/hoist/dont_hoist_var_destructurings",
+  "corpus": "compress",
+  "name": "dont_hoist_var_destructurings",
+  "origin": {
+    "file": "test/compress/hoist.js",
+    "line": 69,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function x() {\n            // If foo is null or undefined, this should be an exception\n            var {x,y} = foo;\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "hoist_vars": true,
+      "hoist_funs": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    hoist_vars: true,\n    hoist_funs: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function x(){var{x:x,y:y}=foo}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

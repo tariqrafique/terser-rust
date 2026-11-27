@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "compress/object/concise_methods_with_various_property_names",
+  "corpus": "compress",
+  "name": "concise_methods_with_various_property_names",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 333,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var get = \"bar\";\n        var a = {\n            bar() {\n                return this.get;\n            },\n            5() {\n                return \"five\";\n            },\n            0xf55() {\n                return \"f five five\";\n            },\n            \"five\"() {\n                return 5;\n            },\n            0b1010(value) {\n                this._ten = value;\n            }\n        };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var get=\"bar\";var a={bar(){return this.get},5(){return\"five\"},3925(){return\"f five five\"},five(){return 5},10(value){this._ten=value}};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

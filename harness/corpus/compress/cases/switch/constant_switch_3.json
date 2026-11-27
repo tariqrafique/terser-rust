@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/switch/constant_switch_3",
+  "corpus": "compress",
+  "name": "constant_switch_3",
+  "origin": {
+    "file": "test/compress/switch.js",
+    "line": 40,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        switch (10) {\n          case 1: foo();\n          case 1+1: bar(); break;\n          case 1+1+1: baz();\n          default:\n            def();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "dead_code": true,
+      "evaluate": true,
+      "side_effects": true,
+      "switches": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    dead_code: true,\n    evaluate: true,\n    side_effects: true,\n    switches: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "def();",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

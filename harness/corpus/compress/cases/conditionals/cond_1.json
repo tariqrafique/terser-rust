@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/conditionals/cond_1",
+  "corpus": "compress",
+  "name": "cond_1",
+  "origin": {
+    "file": "test/compress/conditionals.js",
+    "line": 164,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(do_something, some_condition) {\n            if (some_condition) {\n                do_something(x);\n            } else {\n                do_something(y);\n            }\n            if (some_condition) {\n                side_effects(x);\n            } else {\n                side_effects(y);\n            }\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "conditionals": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    conditionals: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(do_something,some_condition){do_something(some_condition?x:y);some_condition?side_effects(x):side_effects(y)}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

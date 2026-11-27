@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/comparing/issue_2857_6",
+  "corpus": "compress",
+  "name": "issue_2857_6",
+  "origin": {
+    "file": "test/compress/comparing.js",
+    "line": 291,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function f(a) {\n            if (({}).b === undefined || {}.b === null)\n                return a.b !== undefined && a.b !== null;\n        }\n        console.log(f({\n            a: [ null ],\n            get b() {\n                return this.a.shift();\n            }\n        }));\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "comparisons": true,
+      "lhs_constants": true,
+      "pure_getters": "strict",
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    comparisons: true,\n    lhs_constants: true,\n    pure_getters: \"strict\",\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function f(a){if(null=={}.b)return void 0!==a.b&&null!==a.b}console.log(f({a:[null],get b(){return this.a.shift()}}));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

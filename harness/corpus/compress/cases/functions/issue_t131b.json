@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "id": "compress/functions/issue_t131b",
+  "corpus": "compress",
+  "name": "issue_t131b",
+  "origin": {
+    "file": "test/compress/functions.js",
+    "line": 2680,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        (function() {\n            function thing() {\n                return {\n                    a: 1,\n                };\n            }\n            function one() {\n                return thing();\n            }\n            function two() {\n                var x = thing();\n                x.a = 2;\n                x.b = 3;\n                return x;\n            }\n            console.log(JSON.stringify(one()), JSON.stringify(two()));\n        })();\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "passes": 2
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    passes: 2\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(JSON.stringify({a:1}),JSON.stringify({a:2,b:3}));",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "{\"a\":1} {\"a\":2,\"b\":3}\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

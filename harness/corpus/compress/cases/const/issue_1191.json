@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "id": "compress/const/issue_1191",
+  "corpus": "compress",
+  "name": "issue_1191",
+  "origin": {
+    "file": "test/compress/const.js",
+    "line": 1,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function foo(rot) {\n            const rotTol = 5;\n            if (rot < -rotTol || rot > rotTol)\n                bar();\n            baz();\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "evaluate": true,
+      "booleans": true,
+      "comparisons": true,
+      "dead_code": true,
+      "conditionals": true,
+      "side_effects": true,
+      "unused": true,
+      "hoist_funs": true,
+      "if_return": true,
+      "join_vars": true,
+      "sequences": false,
+      "collapse_vars": false,
+      "reduce_funcs": true,
+      "reduce_vars": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    evaluate: true,\n    booleans: true,\n    comparisons: true,\n    dead_code: true,\n    conditionals: true,\n    side_effects: true,\n    unused: true,\n    hoist_funs: true,\n    if_return: true,\n    join_vars: true,\n    sequences: false,\n    collapse_vars: false,\n    reduce_funcs: true,\n    reduce_vars: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "function foo(rot){(rot<-5||rot>5)&&bar();baz()}",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

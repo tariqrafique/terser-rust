@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/drop-console/drop_console_with_array_option",
+  "corpus": "compress",
+  "name": "drop_console_with_array_option",
+  "origin": {
+    "file": "test/compress/drop-console.js",
+    "line": 75,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(\"foo\");\n        console.log.apply(console, arguments);\n        console.info(\"foo\");\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "drop_console": [
+        "log"
+      ],
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    drop_console: [ \"log\" ]\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "void 0;void 0;console.info(\"foo\");",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

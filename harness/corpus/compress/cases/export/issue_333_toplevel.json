@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "id": "compress/export/issue_333_toplevel",
+  "corpus": "compress",
+  "name": "issue_333_toplevel",
+  "origin": {
+    "file": "test/compress/export.js",
+    "line": 894,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        function shortOut() {\n            return function() {};\n        }\n\n        var setToString = shortOut();\n\n        var _setToString = setToString;\n\n        export function baseRest() {\n            return _setToString();\n        }\n\n        export { _setToString };\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": true,
+      "toplevel": true
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    defaults: true,\n    toplevel: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var _setToString=function(){};export function baseRest(){return _setToString()}export{_setToString};",
+  "expect_kind": "ast",
+  "expect_stdout": null,
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

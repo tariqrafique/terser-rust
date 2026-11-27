@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "compress/inline/issue_1431_constructor_identity",
+  "corpus": "compress",
+  "name": "issue_1431_constructor_identity",
+  "origin": {
+    "file": "test/compress/inline.js",
+    "line": 276,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        let Class = class {};\n\n        function sameConstructor() {\n            return new Class()\n        }\n\n        console.log(sameConstructor().constructor === sameConstructor().constructor)\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "toplevel": true,
+      "reduce_vars": true,
+      "reduce_funcs": true,
+      "inline": true,
+      "unused": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    toplevel: true,\n    reduce_vars: true,\n    reduce_funcs: true,\n    inline: true,\n    unused: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "let Class=class{};function sameConstructor(){return new Class}console.log(sameConstructor().constructor===sameConstructor().constructor);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

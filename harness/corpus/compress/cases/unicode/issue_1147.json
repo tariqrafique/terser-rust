@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "id": "compress/unicode/issue_1147",
+  "corpus": "compress",
+  "name": "issue_1147",
+  "origin": {
+    "file": "test/compress/unicode.js",
+    "line": 209,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        console.log(/📞/.test(\"📞\"))\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": {
+      "ecma": 2015,
+      "ascii_only": true,
+      "safari10": false
+    },
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": "{\n    ecma: 2015,\n    ascii_only: true,\n    safari10: false\n}",
+    "parse": null,
+    "rename": null
+  },
+  "expect": "console.log(/\\ud83d\\udcde/.test(\"\\u{1f4de}\"));",
+  "expect_kind": "exact",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "true\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

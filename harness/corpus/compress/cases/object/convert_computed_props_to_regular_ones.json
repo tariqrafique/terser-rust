@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "id": "compress/object/convert_computed_props_to_regular_ones",
+  "corpus": "compress",
+  "name": "convert_computed_props_to_regular_ones",
+  "origin": {
+    "file": "test/compress/object.js",
+    "line": 129,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var o = {\n            [\"hi\"]: 0,\n            [\"A\" + 1]: 1,\n            [/B/]: 2,\n            [100 + 23]: 3,\n            [1 + .5]: 4,\n            [Math.PI]: 5,\n            [undefined]: 6,\n            [true]: 7,\n            [false]: 8,\n            [null]: 9,\n            [Infinity]: 10,\n            [NaN]: 11,\n        };\n        for (var k in o) {\n            console.log(k, o[k]);\n        }\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "booleans": true,
+      "computed_props": true,
+      "evaluate": true,
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": "{\n    booleans: true,\n    computed_props: true,\n    evaluate: true\n}",
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var o={hi:0,A1:1,[/B/]:2,123:3,1.5:4,[Math.PI]:5,[void 0]:6,[!0]:7,[!1]:8,[null]:9,[1/0]:10,[NaN]:11};for(var k in o)console.log(k,o[k]);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "123 3\nhi 0\nA1 1\n/B/ 2\n1.5 4\n3.141592653589793 5\nundefined 6\ntrue 7\nfalse 8\nnull 9\nInfinity 10\nNaN 11\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}

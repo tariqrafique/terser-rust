@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "id": "compress/async/async_identifiers",
+  "corpus": "compress",
+  "name": "async_identifiers",
+  "origin": {
+    "file": "test/compress/async.js",
+    "line": 192,
+    "terser": "5.51.4",
+    "commit": "bd270d079070403e398df8a3b6652de0ed4dcc20"
+  },
+  "input": "\n        var async = function(x){ console.log(\"async\", x); };\n        var await = function(x){ console.log(\"await\", x); };\n        async(1);\n        await(2);\n    ",
+  "input_kind": "block",
+  "bad_input": false,
+  "fixture": {
+    "compress": {
+      "defaults": false
+    },
+    "mangle": false,
+    "format": null,
+    "parse": null,
+    "rename": false
+  },
+  "exprs": {
+    "options": null,
+    "mangle": null,
+    "format": null,
+    "parse": null,
+    "rename": null
+  },
+  "expect": "var async=function(x){console.log(\"async\",x)};var await=function(x){console.log(\"await\",x)};async(1);await(2);",
+  "expect_kind": "ast",
+  "expect_stdout": {
+    "kind": "string",
+    "value": "async 1\nawait 2\n"
+  },
+  "expect_error": null,
+  "prepend_code": null,
+  "node_version": null,
+  "no_mozilla_ast": false,
+  "reminify": true,
+  "only": false,
+  "module": false,
+  "ignored_output": null,
+  "has_function": false
+}
