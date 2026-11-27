@@ -599,6 +599,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
+        fresh: RefCell::new(HashMap::new()),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -687,6 +688,9 @@ struct Cx {
     /// copy): `tighten_body` runs on them before their children are descended,
     /// and never again (`OPTIMIZED`).
     pre_tighten: RefCell<HashMap<usize, N>>,
+    /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
+    /// descend after `drop_unused` still optimizes them.
+    fresh: RefCell<HashMap<usize, N>>,
 }
 
 impl Cx {
@@ -1160,8 +1164,11 @@ fn was_scope(data: &Data) -> bool {
 /// Copy `SQUEEZED` / `OPTIMIZED` from `old` onto `new` when `drop_unused` rebuilt
 /// the same shape. A different shape is a replacement and must be compressed.
 fn mark_tree_squeezed(n: &N, cx: &mut Cx) {
-    mark_squeezed(cx, n);
-    mark_optimized(cx, n);
+    let fresh = cx.fresh.borrow_mut().remove(&(Rc::as_ptr(n) as usize)).is_some();
+    if !fresh {
+        mark_squeezed(cx, n);
+        mark_optimized(cx, n);
+    }
     for child in child_refs(&n.data) {
         mark_tree_squeezed(child, cx);
     }

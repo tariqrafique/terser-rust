@@ -741,14 +741,17 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                 if let (Ok(b), Ok(a)) = (b, a) {
                     if !decls.is_empty() {
                         out.extend(decls);
-                        out.push(eval::atom(
+                        // terser `make_node(AST_If, ...)`: a fresh node with no flags.
+                        let made = eval::atom(
                             &stat,
                             Data::If {
                                 cond: Rc::clone(cond),
                                 body: b.unwrap_or_else(|| eval::empty(body)),
                                 alt: a,
                             },
-                        ));
+                        );
+                        cx.fresh.borrow_mut().insert(Rc::as_ptr(&made) as usize, Rc::clone(&made));
+                        out.push(made);
                         prev = None;
                         st.changed = true;
                         continue;
