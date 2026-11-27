@@ -39,95 +39,304 @@ impl Lit {
     }
 }
 
+/// terser `def_optimize` table. One arm per node type. A type that does not
+/// define `optimize` returns the node, the same as `def_optimize(AST_Node)`.
 pub fn fold(n: &N, cx: &Cx) -> N {
     if cx.in_asm() {
         return Rc::clone(n);
     }
-    if let Data::Unary { op, prefix: true, .. } = &n.data {
-        if matches!(op.as_str(), "!" | "typeof" | "void" | "delete" | "+" | "-" | "~") {
-            // terser `lib/compress/index.js` `def_optimize(AST_UnaryPrefix)`.
-            return crate::unary::optimize(n, cx);
+    opt_table(n, cx).unwrap_or_else(|| Rc::clone(n))
+}
+
+fn opt_table(n: &N, cx: &Cx) -> Option<N> {
+    // These three run before `evaluate`, matching the order already in this port.
+    match &n.data {
+        // terser `def_optimize(AST_UnaryPrefix)`.
+        Data::Unary { op, prefix: true, .. }
+            if matches!(op.as_str(), "!" | "typeof" | "void" | "delete" | "+" | "-" | "~") =>
+        {
+            return Some(crate::unary::optimize(n, cx));
         }
+        // terser `def_optimize(AST_SymbolRef)`.
+        Data::Symbol { kind: SymKind::Ref, .. } => return rewrite_global(n, cx),
+        // terser `def_optimize(AST_Boolean)`.
+        Data::True | Data::False => return fold_bool(n, cx),
+        _ => {}
     }
-    if let Some(rewritten) = rewrite_global(n, cx) {
-        return rewritten;
-    }
-    // terser `lib/compress/index.js` `def_optimize(AST_Boolean)`.
-    if let Some(rewritten) = fold_bool(n, cx) {
-        return rewritten;
-    }
+    // terser calls `evaluate` from inside each optimizer. This port still does
+    // it once, before the type body, which is the order the landed passes use.
     if cx.opts.evaluate {
-        // terser `evaluate.js` `AST_Node.evaluate`.
         if let Some(rewritten) = fold_value(n, cx) {
-            return rewritten;
+            return Some(rewritten);
         }
     }
-    // terser `def_optimize(AST_Array)` / `def_optimize(AST_Object)` / `def_optimize(AST_ObjectKeyVal)`.
-    if let Some(rewritten) = crate::object::optimize(n, cx) {
-        return rewritten;
-    }
-    if cx.opts.computed_props {
-        if let Some(rewritten) = fold_computed(n, cx) {
-            return rewritten;
+    match &n.data {
+        Data::Array { .. } | Data::Object { .. } | Data::Prop { .. } | Data::RegExp { .. } => {
+            if let Some(rewritten) = crate::object::optimize(n, cx) {
+                return Some(rewritten);
+            }
+            if cx.opts.computed_props {
+                fold_computed(n, cx)
+            } else {
+                None
+            }
         }
+        Data::Field { .. } if cx.opts.computed_props => fold_computed(n, cx),
+        Data::Cond { .. } if cx.opts.conditionals => fold_cond(n, cx),
+        // terser `def_optimize(AST_If)`.
+        Data::If { .. } => optimize_if(n, cx),
+        // terser `def_optimize(AST_Binary)`. `fold_not_binary` only matches `!`.
+        Data::Binary { .. } => fold_binary(n, cx),
+        // terser `def_optimize(AST_Assign)`.
+        Data::Assign { .. } => crate::assign::optimize(n, cx),
+        // terser `def_optimize(AST_DefaultAssign)`.
+        Data::DefaultAssign { .. } => optimize_default_assign(n, cx),
+        // terser `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)`.
+        Data::Dot { .. } | Data::Sub { .. } if cx.opts.properties || cx.opts.evaluate => fold_prop_access(n, cx),
+        // terser `def_optimize(AST_Chain)`.
+        Data::Chain { .. } => optimize_chain(n, cx),
+        // terser `def_optimize(AST_UnaryPostfix)`.
+        Data::Unary { prefix: false, .. } => optimize_postfix(n, cx),
+        Data::While { .. }
+        | Data::Do { .. }
+        | Data::For { .. }
+        | Data::ForIn { .. }
+        | Data::ForOf { .. }
+        | Data::Switch { .. }
+        | Data::Try { .. }
+        | Data::Catch { .. }
+        | Data::Finally { .. } => crate::loops::optimize(n, cx),
+        // terser `def_optimize(AST_Call)` / `def_optimize(AST_New)`.
+        Data::Call { .. } => crate::call::optimize(n, cx),
+        // terser `def_optimize(AST_SimpleStatement)`, `negate_iife`, `void`.
+        Data::Simple { .. } => optimize_simple(n, cx),
+        // terser `def_optimize(AST_Sequence)`.
+        Data::Seq { .. } if cx.opts.side_effects => crate::sequence::optimize(n, cx),
+        // terser `def_optimize(AST_Return)` / `def_optimize(AST_Yield)`.
+        Data::Return { .. } => optimize_return(n, cx),
+        Data::Yield { .. } => optimize_yield(n, cx),
+        // terser `def_optimize(AST_TemplateString)`.
+        Data::Template { .. } => optimize_template(n, cx),
+        // terser `def_optimize(AST_VarDef)` / `def_optimize(AST_Definitions)`.
+        Data::VarDef { .. } => optimize_vardef(n, cx),
+        Data::Defs { .. } => optimize_defs(n),
+        _ => None,
     }
-    if cx.opts.conditionals {
-        if let Some(rewritten) = fold_cond(n, cx) {
-            return rewritten;
-        }
-    }
-    // terser `lib/compress/index.js` `def_optimize(AST_If)`
-    if let Some(rewritten) = optimize_if(n, cx) {
-        return rewritten;
-    }
-    // terser `lib/compress/index.js` `def_optimize(AST_UnaryPrefix)` calls
-    // `AST_Binary.negate` (`inference.js`) when `!` is in boolean context.
-    if let Some(rewritten) = fold_not_binary(n, cx) {
-        return rewritten;
-    }
-    // terser `lib/compress/index.js` `def_optimize(AST_Binary)`.
-    if let Some(rewritten) = fold_binary(n, cx) {
-        return rewritten;
-    }
-    // terser `lib/compress/index.js` `def_optimize(AST_Assign)`.
-    if let Some(rewritten) = crate::assign::optimize(n, cx) {
-        return rewritten;
-    }
-    // terser `lib/compress/index.js` `def_optimize(AST_Dot)` / `def_optimize(AST_Sub)`.
-    if cx.opts.properties || cx.opts.evaluate {
-        if let Some(rewritten) = fold_prop_access(n, cx) {
-            return rewritten;
-        }
-    }
-    // terser `def_optimize` for `AST_While` / `AST_Do` / `AST_For` / `AST_Switch` / `AST_Try`.
-    if let Some(rewritten) = crate::loops::optimize(n, cx) {
-        return rewritten;
-    }
-    if let Some(rewritten) = crate::call::optimize(n, cx) {
-        return rewritten;
-    }
-    // terser `inline.js` `negate_iife`: a statement call, and only when the
-    // option is on. `expression` rewrote that statement to `return` first, so
-    // the option off does not emit `!function`.
+}
+
+fn optimize_simple(n: &N, cx: &Cx) -> Option<N> {
     if cx.opts.negate_iife {
         if let Some(rewritten) = negate_iife(n) {
-            return rewritten;
+            return Some(rewritten);
         }
     }
     if cx.opts.side_effects {
-        // terser `drop-side-effect-free.js` `void`, then `AST_SimpleStatement`.
         if let Some(rewritten) = unwrap_void_statement(n, cx) {
-            return rewritten;
+            return Some(rewritten);
         }
         if let Some(rewritten) = drop_statement(n, cx) {
-            return rewritten;
-        }
-        // terser `lib/compress/index.js` `def_optimize(AST_Sequence)`.
-        if let Some(rewritten) = crate::sequence::optimize(n, cx) {
-            return rewritten;
+            return Some(rewritten);
         }
     }
-    Rc::clone(n)
+    None
+}
+
+/// terser `def_optimize(AST_UnaryPostfix)`: `lift_sequences`.
+fn optimize_postfix(n: &N, cx: &Cx) -> Option<N> {
+    if cx.opts.sequences_limit <= 0 {
+        return None;
+    }
+    let Data::Unary { op, expr, prefix: false } = &n.data else {
+        return None;
+    };
+    let Data::Seq { exprs } = &expr.data else {
+        return None;
+    };
+    if exprs.is_empty() {
+        return None;
+    }
+    let mut parts = exprs.clone();
+    let tail = parts.pop().unwrap();
+    parts.push(atom(
+        n,
+        Data::Unary { op: op.clone(), expr: tail, prefix: false },
+    ));
+    Some(crate::sequence::make_and_optimize(n, parts, cx))
+}
+
+/// terser `def_optimize(AST_Chain)`.
+fn optimize_chain(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Chain { expr } = &n.data else {
+        return None;
+    };
+    if is_nullish_node(expr, cx) {
+        if cx.parent().is_some_and(|p| matches!(&p.data, Data::Unary { op, .. } if op == "delete")) {
+            return Some(num(n, 0.0));
+        }
+        return Some(void0(n));
+    }
+    if matches!(expr.data, Data::Dot { .. } | Data::Sub { .. } | Data::Call { .. }) {
+        None
+    } else {
+        Some(Rc::clone(expr))
+    }
+}
+
+/// terser `def_optimize(AST_Return)`.
+fn optimize_return(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Return { value: Some(value) } = &n.data else {
+        return None;
+    };
+    if is_undefined_value(value, cx) {
+        Some(atom(n, Data::Return { value: None }))
+    } else {
+        None
+    }
+}
+
+/// terser `def_optimize(AST_Yield)`.
+fn optimize_yield(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Yield { expr: Some(expr), star } = &n.data else {
+        return None;
+    };
+    if *star || !is_undefined_value(expr, cx) {
+        return None;
+    }
+    Some(atom(n, Data::Yield { expr: None, star: false }))
+}
+
+/// terser `def_optimize(AST_DefaultAssign)`.
+fn optimize_default_assign(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.evaluate {
+        return None;
+    }
+    let Data::DefaultAssign { left, right } = &n.data else {
+        return None;
+    };
+    if !is_undefined_value(right, cx) {
+        return None;
+    }
+    // Default `keep_fargs` is on, so a parameter `= undefined` stays unless
+    // this is not a parameter (a destructuring default).
+    if cx.parent().is_some_and(|p| matches!(p.data, Data::Func { .. })) {
+        return None;
+    }
+    Some(Rc::clone(left))
+}
+
+/// terser `def_optimize(AST_VarDef)`.
+fn optimize_vardef(n: &N, cx: &Cx) -> Option<N> {
+    let Data::VarDef { name, value: Some(value) } = &n.data else {
+        return None;
+    };
+    let Data::Symbol { kind: SymKind::Let, .. } = &name.data else {
+        return None;
+    };
+    if is_undefined_value(value, cx) {
+        Some(atom(n, Data::VarDef { name: Rc::clone(name), value: None }))
+    } else {
+        None
+    }
+}
+
+/// terser `def_optimize(AST_Definitions)`.
+fn optimize_defs(n: &N) -> Option<N> {
+    let Data::Defs { defs, .. } = &n.data else {
+        return None;
+    };
+    if defs.is_empty() {
+        Some(atom(n, Data::Empty))
+    } else {
+        None
+    }
+}
+
+/// terser `def_optimize(AST_TemplateString)`.
+fn optimize_template(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.evaluate {
+        return None;
+    }
+    if cx.parent().is_some_and(|p| matches!(p.data, Data::TaggedTemplate { .. })) {
+        return None;
+    }
+    let Data::Template { segments } = &n.data else {
+        return None;
+    };
+    let mut out: Vec<Seg> = Vec::new();
+    let mut i = 0;
+    while i < segments.len() {
+        let seg = &segments[i];
+        let Seg::Expr(expr) = seg else {
+            out.push(seg.clone());
+            i += 1;
+            continue;
+        };
+        if let Data::Template { segments: inner } = &expr.data {
+            if let Some(Seg::Cooked { value, raw, units }) = out.last_mut() {
+                if let Some(Seg::Cooked { value: head, raw: head_raw, .. }) = inner.first() {
+                    value.push_str(head);
+                    raw.push_str(head_raw);
+                    *units = None;
+                }
+                for part in inner.iter().skip(1) {
+                    out.push(part.clone());
+                }
+                i += 1;
+                continue;
+            }
+        }
+        if let Some(lit) = eval(expr) {
+            let text = lit_text(&lit);
+            let expr_size = print_len(expr);
+            if text.len() <= expr_size + 3 {
+                if let Some(Seg::Cooked { value, raw, units }) = out.last_mut() {
+                    let next = segments.get(i + 1);
+                    if let Some(Seg::Cooked { value: tail, raw: tail_raw, .. }) = next {
+                        value.push_str(&text);
+                        value.push_str(tail);
+                        raw.push_str(&text);
+                        raw.push_str(tail_raw);
+                        *units = None;
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(seg.clone());
+        i += 1;
+    }
+    if out.len() == segments.len() && out.iter().zip(segments).all(|(a, b)| seg_eq(a, b)) {
+        return None;
+    }
+    if out.len() == 1 {
+        if let Seg::Cooked { value, .. } = &out[0] {
+            return Some(atom(
+                n,
+                Data::String { value: value.clone(), quote: '"', units: None },
+            ));
+        }
+    }
+    Some(atom(n, Data::Template { segments: out }))
+}
+
+fn lit_text(lit: &Lit) -> String {
+    match lit {
+        Lit::Num(n) => js_num_tostring(*n),
+        Lit::Str(s) => s.clone(),
+        Lit::Bool(true) => "true".into(),
+        Lit::Bool(false) => "false".into(),
+        Lit::Null => "null".into(),
+        Lit::Undef => "undefined".into(),
+    }
+}
+
+fn seg_eq(a: &Seg, b: &Seg) -> bool {
+    match (a, b) {
+        (Seg::Expr(x), Seg::Expr(y)) => Rc::ptr_eq(x, y),
+        (Seg::Cooked { value: x, raw: xr, .. }, Seg::Cooked { value: y, raw: yr, .. }) => x == y && xr == yr,
+        _ => false,
+    }
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_SymbolRef)`.

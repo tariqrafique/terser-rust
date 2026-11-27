@@ -20,6 +20,8 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         Data::Array { elements } => optimize_array(n, elements, cx),
         Data::Object { props } => optimize_object(n, props, cx),
         Data::Prop { method: None, .. } => optimize_keyval(n, cx),
+        // terser `def_optimize(AST_RegExp)` is `literals_in_boolean_context`.
+        Data::RegExp { .. } => literals_in_boolean_context(n, cx),
         _ => None,
     }
 }
