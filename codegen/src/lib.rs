@@ -14,7 +14,18 @@ thread_local! {
 }
 
 pub fn print(root: &N) -> String {
+    print_with(root, true)
+}
+
+/// The string terser feeds to character frequency: `print_to_string()` with no
+/// options, which skips comments and shebangs.
+pub fn print_without_comments(root: &N) -> String {
+    print_with(root, false)
+}
+
+fn print_with(root: &N, comments: bool) -> String {
     let mut out = Out::new();
+    out.comments = comments;
     out.print_node(root, false);
     out.print("");
     out.buf
@@ -53,6 +64,7 @@ struct Out {
     in_directive: bool,
     printed_lists: HashSet<u32>,
     printed_comments: HashSet<u32>,
+    comments: bool,
     /// Scope node whose body is inside `use asm`, if any.
     use_asm: Option<usize>,
     active_scope: Option<usize>,
@@ -71,6 +83,7 @@ impl Out {
             in_directive: false,
             printed_lists: HashSet::new(),
             printed_comments: HashSet::new(),
+            comments: true,
             use_asm: None,
             active_scope: None,
             stack: Vec::new(),
@@ -1350,6 +1363,9 @@ impl Out {
     }
 
     fn prepend_comments(&mut self, node: &N) {
+        if !self.comments {
+            return;
+        }
         let Some(start) = node.start.as_ref() else { return };
         let list_id = start.comments_id;
         let keyword_value = exit_value(node).or_else(|| await_or_yield_expr(node));
@@ -1425,6 +1441,9 @@ impl Out {
     }
 
     fn append_comments_tail(&mut self, node: &N, tail: bool) {
+        if !self.comments {
+            return;
+        }
         let Some(token) = node.end.as_ref() else { return };
         let (list_id, comments) = if tail {
             (token.comments_id, &token.comments_before)

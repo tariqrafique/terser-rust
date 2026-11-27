@@ -2118,13 +2118,16 @@ impl Parser {
                 let start = self.token_index_of(&ex).unwrap_or(self.token);
                 Ok(self.mk(Data::DefaultAssign { left, right: right.clone() }, start, start))
             }
-            Data::Array { .. } | Data::Object { .. } => self.to_destructuring(ex),
+            Data::Array { .. } | Data::Object { .. } => {
+                let pattern = self.to_destructuring(ex)?;
+                Ok(retag_param(pattern))
+            }
             Data::Spread { expr } => {
                 let inner = self.to_fun_arg(expr.clone())?;
                 let start = self.token_index_of(&ex).unwrap_or(self.token);
                 Ok(self.mk(Data::Spread { expr: inner }, start, start))
             }
-            Data::Destructuring { .. } | Data::DefaultAssign { .. } => Ok(ex),
+            Data::Destructuring { .. } | Data::DefaultAssign { .. } => Ok(retag_param(ex)),
             _ => Err(self.croak("Invalid function parameter")),
         }
     }
@@ -2507,6 +2510,32 @@ fn split_regexp(raw: &str) -> (String, String) {
     } else {
         (raw.trim_start_matches('/').trim_end_matches('/').to_string(), String::new())
     }
+}
+
+/// Arrow parameters are parsed as expressions, then turned into a binding
+/// pattern. Identifiers inside that pattern are parameters, not references.
+fn retag_param(node: N) -> N {
+    let data = match node.data.clone() {
+        Data::Symbol { name, .. } => Data::Symbol { name, kind: SymKind::Funarg, quote: None },
+        Data::Destructuring { array, names } => Data::Destructuring {
+            array,
+            names: names.into_iter().map(retag_param).collect(),
+        },
+        Data::Prop { method, key, value, static_, private, generator, async_ } => Data::Prop {
+            method,
+            key,
+            value: retag_param(value),
+            static_,
+            private,
+            generator,
+            async_,
+        },
+        Data::Spread { expr } => Data::Spread { expr: retag_param(expr) },
+        Data::DefaultAssign { left, right } => Data::DefaultAssign { left: retag_param(left), right },
+        Data::Assign { left, right, .. } => Data::DefaultAssign { left: retag_param(left), right },
+        other => other,
+    };
+    Rc::new(Node { start: node.start.clone(), end: node.end.clone(), data })
 }
 
 fn js_key(n: f64) -> String {

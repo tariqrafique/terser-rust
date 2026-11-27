@@ -7,7 +7,7 @@
 //! print, which is what makes the output byte-exact.
 
 use ast::{Data, FuncKind, Key, N, Node, SymKind};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 const LEADING: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ$_";
@@ -38,6 +38,12 @@ struct Scope {
     cname: i32,
 }
 
+enum LabelEvent {
+    Enter,
+    Label(N),
+    Leave,
+}
+
 struct Analyzer {
     scopes: Vec<Scope>,
     defs: Vec<Def>,
@@ -46,6 +52,8 @@ struct Analyzer {
     fn_scope: usize,
     label_stack: Vec<HashMap<String, usize>>,
     label_nodes: Vec<N>,
+    label_ref_nodes: Vec<N>,
+    label_events: Vec<LabelEvent>,
     label_refs: HashMap<usize, usize>,
     refs: Vec<(N, usize)>,
     error: Option<ScopeError>,
@@ -66,7 +74,10 @@ pub fn mangle_map(root: &N) -> Result<(HashMap<usize, String>, HashMap<String, S
         return Err(err);
     }
     a.resolve_refs();
-    let printed = codegen::print(root);
+    a.enclose_redefined_catches();
+    // Frequency is counted on the comment-free print. The mangled result
+    // still keeps license comments.
+    let printed = codegen::print_without_comments(root);
     let mut freq = Freq::new();
     freq.consider(&printed, 1);
     let mangleable = a.mangleable_nodes();
@@ -116,6 +127,8 @@ impl Analyzer {
             fn_scope: 0,
             label_stack: vec![HashMap::new()],
             label_nodes: Vec::new(),
+            label_ref_nodes: Vec::new(),
+            label_events: Vec::new(),
             label_refs: HashMap::new(),
             refs: Vec::new(),
             error: None,
@@ -131,15 +144,6 @@ impl Analyzer {
 
     fn define(&mut self, scope: usize, node: &N, name: &str, kind: SymKind) -> Result<(), ScopeError> {
         let ptr = Rc::as_ptr(node) as usize;
-        if kind == SymKind::Catch {
-            if let Some(id) = self.scopes[self.fn_scope].vars.get(name).copied() {
-                if self.defs[id].kind == SymKind::Var {
-                    self.node_def.insert(ptr, id);
-                    self.note_enclosed(self.cur, id);
-                    return Ok(());
-                }
-            }
-        }
         if let Some(id) = self.scopes[scope].vars.get(name).copied() {
             if redeclares(&self.defs[id], kind) {
                 let (line, col) = node.start.as_ref().map(|t| (t.line, t.col)).unwrap_or((1, 0));
@@ -148,7 +152,7 @@ impl Analyzer {
                 return Err(err);
             }
             self.node_def.insert(ptr, id);
-            if scope != self.cur {
+            if scope != self.cur || self.scopes[self.cur].block {
                 self.note_enclosed(self.cur, id);
             }
             return Ok(());
@@ -168,10 +172,21 @@ impl Analyzer {
         self.scopes[scope].vars.insert(name.to_string(), id);
         self.scopes[scope].vars_order.push(id);
         self.node_def.insert(ptr, id);
-        if scope != self.cur {
+        if scope != self.cur || self.scopes[self.cur].block {
             self.note_enclosed(self.cur, id);
         }
         Ok(())
+    }
+
+    /// `catch (name) { var name }` prints the catch with the function-scoped
+    /// variable's mangled name. The two defs stay separate.
+    fn redefined_catch(&self, id: usize) -> Option<usize> {
+        let def = &self.defs[id];
+        if def.kind != SymKind::Catch || !self.scopes[def.scope].block {
+            return None;
+        }
+        let defun = self.scopes[def.scope].fn_scope;
+        self.scopes[defun].vars.get(&def.name).copied()
     }
 
     fn def_global(&mut self, node: &N, name: &str) {
@@ -268,16 +283,13 @@ impl Analyzer {
         match &n.data {
             Data::Func { kind, name, args, body, .. } => self.walk_func(n, *kind, name.as_ref(), args, body),
             Data::Class { name, extends, props, .. } => {
+                // A declaration name is bound outside the class. An expression
+                // name is bound inside, and `extends` is resolved from inside
+                // so the class scope will not reuse that binding's name.
                 if let Some(name) = name {
-                    let target = self.scopes[self.cur].parent.unwrap_or(self.cur);
-                    let _ = target;
-                    // class declaration name lives on the enclosing scope
-                if let Data::Symbol { name: nm, kind: SymKind::DefClass, .. } = &name.data {
-                    let _ = self.define(self.cur, name, nm, SymKind::DefClass);
-                }
-            }
-                if let Some(ext) = extends {
-                    self.walk(ext);
+                    if let Data::Symbol { name: nm, kind: SymKind::DefClass, .. } = &name.data {
+                        let _ = self.define(self.cur, name, nm, SymKind::DefClass);
+                    }
                 }
                 let prev_c = self.cur;
                 let prev_f = self.fn_scope;
@@ -287,12 +299,33 @@ impl Analyzer {
                         self.define(self.cur, name, nm, SymKind::Class);
                     }
                 }
+                if let Some(ext) = extends {
+                    self.walk(ext);
+                }
                 for p in props {
                     self.walk(p);
                 }
                 self.pop_scope(prev_c, prev_f);
             }
-            Data::Block { body } | Data::StaticBlock { body } => self.walk_block(body),
+            Data::Toplevel { body } => {
+                if body_is_strict(body) {
+                    self.scopes[self.cur].strict = true;
+                }
+                for stmt in body {
+                    self.walk(stmt);
+                }
+            }
+            Data::StaticBlock { body } => {
+                // A static block is its own function scope: `var` stays inside it.
+                let prev_c = self.cur;
+                let prev_f = self.fn_scope;
+                self.push_scope(false, true, true);
+                for stmt in body {
+                    self.walk(stmt);
+                }
+                self.pop_scope(prev_c, prev_f);
+            }
+            Data::Block { body } => self.walk_block(body),
             Data::For { init, cond, step, body } => {
                 let prev_c = self.cur;
                 let prev_f = self.fn_scope;
@@ -344,7 +377,17 @@ impl Analyzer {
                 if let Some(arg) = arg {
                     self.bind_pattern(arg, self.cur);
                 }
-                self.walk(body);
+                // The catch parameter and the catch block share one scope.
+                // A nested block would restart the name counter and reuse the
+                // parameter's mangled name.
+                match &body.data {
+                    Data::Block { body } => {
+                        for stmt in body {
+                            self.walk(stmt);
+                        }
+                    }
+                    _ => self.walk(body),
+                }
                 self.pop_scope(prev_c, prev_f);
             }
             Data::Labeled { label, body } => {
@@ -353,7 +396,10 @@ impl Analyzer {
                     let top = self.label_stack.len() - 1;
                     self.label_stack[top].insert(name.clone(), Rc::as_ptr(label) as usize);
                     self.label_nodes.push(Rc::clone(label));
+                    self.label_events.push(LabelEvent::Enter);
+                    self.label_events.push(LabelEvent::Label(Rc::clone(label)));
                     self.walk(body);
+                    self.label_events.push(LabelEvent::Leave);
                     self.label_stack.pop();
                 } else {
                     self.walk(body);
@@ -535,8 +581,24 @@ impl Analyzer {
             for frame in self.label_stack.iter().rev() {
                 if let Some(label_ptr) = frame.get(name) {
                     self.label_refs.insert(Rc::as_ptr(n) as usize, *label_ptr);
+                    self.label_ref_nodes.push(Rc::clone(n));
                     return;
                 }
+            }
+        }
+    }
+
+    fn enclose_redefined_catches(&mut self) {
+        let catches: Vec<usize> = self
+            .defs
+            .iter()
+            .enumerate()
+            .filter(|(_, def)| def.kind == SymKind::Catch)
+            .map(|(id, _)| id)
+            .collect();
+        for id in catches {
+            if let Some(redef) = self.redefined_catch(id) {
+                self.note_enclosed(self.defs[id].scope, redef);
             }
         }
     }
@@ -573,6 +635,11 @@ impl Analyzer {
                 out.push((Rc::as_ptr(n) as usize, name.clone()));
             }
         }
+        for n in &self.label_ref_nodes {
+            if let Data::Symbol { name, .. } = &n.data {
+                out.push((Rc::as_ptr(n) as usize, name.clone()));
+            }
+        }
         out
     }
 
@@ -602,47 +669,60 @@ impl Analyzer {
     }
 
     fn assign(&mut self, freq: &Freq) {
-        // Labels first, with a counter that resets around each statement.
+        // Sibling labels reuse names. The counter is saved around each
+        // labeled statement and restored after its body.
         let mut lname = -1i32;
+        let mut saved: Vec<i32> = Vec::new();
+        let events = std::mem::take(&mut self.label_events);
         let mut label_names: HashMap<usize, String> = HashMap::new();
-        let mut label_orig: HashMap<usize, String> = HashMap::new();
-        for n in &self.label_nodes {
-            let original = match &n.data {
-                Data::Symbol { name, .. } => name.clone(),
-                _ => String::new(),
-            };
-            let mut name;
-            loop {
-                lname += 1;
-                name = freq.get(lname);
-                if !is_reserved(&name) {
-                    break;
+        for event in &events {
+            match event {
+                LabelEvent::Enter => saved.push(lname),
+                LabelEvent::Leave => lname = saved.pop().unwrap_or(-1),
+                LabelEvent::Label(n) => {
+                    let original = match &n.data {
+                        Data::Symbol { name, .. } => name.clone(),
+                        _ => String::new(),
+                    };
+                    let mut name;
+                    loop {
+                        lname += 1;
+                        name = freq.get(lname);
+                        if !is_reserved(&name) {
+                            break;
+                        }
+                    }
+                    label_names.insert(Rc::as_ptr(n) as usize, name.clone());
+                    let id = self.defs.len();
+                    self.defs.push(Def {
+                        name: original,
+                        mangled: Some(name),
+                        scope: 0,
+                        global: false,
+                        undeclared: false,
+                        export_dont: false,
+                        kind: SymKind::Label,
+                        funarg: false,
+                    });
+                    self.node_def.insert(Rc::as_ptr(n) as usize, id);
                 }
             }
-            let ptr = Rc::as_ptr(n) as usize;
-            label_orig.insert(ptr, original);
-            label_names.insert(ptr, name);
-        }
-        for (ptr, name) in &label_names {
-            let id = self.defs.len();
-            self.defs.push(Def {
-                name: label_orig.get(ptr).cloned().unwrap_or_else(|| name.clone()),
-                mangled: Some(name.clone()),
-                scope: 0,
-                global: false,
-                undeclared: false,
-                export_dont: false,
-                kind: SymKind::Label,
-                funarg: false,
-            });
-            self.node_def.insert(*ptr, id);
         }
         let refs = self.label_refs.clone();
         for (rptr, lptr) in refs {
             if let Some(name) = label_names.get(&lptr) {
+                let original = self
+                    .label_nodes
+                    .iter()
+                    .find(|n| Rc::as_ptr(n) as usize == lptr)
+                    .and_then(|n| match &n.data {
+                        Data::Symbol { name, .. } => Some(name.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| name.clone());
                 let id = self.defs.len();
                 self.defs.push(Def {
-                    name: label_orig.get(&lptr).cloned().unwrap_or_else(|| name.clone()),
+                    name: original,
                     mangled: Some(name.clone()),
                     scope: 0,
                     global: false,
@@ -658,7 +738,20 @@ impl Analyzer {
         let mut order = Vec::new();
         self.collect(0, &mut order);
         for id in order {
-            if self.defs[id].mangled.is_some() || !self.can_mangle(id) {
+            if self.defs[id].mangled.is_some() {
+                continue;
+            }
+            if self.defs[id].kind == SymKind::Catch {
+                if let Some(redef) = self.redefined_catch(id) {
+                    let name = self.defs[redef]
+                        .mangled
+                        .clone()
+                        .unwrap_or_else(|| self.defs[redef].name.clone());
+                    self.defs[id].mangled = Some(name);
+                    continue;
+                }
+            }
+            if !self.can_mangle(id) {
                 continue;
             }
             let scope = self.defs[id].scope;
@@ -694,7 +787,7 @@ impl Analyzer {
                 let d = &self.defs[*id];
                 if let Some(mangled) = &d.mangled {
                     mangled == &m
-                } else if !self.can_mangle(*id) {
+                } else if self.unmangleable(*id) {
                     d.name == m
                 } else {
                     false
@@ -760,7 +853,9 @@ fn child_nodes(data: &Data) -> Vec<N> {
             v.push(Rc::clone(name));
             if let Some(x) = value { v.push(Rc::clone(x)); }
         }
-        Data::Array { elements } | Data::Seq { exprs: elements } => v.extend(elements.iter().cloned()),
+        Data::Array { elements } | Data::Seq { exprs: elements } | Data::Destructuring { names: elements, .. } => {
+            v.extend(elements.iter().cloned())
+        }
         Data::Object { props } => v.extend(props.iter().cloned()),
         Data::Prop { key, value, .. } => {
             if let Key::Computed(e) = key { v.push(Rc::clone(e)); }
@@ -823,8 +918,8 @@ fn body_is_strict(body: &[N]) -> bool {
 }
 
 fn redeclares(old: &Def, kind: SymKind) -> bool {
-    let block = matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using | SymKind::Class | SymKind::DefClass);
-    let old_block = matches!(old.kind, SymKind::Let | SymKind::Const | SymKind::Using | SymKind::Class | SymKind::DefClass);
+    let block = matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using | SymKind::Class | SymKind::DefClass | SymKind::Catch);
+    let old_block = matches!(old.kind, SymKind::Let | SymKind::Const | SymKind::Using | SymKind::Class | SymKind::DefClass | SymKind::Catch);
     if block && old_block {
         return true;
     }
