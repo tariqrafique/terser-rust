@@ -31,6 +31,11 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `index.js` `def_optimize(AST_Switch)` | `loops.rs` `optimize_switch` | constant discriminant, dead cases, duplicate `default`, equivalent-branch merge, empty-switch removal, `switch` to `if` or a block. A switch-built `if` stays an `if` (`OPTIMIZED`) |
 | `index.js` `def_optimize(AST_Try)` | `loops.rs` `optimize_try` | drop an empty `finally` when `catch` is present. An empty `try` becomes the `finally` body plus declarations extracted from `catch` |
 | `index.js` `def_optimize(AST_Catch)` / `def_optimize(AST_Finally)` | `lib.rs` `after_descend` | both extend `AST_Block`, so `tighten_body` is the inner block. `keep_block` leaves the braces |
+| `index.js` `def_optimize(AST_Boolean)` | `eval.rs` `fold_bool` | boolean context and parent `==` / `!=` become `1` / `0`. Otherwise `true` is `!0` and `false` is `!1` |
+| `evaluate.js` `AST_Node.evaluate` | `eval.rs` `fold_value` | constant value, then `best_of`. Not `&&` / `||` / `??` or conditionals, so a constant arm cannot drop the other arm's effects |
+| `index.js` `def_optimize(AST_SimpleStatement)` / `drop_side_effect_free` | `eval.rs` `drop_statement` / `unary.rs` `drop_side_effect_free` | statement keeps only effects. Arrays, objects, binaries, conditionals, pure calls, and property reads that cannot throw |
+| `drop-side-effect-free.js` `AST_Unary` `void` | `eval.rs` `unwrap_void_statement` | a `void` statement keeps the operand's effects |
+| `inline.js` `negate_iife` | `eval.rs` `negate_iife` | only when the option is on and the parent is a simple statement. `expression` turns that statement into `return` for the passes, so the option off does not emit `!function` |
 
 `assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
