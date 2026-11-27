@@ -25,13 +25,13 @@ Every corpus input is minified with the same named sets. The objects below are w
 
 `mangle: true` is the same as `mangle: {}` inside terser (`defaults()` treats `true` as `{}`).
 
-Comparison is the UTF-8 bytes of the output string. There is no whitespace normalization and no AST comparison. When terser throws, the oracle stores a canonical error record and the board compares that text the same way:
+Comparison is the UTF-8 bytes of the output string. There is no whitespace normalization and no AST comparison. When terser throws, or when its parser aborts the process, the oracle stores a canonical error record and the board compares that text the same way:
 
 ```
-name\nmessage\nline\ncol
+name\nmessage\nline\ncol\n
 ```
 
-`line` and `col` are empty when the exception has neither.
+`line` and `col` are empty when the exception has neither. Named sets run in a worker with a 192MB heap (bundles use 4GB). Nine `test/compress/typescript` inputs make the default parser allocate until that worker dies (`SIGABRT`). Those `roundtrip`, `mangle`, and `default` results are `Abort` records with a fixed message. Two runs of `node harness/oracle.mjs` produced identical files. `fixture` still passes `parse.experimental_typescript` and returns code. A Rust error is canonicalized as `error\n<message>\n\n\n`, so the unimplemented stub does not match a terser `SyntaxError`.
 
 ## Compress fixtures
 
