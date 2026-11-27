@@ -78,7 +78,8 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
             matches!(def.single_use, SingleUse::Yes),
             def.assignments,
             def.references.len() as u32,
-            def.name.len(),
+            // terser `self.size(compressor)`: one character when it will be mangled.
+            if crate::eval::mangled_size(n) { 1 } else { def.name.len() },
             exposed(def, at.env),
         )
     };
@@ -116,37 +117,52 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         def.replaced.set(def.replaced.get().saturating_add(1));
         return Some(expr_value(&fixed));
     }
-    let evaluated = if is_constant_expr(&fixed) { None } else { crate::eval::eval_lit(&fixed) };
-    if !is_constant_expr(&fixed) && evaluated.is_none() {
-        return None;
-    }
-    // Multiple reads of an evaluable constant, kept when it is not longer
-    // than the name plus the declaration overhead `unused` can remove.
+    // Multiple reads: terser `fixed.evaluate` and `make_node_from_constant`,
+    // kept when it is not longer than the name plus the declaration overhead
+    // `unused` can remove.
     if !at.env.evaluate {
         return None;
     }
+    use crate::eval::Lit;
+    let lit = if is_literal(&fixed) { None } else { crate::eval::eval_lit(&fixed).or_else(|| eval_num(&fixed).map(Lit::Num)) };
+    let (replace, replace_len) = if is_literal(&fixed) {
+        (Rc::clone(&fixed), codegen::print(&fixed).len())
+    } else {
+        match lit? {
+            Lit::Num(num) if num.is_finite() => {
+                let node = if num < 0.0 || (num == 0.0 && num.is_sign_negative()) {
+                    span_node(&fixed, Data::Unary { op: "-".into(), expr: span_node(&fixed, Data::Number { value: -num, raw: String::new() }), prefix: true })
+                } else {
+                    span_node(&fixed, Data::Number { value: num, raw: String::new() })
+                };
+                let len = codegen::print(&node).len();
+                (node, len)
+            }
+            Lit::Str(v) => {
+                let node = span_node(&fixed, Data::String { value: v, quote: '"', units: None });
+                let len = codegen::print(&node).len();
+                (node, len)
+            }
+            Lit::Bool(b) => {
+                let one = span_node(&fixed, Data::Number { value: if b { 0.0 } else { 1.0 }, raw: String::new() });
+                (span_node(&fixed, Data::Unary { op: "!".into(), expr: one, prefix: true }), if b { 4 } else { 5 })
+            }
+            Lit::Null => (span_node(&fixed, Data::Null), 4),
+            Lit::Undef => (void0(&fixed), 6),
+            _ => return None,
+        }
+    };
     let reads = references.saturating_sub(assignments);
     if reads == 0 {
         return None;
     }
-    // terser evaluates `fixed` (`fixed.evaluate`). A chained `++` is `+n + 1`, not a literal.
     let fixed_len = codegen::print(&fixed).len();
-    let (replace, replace_len) = if is_literal(&fixed) {
-        let len = fixed_len;
-        (Rc::clone(&fixed), len)
-    } else if let Some(crate::eval::Lit::Num(num)) = evaluated.or_else(|| eval_num(&fixed).map(crate::eval::Lit::Num)) {
-        let node = span_node(&fixed, Data::Number { value: num, raw: String::new() });
-        let len = codegen::print(&node).len();
-        (node, len)
-    } else {
-        return None;
-    };
     let overhead = if at.env.unused && !exposed_now {
-        (name_len + 2 + fixed_len) / reads as usize
+        (name_len + 2 + fixed_len) as f64 / reads as f64
     } else {
-        0
+        0.0
     };
-    if replace_len <= name_len + overhead {
+    if replace_len as f64 <= name_len as f64 + overhead {
         let def = &table.defs[id];
         def.replaced.set(def.replaced.get().saturating_add(1));
         return Some(replace);
@@ -332,7 +348,14 @@ fn walk(n: &N, tw: &mut Tw) {
                 tw.conditional_var += 1;
             }
             let mut done = false;
-            if let Some(id) = sym_ref(left).and_then(|()| def_of(tw, left)) {
+            // terser `reduce-vars.js` `AST_Assign`: a destructuring target is suppressed.
+            if matches!(left.data, Data::Destructuring { .. }) {
+                suppress(left, tw);
+                walk(right, tw);
+                done = true;
+            }
+            if done {
+            } else if let Some(id) = sym_ref(left).and_then(|()| def_of(tw, left)) {
                 // An assignment inside `&&` / `if` / a label that can break may not run,
                 // so it must not become the value later reads inline.
                 // `safe_to_assign` rejects `const` (its `orig` is `AST_SymbolConst`):
@@ -942,7 +965,7 @@ fn is_modified(tw: &Tw, node: &N, value: Option<&N>, level: usize, immutable: bo
     let np = syms::ptr(node);
     // `is_lhs`
     match &parent.data {
-        Data::Unary { op, expr, .. } if matches!(op.as_str(), "++" | "--") && syms::ptr(expr) == np => return true,
+        Data::Unary { op, expr, .. } if matches!(op.as_str(), "++" | "--" | "delete") && syms::ptr(expr) == np => return true,
         Data::Assign { left, .. } if syms::ptr(left) == np => return true,
         Data::ForIn { init, .. } | Data::ForOf { init, .. } if syms::ptr(init) == np => return true,
         _ => {}
@@ -1103,7 +1126,14 @@ fn suppress(n: &N, tw: &mut Tw) {
             }
         }
         Data::VarDef { name, .. } => suppress(name, tw),
-        _ => {}
+        // terser walks every symbol under the node (destructuring patterns,
+        // defaults, property values).
+        _ => {
+            let _ = ast::map_children(n, &mut |c| {
+                suppress(c, tw);
+                Rc::clone(c)
+            });
+        }
     }
 }
 

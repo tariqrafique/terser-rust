@@ -475,6 +475,13 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     // `expression` wraps the completion value in `return` before the passes and
     // unwraps after, so `first_in_statement` is false while a conditional is
     // optimized and `negate_iife` does not see a statement-leading function.
+    // terser `Compressor` `mangle_options`: `minify` passes `options.mangle`.
+    let mangle = match minify_opts.get("mangle") {
+        None => Some(false),
+        Some(Value::Bool(false)) | Some(Value::Null) => None,
+        Some(Value::Object(m)) => Some(m.get("toplevel").is_some_and(|v| v.as_bool() == Some(true)) || m.get("module").is_some_and(|v| v.as_bool() == Some(true))),
+        Some(_) => Some(false),
+    };
     let passes = opts.passes.max(1);
     let expression = opts.expression;
     let mut tree = Rc::clone(root);
@@ -482,8 +489,9 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         tree = process_expression(&tree, true);
     }
     for _ in 0..passes {
-        tree = compress_pass(&tree, opts.clone());
+        tree = compress_pass(&tree, opts.clone(), mangle);
     }
+    eval::set_mangled_symbols(HashSet::new());
     if expression {
         tree = process_expression(&tree, false);
     }
@@ -552,7 +560,7 @@ fn rewrite_completion(n: &N, body: &[N], insert: bool, wrap: impl Fn(Vec<N>) -> 
     eval::atom(n, wrap(next))
 }
 
-fn compress_pass(root: &N, opts: Opts) -> N {
+fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     let collapse_vars = opts.collapse_vars;
     let reduce_vars_on = opts.reduce_vars;
     let unused = opts.unused;
@@ -585,6 +593,21 @@ fn compress_pass(root: &N, opts: Opts) -> N {
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
         cx.frames[0].insert("use strict".into(), 0);
+    }
+    // terser `size.js`: a mangleable symbol is one character when mangle options exist.
+    if let Some(mangle_toplevel) = mangle {
+        let table = syms::bind(root);
+        let mut set = HashSet::new();
+        for (ptr, id) in &table.node_def {
+            let d = &table.defs[*id];
+            let unmangleable = (d.global && !mangle_toplevel) || d.undeclared || d.pinned || d.exported || d.name == "arguments";
+            if !unmangleable {
+                set.insert(*ptr);
+            }
+        }
+        eval::set_mangled_symbols(set);
+    } else {
+        eval::set_mangled_symbols(HashSet::new());
     }
     if reduce_vars_on {
         let mut table = syms::bind(root);

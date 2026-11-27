@@ -1063,7 +1063,7 @@ fn own_size(n: &N, parent: Option<&N>) -> usize {
         Data::Infinity => 8,
         Data::This => 4,
         Data::Symbol { name, .. } => {
-            if name == "arguments" { 9 } else { name.chars().count() }
+            if name == "arguments" { 9 } else if mangled_size(n) { 1 } else { name.chars().count() }
         }
         Data::Cond { .. } => 3,
         Data::Seq { exprs } => exprs.len().saturating_sub(1),
@@ -2685,7 +2685,7 @@ fn terser_size(n: &N) -> usize {
             }
             s
         }
-        Data::Symbol { name, .. } => if name == "arguments" { 9 } else { name.len() },
+        Data::Symbol { name, .. } => if name == "arguments" { 9 } else if mangled_size(n) { 1 } else { name.len() },
         Data::Dot { prop, optional, private, .. } => {
             prop.len() + if *private { if *optional { 3 } else { 2 } } else if *optional { 2 } else { 1 }
         }
@@ -3537,3 +3537,18 @@ fn is_object_or_array(n: &N) -> bool {
     matches!(n.data, Data::Object { .. } | Data::Array { .. })
 }
 
+
+thread_local! {
+    /// terser `size.js` `AST_Symbol._size`: with mangle options, a symbol whose
+    /// definition will be mangled counts as one character. Pointers of those
+    /// symbol nodes for the current pass.
+    static MANGLED: std::cell::RefCell<std::collections::HashSet<usize>> = Default::default();
+}
+
+pub(crate) fn set_mangled_symbols(set: std::collections::HashSet<usize>) {
+    MANGLED.with(|m| *m.borrow_mut() = set);
+}
+
+pub(crate) fn mangled_size(n: &N) -> bool {
+    MANGLED.with(|m| m.borrow().contains(&(Rc::as_ptr(n) as usize)))
+}

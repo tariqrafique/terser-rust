@@ -65,6 +65,13 @@ struct Use {
     /// def id → the vardef that is still the fixed value (`fixed_ids`).
     fixed: HashSet<usize>,
     wrote: HashSet<usize>,
+    /// terser `var_defs_by_id`: each `var` definition of a name, in source
+    /// order, by `VarDef` pointer. The index plus `orig_offset` is the
+    /// position in `sym.orig`.
+    var_defs: std::cell::RefCell<HashMap<usize, Vec<usize>>>,
+    orig_index: HashMap<usize, usize>,
+    /// terser `sym.eliminated`.
+    eliminated: std::cell::RefCell<HashMap<usize, usize>>,
 }
 
 /// Passes 1–3 of `AST_Scope.drop_unused`.
@@ -73,7 +80,29 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
     if contains_with(stmts) {
         return stmts.to_vec();
     }
-    let mut u = Use { in_use: HashSet::new(), inits: HashMap::new(), fixed: HashSet::new(), wrote: HashSet::new() };
+    let mut u = Use {
+        in_use: HashSet::new(),
+        inits: HashMap::new(),
+        fixed: HashSet::new(),
+        wrote: HashSet::new(),
+        var_defs: Default::default(),
+        orig_index: HashMap::new(),
+        eliminated: Default::default(),
+    };
+    {
+        let mut by_id: HashMap<usize, Vec<usize>> = HashMap::new();
+        for stmt in stmts {
+            collect_var_defs(stmt, table, &mut by_id);
+        }
+        for (id, list) in &by_id {
+            // A parameter or function name is `orig[0]` before the `var`s.
+            let offset = usize::from(table.defs[*id].funarg || table.defs[*id].is_defun);
+            for (i, p) in list.iter().enumerate() {
+                u.orig_index.insert(*p, i + offset);
+            }
+        }
+        *u.var_defs.borrow_mut() = by_id;
+    }
     for stmt in stmts {
         scan_ref_scoped(stmt, table, &mut u, true);
     }
@@ -207,29 +236,96 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             out.push(Rc::clone(n));
             return;
         }
-        let mut kept = Vec::new();
+        // drop-unused.js `tt` `AST_Definitions`: `head` (no value), `tail`
+        // (with value), and side effects of dropped or repeated definitions.
+        let mut head: Vec<N> = Vec::new();
+        let mut tail: Vec<N> = Vec::new();
+        let mut body: Vec<N> = Vec::new();
+        let mut side: Vec<N> = Vec::new();
+        let mut changed = false;
         for def in defs {
             let Data::VarDef { name, value } = &def.data else {
-                kept.push(Rc::clone(def));
+                head.push(Rc::clone(def));
                 continue;
             };
-            let id = owned(table, name, scope_id);
-            let unused = drop_vars && id.is_some_and(|id| !u.in_use.contains(&id));
-            if !unused {
-                kept.push(Rc::clone(def));
-                continue;
+            let value2 = value.as_ref().map(|v| rewrite_expr(v, table, u, scope_id, drop_vars, false).unwrap_or_else(|| num0(v)));
+            if let (Some(a), Some(b)) = (value, &value2) {
+                if !Rc::ptr_eq(a, b) {
+                    changed = true;
+                }
             }
-            if let Some(value) = value {
-                if has_side_effects(value) {
-                    out.push(simple(n, Rc::clone(value)));
+            let is_sym = matches!(name.data, Data::Symbol { .. });
+            let id = owned(table, name, scope_id);
+            let in_use = !drop_vars || !is_sym || id.is_none_or(|id| u.in_use.contains(&id));
+            if in_use {
+                if let (DefKind::Var, Some(id), true) = (kind, id, is_sym) {
+                    let dp = ptr(def);
+                    let listed = u.var_defs.borrow().get(&id).is_some_and(|v| v.contains(&dp));
+                    let count = if listed { u.var_defs.borrow().get(&id).map_or(0, |v| v.len()) } else { 0 };
+                    let elim = u.eliminated.borrow().get(&id).copied().unwrap_or(0);
+                    let idx = u.orig_index.get(&dp).copied().unwrap_or(0);
+                    if count > 1 && (value2.is_none() || idx > elim) {
+                        if let Some(v) = value2 {
+                            let sym = match &name.data {
+                                Data::Symbol { name: nm, quote, .. } => node(name, Data::Symbol { name: nm.clone(), kind: SymKind::Ref, quote: *quote }),
+                                _ => Rc::clone(name),
+                            };
+                            side.push(node(def, Data::Assign { op: "=".into(), left: sym, right: v, logical: false }));
+                        }
+                        if let Some(list) = u.var_defs.borrow_mut().get_mut(&id) {
+                            list.retain(|p| *p != dp);
+                        }
+                        *u.eliminated.borrow_mut().entry(id).or_insert(0) += 1;
+                        changed = true;
+                        continue;
+                    }
+                }
+                match value2 {
+                    Some(v) => {
+                        let mut v = v;
+                        if !side.is_empty() {
+                            if !tail.is_empty() {
+                                side.push(v);
+                                v = seq(def, std::mem::take(&mut side));
+                            } else {
+                                body.push(simple(n, seq(n, std::mem::take(&mut side))));
+                            }
+                            changed = true;
+                        }
+                        let same = value.as_ref().is_some_and(|a| Rc::ptr_eq(a, &v));
+                        tail.push(if same { Rc::clone(def) } else { node(def, Data::VarDef { name: Rc::clone(name), value: Some(v) }) });
+                    }
+                    None => {
+                        if !tail.is_empty() {
+                            changed = true;
+                        }
+                        head.push(Rc::clone(def));
+                    }
+                }
+            } else {
+                changed = true;
+                if let Some(v) = value2 {
+                    if has_side_effects(&v) {
+                        side.push(v);
+                    }
+                }
+                if let Some(id) = id {
+                    *u.eliminated.borrow_mut().entry(id).or_insert(0) += 1;
                 }
             }
         }
-        if kept.len() == defs.len() {
+        if !changed {
             out.push(Rc::clone(n));
-        } else if !kept.is_empty() {
-            out.push(node(n, Data::Defs { kind: *kind, defs: kept, await_: *await_ }));
+            return;
         }
+        if !head.is_empty() || !tail.is_empty() {
+            head.extend(tail);
+            body.push(node(n, Data::Defs { kind: *kind, defs: head, await_: *await_ }));
+        }
+        if !side.is_empty() {
+            body.push(simple(n, seq(n, side)));
+        }
+        out.extend(body);
         return;
     }
     // drop-unused.js `tt` `AST_For`: the init is rewritten like a statement.
@@ -333,6 +429,39 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             }
             Data::Block { body: stmts }
         }
+        Data::Try { body, catch, finally } => Data::Try {
+            body: one(body, table, u, scope_id, drop_vars),
+            catch: catch.as_ref().map(|c| one(c, table, u, scope_id, drop_vars)),
+            finally: finally.as_ref().map(|f| one(f, table, u, scope_id, drop_vars)),
+        },
+        Data::Catch { arg, body } => Data::Catch { arg: arg.clone(), body: one(body, table, u, scope_id, drop_vars) },
+        Data::Finally { body } => Data::Finally { body: one(body, table, u, scope_id, drop_vars) },
+        Data::While { cond, body } => Data::While { cond: go(cond, false), body: one(body, table, u, scope_id, drop_vars) },
+        Data::Do { body, cond } => Data::Do { body: one(body, table, u, scope_id, drop_vars), cond: go(cond, false) },
+        Data::For { init, cond, step, body } => Data::For {
+            init: init.as_ref().map(|i| if matches!(i.data, Data::Defs { .. }) { Rc::clone(i) } else { go(i, true) }),
+            cond: cond.as_ref().map(|c| go(c, false)),
+            step: step.as_ref().map(|c| go(c, true)),
+            body: one(body, table, u, scope_id, drop_vars),
+        },
+        Data::ForIn { init, object, body } => Data::ForIn { init: Rc::clone(init), object: go(object, false), body: one(body, table, u, scope_id, drop_vars) },
+        Data::ForOf { init, object, body, await_ } => Data::ForOf { init: Rc::clone(init), object: go(object, false), body: one(body, table, u, scope_id, drop_vars), await_: *await_ },
+        Data::Labeled { label, body } => Data::Labeled { label: Rc::clone(label), body: one(body, table, u, scope_id, drop_vars) },
+        Data::Switch { expr, body } => Data::Switch { expr: go(expr, false), body: body.iter().map(|c| go(c, false)).collect() },
+        Data::Case { expr, body } => {
+            let mut stmts = Vec::new();
+            for stmt in body {
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+            }
+            Data::Case { expr: go(expr, false), body: stmts }
+        }
+        Data::Default { body } => {
+            let mut stmts = Vec::new();
+            for stmt in body {
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+            }
+            Data::Default { body: stmts }
+        }
         Data::Template { segments } => Data::Template {
             segments: segments.iter().map(|seg| match seg {
                 Seg::Expr(e) => Seg::Expr(go(e, false)),
@@ -354,6 +483,66 @@ fn name_read(body: &[N], args: &[N], table: &SymTable, id: usize) -> bool {
         hit
     }
     body.iter().chain(args.iter()).any(|s| rec(s, table, id))
+}
+
+/// A statement slot: several results become a block, none an empty statement.
+fn one(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: bool) -> N {
+    let mut out = Vec::new();
+    rewrite_stmt(n, table, u, scope_id, drop_vars, false, &mut out);
+    match out.len() {
+        0 => node(n, Data::Empty),
+        1 => out.pop().unwrap(),
+        _ => node(n, Data::Block { body: out }),
+    }
+}
+
+fn seq(span: &N, mut exprs: Vec<N>) -> N {
+    if exprs.len() == 1 {
+        return exprs.pop().unwrap();
+    }
+    node(span, Data::Seq { exprs })
+}
+
+/// `var` definitions of this scope, outside nested functions and classes.
+fn collect_var_defs(n: &N, table: &SymTable, out: &mut HashMap<usize, Vec<usize>>) {
+    collect_var_defs_in(n, table, out, &mut Vec::new());
+}
+
+/// A `var` that redeclares an enclosing `catch` parameter belongs to that
+/// parameter in terser (`redefined_catch_def`), so it is not counted.
+fn collect_var_defs_in(n: &N, table: &SymTable, out: &mut HashMap<usize, Vec<usize>>, catch_names: &mut Vec<String>) {
+    match &n.data {
+        Data::Func { .. } | Data::Class { .. } => {}
+        Data::Catch { arg, body } => {
+            let pushed = match arg.as_ref().map(|a| &a.data) {
+                Some(Data::Symbol { name, .. }) => {
+                    catch_names.push(name.clone());
+                    true
+                }
+                _ => false,
+            };
+            collect_var_defs_in(body, table, out, catch_names);
+            if pushed {
+                catch_names.pop();
+            }
+        }
+        Data::Defs { kind: DefKind::Var, defs, .. } => {
+            for d in defs {
+                if let Data::VarDef { name, value } = &d.data {
+                    let redef = matches!(&name.data, Data::Symbol { name: nm, .. } if catch_names.contains(nm));
+                    if !redef {
+                        if let Some(id) = def_id(table, name) {
+                            out.entry(id).or_default().push(ptr(d));
+                        }
+                    }
+                    if let Some(v) = value {
+                        collect_var_defs_in(v, table, out, catch_names);
+                    }
+                }
+            }
+        }
+        _ => descend(n, |c| collect_var_defs_in(c, table, out, catch_names)),
+    }
 }
 
 fn descend(n: &N, mut f: impl FnMut(&N)) {

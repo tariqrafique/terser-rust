@@ -602,7 +602,16 @@ fn walk_children(data: &Data, scope: usize, scopes: &mut Vec<Scope>, table: &mut
                 walk(value, scope, scopes, table);
             }
         }
-        _ => {}
+        // `yield`, `await`, labels, and anything else: every child.
+        Data::Labeled { body, .. } => walk(body, scope, scopes, table),
+        Data::Break { .. } | Data::Continue { .. } | Data::NameMap { .. } | Data::Import { .. } => {}
+        _ => {
+            let node = Rc::new(ast::Node { start: None, end: None, data: data.clone() });
+            let _ = ast::map_children(&node, &mut |c| {
+                walk(c, scope, scopes, table);
+                Rc::clone(c)
+            });
+        }
     }
 }
 
