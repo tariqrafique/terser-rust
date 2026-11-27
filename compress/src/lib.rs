@@ -33,6 +33,7 @@ struct Opts {
     negate_iife: bool,
     properties: bool,
     loops: bool,
+    computed_props: bool,
 }
 
 impl Opts {
@@ -51,6 +52,7 @@ impl Opts {
             negate_iife: true,
             properties: true,
             loops: true,
+            computed_props: true,
         }
     }
 
@@ -69,6 +71,7 @@ impl Opts {
             negate_iife: false,
             properties: false,
             loops: false,
+            computed_props: false,
         }
     }
 
@@ -117,6 +120,9 @@ impl Opts {
         if let Some(v) = bool_key(obj, "loops") {
             opts.loops = v;
         }
+        if let Some(v) = bool_key(obj, "computed_props") {
+            opts.computed_props = v;
+        }
         opts
     }
 
@@ -133,6 +139,7 @@ impl Opts {
             || self.negate_iife
             || self.properties
             || self.loops
+            || self.computed_props
     }
 }
 
@@ -492,7 +499,43 @@ fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
     } else {
         stmts
     };
-    stmts
+    if cx.opts.join_vars {
+        var_into_for(stmts)
+    } else {
+        stmts
+    }
+}
+
+fn var_into_for(stmts: Vec<N>) -> Vec<N> {
+    let mut out = Vec::new();
+    let mut prev: Option<N> = None;
+    for stat in stmts {
+        if let Some(prev_stmt) = prev.take() {
+            if let Data::For { init: None, cond, step, body } = &stat.data {
+                out.push(Rc::new(Node {
+                    start: stat.start.clone(),
+                    end: stat.end.clone(),
+                    data: Data::For {
+                        init: Some(prev_stmt),
+                        cond: cond.clone(),
+                        step: step.clone(),
+                        body: Rc::clone(body),
+                    },
+                }));
+                continue;
+            }
+            out.push(prev_stmt);
+        }
+        if matches!(stat.data, Data::Defs { kind: ast::DefKind::Var, .. }) {
+            prev = Some(stat);
+        } else {
+            out.push(stat);
+        }
+    }
+    if let Some(prev) = prev {
+        out.push(prev);
+    }
+    out
 }
 
 fn join_vars(stmts: Vec<N>) -> Vec<N> {

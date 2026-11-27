@@ -3,7 +3,7 @@
 //! Values follow JavaScript number and truthiness rules. A folded form is
 //! kept only when it is not longer than the original expression.
 
-use ast::{Data, N, Node};
+use ast::{Data, Key, N, Node};
 use std::rc::Rc;
 
 use crate::Cx;
@@ -35,11 +35,29 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = rewrite_global(n, cx) {
         return rewritten;
     }
+    if cx.in_bool {
+        if let Some(rewritten) = fold_bool_unary(n) {
+            return rewritten;
+        }
+    }
     if let Some(rewritten) = fold_bool(n, cx) {
         return rewritten;
     }
     if cx.opts.evaluate {
+        if let Some(rewritten) = fold_delete(n, cx) {
+            return rewritten;
+        }
         if let Some(rewritten) = fold_value(n, cx) {
+            return rewritten;
+        }
+    }
+    if cx.opts.dead_code {
+        if let Some(rewritten) = fold_empty_switch(n, cx) {
+            return rewritten;
+        }
+    }
+    if cx.opts.computed_props {
+        if let Some(rewritten) = fold_computed(n) {
             return rewritten;
         }
     }
@@ -104,6 +122,23 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     }
 }
 
+fn fold_bool_unary(n: &N) -> Option<N> {
+    let Data::Unary { op, expr, prefix: true } = &n.data else {
+        return None;
+    };
+    if op == "!" {
+        if let Data::Unary { op: inner, expr: value, prefix: true } = &expr.data {
+            if inner == "!" {
+                return Some(Rc::clone(value));
+            }
+        }
+    }
+    if op == "typeof" && is_pure(expr) {
+        return Some(atom(n, Data::True));
+    }
+    None
+}
+
 fn fold_bool(n: &N, cx: &Cx) -> Option<N> {
     if !cx.opts.booleans {
         return None;
@@ -117,6 +152,102 @@ fn fold_bool(n: &N, cx: &Cx) -> Option<N> {
         Some(num(n, value))
     } else {
         Some(unary(n, "!", num(n, 1.0 - value)))
+    }
+}
+
+fn fold_delete(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Unary { op, expr, prefix: true } = &n.data else {
+        return None;
+    };
+    if op != "delete" || is_reference(expr) {
+        return None;
+    }
+    if !is_pure(expr) {
+        return None;
+    }
+    Some(truth(n, cx))
+}
+
+fn is_reference(n: &N) -> bool {
+    match &n.data {
+        Data::Symbol { kind: ast::SymKind::Ref, .. } | Data::Dot { .. } | Data::Sub { .. } => true,
+        Data::Seq { exprs } => exprs.last().is_some_and(is_reference),
+        Data::Cond { cons, alt, .. } => is_reference(cons) || is_reference(alt),
+        _ => false,
+    }
+}
+
+fn truth(n: &N, cx: &Cx) -> N {
+    if cx.opts.booleans && (cx.in_bool || cx.eq_cmp) {
+        num(n, 1.0)
+    } else if cx.opts.booleans {
+        unary(n, "!", num(n, 0.0))
+    } else {
+        atom(n, Data::True)
+    }
+}
+
+fn fold_empty_switch(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Switch { expr, body } = &n.data else {
+        return None;
+    };
+    if !body.is_empty() {
+        return None;
+    }
+    if cx.opts.side_effects && is_pure(expr) {
+        Some(atom(n, Data::Empty))
+    } else {
+        Some(simple(n, Rc::clone(expr)))
+    }
+}
+
+fn fold_computed(n: &N) -> Option<N> {
+    match &n.data {
+        Data::Prop { method, key, value, static_, private, generator, async_ } => {
+            let key = static_key(key)?;
+            Some(atom(
+                n,
+                Data::Prop {
+                    method: *method,
+                    key,
+                    value: Rc::clone(value),
+                    static_: *static_,
+                    private: *private,
+                    generator: *generator,
+                    async_: *async_,
+                },
+            ))
+        }
+        Data::Field { key, value, static_, private } => {
+            let key = static_key(key)?;
+            Some(atom(
+                n,
+                Data::Field {
+                    key,
+                    value: value.clone(),
+                    static_: *static_,
+                    private: *private,
+                },
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn static_key(key: &Key) -> Option<Key> {
+    let Key::Computed(expr) = key else {
+        return None;
+    };
+    match &expr.data {
+        Data::Number { value, .. } if value.is_finite() => Some(Key::Static {
+            name: codegen::js_number(*value),
+            quote: None,
+        }),
+        Data::String { value, .. } if value != "__proto__" => Some(Key::Static {
+            name: value.clone(),
+            quote: None,
+        }),
+        _ => None,
     }
 }
 
