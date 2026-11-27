@@ -70,6 +70,16 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
     for stmt in stmts {
         scan_ref_scoped(stmt, table, &mut u, true);
     }
+    // terser `compressor.exposed(def)`: an exported binding is always in use.
+    if let Some(scope_id) = scope_id {
+        if let Some(ids) = table.scope_defs.get(&scope_id) {
+            for id in ids {
+                if table.defs[*id].exported {
+                    u.in_use.insert(*id);
+                }
+            }
+        }
+    }
     // Pass 2: walk initializers of names that are in use.
     // terser `in_use_ids.forEach` also visits ids added during the walk, so
     // this runs until no new name is marked.

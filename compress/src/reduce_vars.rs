@@ -201,7 +201,6 @@ fn walk(n: &N, tw: &mut Tw) {
             push(tw);
             if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
                 reset_variables(tw, scope);
-                reset_block_variables(tw, scope);
             }
             // terser `reduce-vars.js` `mark_lambda`: IIFE parameters become fixed values.
             bind_iife_params(tw, n);
@@ -304,7 +303,7 @@ fn walk(n: &N, tw: &mut Tw) {
             let block = tw.table.defs[id].block_scoped;
             let special = tw.table.defs[id].name == "arguments"
                 || (block && (tw.in_loop != 0 || tw.in_try != 0))
-                || (!block && tw.conditional_var != 0);
+                ;
             if special {
                         tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                         walk(value, tw);
@@ -505,7 +504,54 @@ fn walk_children(data: &Data, tw: &mut Tw) {
                 walk(p, tw);
             }
         }
-        Data::Prop { value, .. } => walk(value, tw),
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(k) = key {
+                walk(k, tw);
+            }
+            walk(value, tw);
+        }
+        Data::Field { key, value, .. } => {
+            if let Key::Computed(k) = key {
+                walk(k, tw);
+            }
+            if let Some(v) = value {
+                walk(v, tw);
+            }
+        }
+        Data::Sub { expr, prop, .. } => {
+            walk(expr, tw);
+            walk(prop, tw);
+        }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let ast::Seg::Expr(e) = seg {
+                    walk(e, tw);
+                }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => {
+            walk(tag, tw);
+            walk(template, tw);
+        }
+        Data::Yield { expr: Some(e), .. } => walk(e, tw),
+        Data::DynImport { args, .. } => {
+            for a in args {
+                walk(a, tw);
+            }
+        }
+        Data::PrivateIn { value, .. } => walk(value, tw),
+        Data::With { expr, body } => {
+            walk(expr, tw);
+            walk(body, tw);
+        }
+        Data::Export { value, definition, .. } => {
+            if let Some(v) = value {
+                walk(v, tw);
+            }
+            if let Some(d) = definition {
+                walk(d, tw);
+            }
+        }
         Data::Class { extends, props, .. } => {
             if let Some(extends) = extends {
                 walk(extends, tw);
@@ -559,9 +605,6 @@ fn reset_def(tw: &mut Tw, id: usize) {
 fn reset_variables(tw: &mut Tw, scope: usize) {
     let ids = tw.table.scope_defs.get(&scope).cloned().unwrap_or_default();
     for id in ids {
-        if tw.table.defs[id].block_scoped {
-            continue;
-        }
         reset_def(tw, id);
         if tw.table.defs[id].fixed_null {
             tw.null_safe.insert(id, tw.safe.len() - 1);
@@ -577,8 +620,10 @@ fn reset_variables(tw: &mut Tw, scope: usize) {
 fn reset_block_variables(tw: &mut Tw, scope: usize) {
     let ids = tw.table.scope_defs.get(&scope).cloned().unwrap_or_default();
     for id in ids {
+        // terser only resets here. A `let`/`const` in a nested block is
+        // `fixed === null` but not marked safe, so its initializer is not fixed.
         reset_def(tw, id);
-        if tw.table.defs[id].fixed.is_some() {
+        if !tw.table.defs[id].fixed_null && tw.table.defs[id].fixed.is_some() {
             tw.loop_ids.insert(id, tw.in_loop);
             mark(tw, id, true);
         }
@@ -697,12 +742,12 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
             let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope);
             let yes = (is_lambda(&fixed) && !func_scope_pinned(tw.table, &fixed))
                 || matches!(fixed.data, Data::Class { .. })
-                || (same && is_constant_expr(&fixed));
+                || (same && const_expr_truthy(&fixed, tw.table, ref_scope(tw, 0)));
             tw.table.defs[id].single_use = if yes { SingleUse::Yes } else { SingleUse::No };
         } else {
             tw.table.defs[id].single_use = SingleUse::No;
         }
-        if is_lhs_parent(tw, node) {
+        if is_modified(tw, node, Some(&fixed), 0, is_immutable(&fixed)) {
             if matches!(tw.table.defs[id].single_use, SingleUse::Yes) {
                 tw.table.defs[id].single_use = SingleUse::Modified;
             } else {
@@ -891,14 +936,99 @@ fn prop_read(tw: &Tw, parent: &N, node_ptr: usize, value: Option<&N>) -> Option<
 }
 
 /// terser `lib/compress/inference.js` `is_lhs` for a reference sitting on an assignment or update.
-fn is_lhs_parent(tw: &Tw, node: &N) -> bool {
-    let Some(parent) = tw.parents.iter().rev().nth(1) else { return false };
-    let _ = parent;
-    // The parent pointer is only an address. The walk pushes the node itself before children,
-    // so the previous parent is the container we are currently matching in `walk`. Updates and
-    // assignments are handled in their own arms and do not call `on_ref` for the left-hand symbol.
-    let _ = node;
-    false
+/// terser `inference.js` `is_modified`. `level` 0 is the reference's parent.
+fn is_modified(tw: &Tw, node: &N, value: Option<&N>, level: usize, immutable: bool) -> bool {
+    let Some(parent) = parent_at(tw, level) else { return false };
+    let np = syms::ptr(node);
+    // `is_lhs`
+    match &parent.data {
+        Data::Unary { op, expr, .. } if matches!(op.as_str(), "++" | "--") && syms::ptr(expr) == np => return true,
+        Data::Assign { left, .. } if syms::ptr(left) == np => return true,
+        Data::ForIn { init, .. } | Data::ForOf { init, .. } if syms::ptr(init) == np => return true,
+        _ => {}
+    }
+    if !immutable {
+        if let Data::Call { expr, is_new, .. } = &parent.data {
+            if syms::ptr(expr) == np {
+                let arrow = value.is_some_and(|v| matches!(v.data, Data::Func { kind: FuncKind::Arrow, .. }));
+                let class = value.is_some_and(|v| matches!(v.data, Data::Class { .. }));
+                let pure = crate::call::pure_effects(parent).is_some();
+                let function = value.is_some_and(|v| matches!(v.data, Data::Func { kind: FuncKind::Expr, .. }));
+                if !arrow && !class && !pure && (!function || (!*is_new && value.is_some_and(crate::eval::contains_this))) {
+                    return true;
+                }
+            }
+        }
+    }
+    match &parent.data {
+        Data::Array { .. } => {
+            let parent = Rc::clone(parent);
+            is_modified(tw, &parent, Some(&parent), level + 1, false)
+        }
+        Data::Prop { value: v, .. } if syms::ptr(v) == np => {
+            let Some(obj) = parent_at(tw, level + 1).map(Rc::clone) else { return false };
+            is_modified(tw, &obj, Some(&obj), level + 2, false)
+        }
+        Data::Dot { expr, prop, .. } if syms::ptr(expr) == np => {
+            if immutable {
+                return false;
+            }
+            let parent = Rc::clone(parent);
+            let read = value.and_then(|v| read_prop_lit(v, &PropKey::Name(prop.clone())));
+            is_modified(tw, &parent, read.as_ref(), level + 1, false)
+        }
+        Data::Sub { expr, prop, .. } if syms::ptr(expr) == np => {
+            if immutable {
+                return false;
+            }
+            let parent = Rc::clone(parent);
+            let key = match &prop.data {
+                Data::String { value, .. } => Some(PropKey::Name(value.clone())),
+                Data::Number { value, .. } => Some(PropKey::Index(*value)),
+                _ => None,
+            };
+            let read = value.zip(key).and_then(|(v, k)| read_prop_lit(v, &k));
+            is_modified(tw, &parent, read.as_ref(), level + 1, false)
+        }
+        _ => false,
+    }
+}
+
+enum PropKey {
+    Name(String),
+    Index(f64),
+}
+
+/// terser `common.js` `read_property` on an array or object literal.
+fn read_prop_lit(obj: &N, key: &PropKey) -> Option<N> {
+    match (&obj.data, key) {
+        (Data::Array { elements }, PropKey::Index(i)) if i.fract() == 0.0 && *i >= 0.0 => elements.get(*i as usize).cloned(),
+        (Data::Array { elements }, PropKey::Name(n)) => n.parse::<usize>().ok().and_then(|i| elements.get(i).cloned()),
+        (Data::Object { props }, _) => {
+            let want = match key {
+                PropKey::Name(n) => n.clone(),
+                PropKey::Index(i) => crate::eval::js_num_tostring(*i),
+            };
+            let mut found = None;
+            for p in props.iter().rev() {
+                match &p.data {
+                    Data::Prop { key: Key::Static { name, .. }, value, method: None, .. } if *name == want => {
+                        found = Some(Rc::clone(value));
+                        break;
+                    }
+                    Data::Prop { key: Key::Static { .. }, method: None, .. } => {}
+                    _ => return None,
+                }
+            }
+            found
+        }
+        _ => None,
+    }
+}
+
+/// terser `reduce-vars.js` `is_immutable`.
+fn is_immutable(v: &N) -> bool {
+    is_constant_value(v) || matches!(v.data, Data::Func { .. } | Data::This) || matches!(&v.data, Data::Unary { op, expr, .. } if op != "++" && op != "--" && is_constant_value(expr))
 }
 
 /// terser `lib/compress/inference.js` `is_constant_expression` for constants, unary, and binary.
@@ -922,17 +1052,34 @@ fn has_side_effects(n: &N) -> bool {
         Data::Unary { op, expr, .. } => matches!(op.as_str(), "delete" | "++" | "--") || has_side_effects(expr),
         Data::Binary { left, right, .. } => has_side_effects(left) || has_side_effects(right),
         Data::Symbol { kind: SymKind::Ref, .. } => false,
+        Data::Hole => false,
+        Data::Array { elements } => elements.iter().any(|e| matches!(e.data, Data::Spread { .. }) || has_side_effects(e)),
+        Data::Object { props } => props.iter().any(|p| match &p.data {
+            Data::Prop { key: Key::Static { .. }, value, method: None, .. } => has_side_effects(value),
+            _ => true,
+        }),
         _ => true,
     }
 }
 
 /// terser `lib/compress/inference.js` `may_throw` for literals.
 fn may_throw(n: &N) -> bool {
-    !is_literal(n) && !matches!(n.data, Data::Unary { .. } | Data::Binary { .. })
+    match &n.data {
+        Data::Array { elements } => elements.iter().any(|e| matches!(e.data, Data::Spread { .. }) || may_throw(e)),
+        Data::Object { props } => props.iter().any(|p| match &p.data {
+            Data::Prop { key: Key::Static { .. }, value, method: None, .. } => may_throw(value),
+            _ => true,
+        }),
+        Data::Hole => false,
+        _ => !is_literal(n) && !matches!(n.data, Data::Unary { .. } | Data::Binary { .. }),
+    }
 }
 
 /// terser `lib/compress/index.js` `Compressor.exposed`.
 fn exposed(def: &SymbolDef, env: &Env) -> bool {
+    if def.exported {
+        return true;
+    }
     if !def.global {
         return false;
     }

@@ -72,3 +72,9 @@ Collapse was measured against `1c3bdeb` as default 2008/3013 → 2055/3013, 47 n
 `tighten-body.js` `tighten_body` is `body.rs` `tighten_body`: `eliminate_spurious_blocks`, `eliminate_dead_code`, `handle_if_return`, `sequencesize`, `sequencesize_2`, `join_consecutive_vars`, looped until unchanged. `collapse` stays the separate `tighten.rs` pass. Not yet: `join_object_assignments`, label reference removal. Switch branches are tightened too. `drop_unused` rewrites a `for` init like a statement.
 
 Tighten board: default 2088/3013 → 2205/3013, 117 newly passing, 0 newly failing, lwc 196/339 → 235/339 (before the template-string fix).
+
+Module board: `minify` applies terser's `set_shorthand` for `module` and `toplevel` into `compress` and `mangle`. `module` turns on `toplevel` and an enclosing `"use strict"`. The mangler takes `toplevel`. `export { a as b }` prints `as` when the mangled local differs. Exported bindings (`export` declarations and `export { ... }` locals) are `exposed` and never dropped.
+
+`collapse` runs inside the `tighten_body` loop for function, toplevel, and static block bodies (not nested blocks: the scan is name based). `reduce_vars` follows terser's `fixed === null` reset for `var`/`let`/`const`/`catch`: a function-level binding is marked safe and its first write is fixed; a nested-block `let`/`const` is not. `is_modified` and `is_constant_expression` for arrays and objects are ported, and the walk now reaches `a[b]`, templates, computed keys, `yield`, `with`, and `export`.
+
+Default board after these: 2236/3013 → 2278/3013, fixture 1539 → 1622.

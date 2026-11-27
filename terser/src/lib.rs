@@ -94,14 +94,53 @@ impl std::error::Error for MinifyError {}
 /// Minify `src` with `opts`.
 pub fn minify(src: &str, opts: &Options) -> Result<Output, MinifyError> {
     let ast = parser::parse(src).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
-    let ast = compress::compress(&ast, opts.as_value());
+    let resolved = resolve_options(opts.as_value());
+    let ast = compress::compress(&ast, &resolved);
     let code = if mangle_on(opts) {
-        let (map, privates) = scope::mangle_map(&ast).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
+        let (map, privates) = scope::mangle_map_with(&ast, &mangle_options(&resolved))
+            .map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
         codegen::print_mangled(&ast, map, privates)
     } else {
         codegen::print(&ast)
     };
     Ok(Output { code })
+}
+
+/// terser `minify.js`: `set_shorthand("module", ...)` and `set_shorthand("toplevel", ...)`
+/// copy the top-level flags into `compress` and `mangle` when those are objects
+/// or `true`.
+fn resolve_options(value: &Value) -> Value {
+    let mut out = value.clone();
+    let Some(obj) = out.as_object_mut() else { return out };
+    for key in ["module", "toplevel"] {
+        let Some(flag) = obj.get(key).cloned() else { continue };
+        if matches!(flag, Value::Bool(false) | Value::Null) || flag.as_f64() == Some(0.0) || flag.as_str() == Some("") {
+            continue;
+        }
+        for section in ["compress", "mangle"] {
+            match obj.get_mut(section) {
+                Some(Value::Bool(false)) => {}
+                Some(Value::Object(inner)) => {
+                    inner.entry(key.to_string()).or_insert(flag.clone());
+                }
+                _ => {
+                    let mut inner = serde_json::Map::new();
+                    inner.insert(key.to_string(), flag.clone());
+                    obj.insert(section.to_string(), Value::Object(inner));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn mangle_options(value: &Value) -> scope::MangleOptions {
+    let mut opts = scope::MangleOptions::default();
+    if let Some(Value::Object(m)) = value.get("mangle") {
+        let truthy = |k: &str| m.get(k).is_some_and(|v| !matches!(v, Value::Bool(false) | Value::Null));
+        opts.toplevel = truthy("toplevel") || truthy("module");
+    }
+    opts
 }
 
 /// Missing `mangle` is terser's default, which turns mangling on.

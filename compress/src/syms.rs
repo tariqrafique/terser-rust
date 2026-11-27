@@ -35,8 +35,11 @@ pub struct SymbolDef {
     pub fixed: Option<N>,
     /// terser `fixed === null`: a `var` with no initializer, reset and not yet read or written.
     pub fixed_null: bool,
-    /// The first declaration is a `var` (`orig[0] instanceof AST_SymbolVar`).
+    /// terser `scope.js` defines `var`, `let`, `const`, `using`, and catch
+    /// bindings with `init` null, so they reset to `fixed === null`.
     pub var_decl: bool,
+    /// terser `def.export`: exported by `export` or named in `export { ... }`.
+    pub exported: bool,
     /// terser `def_optimize(AST_Assign)` sets `fixed = false` while the walk continues.
     pub suppress_fixed: Cell<bool>,
     pub assignments: u32,
@@ -223,7 +226,64 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 table.node_def.insert(ptr(n), id);
             }
         }
+        Data::Export { is_default, names, value, definition, module_name, .. } => {
+            if let Some(def) = definition {
+                walk(def, scope, scopes, table);
+                let default_decl = *is_default
+                    && matches!(def.data, Data::Func { kind: ast::FuncKind::Decl, .. } | Data::Class { stmt: true, .. });
+                if !default_decl {
+                    let mut bound = Vec::new();
+                    exported_names(def, &mut bound);
+                    for name in bound {
+                        if let Some(id) = resolve(scopes, scope, &name) {
+                            table.defs[id].exported = true;
+                        }
+                    }
+                }
+            }
+            if let Some(value) = value {
+                walk(value, scope, scopes, table);
+            }
+            if let (Some(names), None) = (names, module_name) {
+                for m in names {
+                    let Data::NameMap { name, .. } = &m.data else { continue };
+                    let Some(local) = sym(name) else { continue };
+                    if let Some(id) = resolve(scopes, scope, &local) {
+                        table.node_def.insert(ptr(name), id);
+                        table.defs[id].exported = true;
+                    }
+                }
+            }
+        }
         other => walk_children(other, scope, scopes, table),
+    }
+}
+
+fn exported_names(n: &N, out: &mut Vec<String>) {
+    match &n.data {
+        Data::Func { name: Some(name), .. } | Data::Class { name: Some(name), .. } => {
+            if let Some(s) = sym(name) {
+                out.push(s);
+            }
+        }
+        Data::Defs { defs, .. } => {
+            for d in defs {
+                if let Data::VarDef { name, .. } = &d.data {
+                    binding_names(name, out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn binding_names(n: &N, out: &mut Vec<String>) {
+    match &n.data {
+        Data::Symbol { name, .. } => out.push(name.clone()),
+        Data::Destructuring { names, .. } => names.iter().for_each(|x| binding_names(x, out)),
+        Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => binding_names(left, out),
+        Data::Prop { value, .. } => binding_names(value, out),
+        _ => {}
     }
 }
 
@@ -281,6 +341,7 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
                 }
             }
             Data::Catch { body, .. } | Data::Finally { body } => hoist_node(body, fn_scope, scopes, table),
+            Data::Export { definition: Some(def), .. } => hoist(std::slice::from_ref(def), fn_scope, scopes, table),
             _ => {}
         }
     }
@@ -289,6 +350,10 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
 /// Direct `let`/`const` in this statement list, before nested references.
 fn hoist_lexical(stmts: &[N], scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
     for stmt in stmts {
+        let stmt = match &stmt.data {
+            Data::Export { definition: Some(def), .. } => def,
+            _ => stmt,
+        };
         let Data::Defs { kind, defs, .. } = &stmt.data else { continue };
         if matches!(kind, DefKind::Var) {
             continue;
@@ -374,7 +439,8 @@ fn define(
         init,
         fixed: None,
         fixed_null: false,
-        var_decl: kind == SymKind::Var,
+        var_decl: matches!(kind, SymKind::Var | SymKind::Let | SymKind::Const | SymKind::Using | SymKind::Catch),
+        exported: false,
         suppress_fixed: Cell::new(false),
         assignments: 0,
         escaped: 0,

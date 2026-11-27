@@ -1074,7 +1074,9 @@ impl Out {
         let is_import = self.parent(0).is_some_and(|p| matches!(p.data, Data::Import { .. }));
         let (fname, fquote) = sym_info(foreign);
         let (nname, nquote) = sym_info(name);
-        let mut differ = fname != nname;
+        // terser compares the local's mangled name with the foreign name.
+        let shown = mapped_name(name, nname);
+        let mut differ = fname != shown.as_str();
         if !differ && fname == "*" && fquote.is_some() != nquote.is_some() {
             differ = true;
         }

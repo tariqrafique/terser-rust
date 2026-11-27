@@ -18,6 +18,7 @@ struct St {
 pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
     let mut st = St { changed: false };
     let mut max_iter = 10;
+    let mut collapsed = false;
     loop {
         st.changed = false;
         eliminate_spurious_blocks(&mut stmts, &mut st);
@@ -34,13 +35,56 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         if cx.opts.join_vars {
             join_consecutive_vars(&mut stmts, cx, &mut st);
         }
+        if cx.opts.collapse_vars {
+            if let Some(scope) = collapse_scope(&stmts, cx) {
+                let (next, changed) = crate::tighten::collapse_step(
+                    stmts,
+                    cx.opts.unused,
+                    cx.opts.toplevel_vars,
+                    &scope.0,
+                    &scope.1,
+                    scope.2,
+                );
+                stmts = next;
+                if changed {
+                    st.changed = true;
+                    collapsed = true;
+                }
+            }
+        }
         let again = st.changed && max_iter > 0;
         max_iter -= 1;
         if !again {
             break;
         }
     }
+    if collapsed && cx.opts.unused && self_node(cx).is_some_and(|s| matches!(s.data, Data::Func { .. })) {
+        stmts = crate::tighten::drop_unmentioned_in(&stmts);
+    }
     stmts
+}
+
+/// Locals of this body, every enclosing scope's bindings, and whether it is a
+/// function. `None` for a block: `collapse` here is name based and a block's
+/// `var` belongs to the function, so blocks are not collapsed on their own.
+fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<String>, std::collections::HashSet<String>, bool)> {
+    let me = self_node(cx)?;
+    let (locals, in_fn) = match &me.data {
+        Data::Func { args, .. } => (crate::tighten::scope_bindings(args, stmts), true),
+        Data::Toplevel { .. } => (crate::tighten::scope_bindings(&[], stmts), false),
+        Data::StaticBlock { .. } => (crate::tighten::scope_bindings(&[], stmts), true),
+        _ => return None,
+    };
+    let mut declared = locals.clone();
+    let len = cx.parents.len();
+    for p in &cx.parents[..len.saturating_sub(1)] {
+        match &p.data {
+            Data::Func { args, body, .. } => declared.extend(crate::tighten::scope_bindings(args, body)),
+            Data::Toplevel { body } => declared.extend(crate::tighten::scope_bindings(&[], body)),
+            _ => {}
+        }
+    }
+    Some((locals, declared, in_fn))
 }
 
 fn self_node(cx: &Cx) -> Option<N> {

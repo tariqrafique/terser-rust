@@ -2570,7 +2570,7 @@ fn canonical_number(key: &str) -> Option<f64> {
 }
 
 /// JavaScript `Number.prototype.toString`.
-fn js_num_tostring(n: f64) -> String {
+pub(crate) fn js_num_tostring(n: f64) -> String {
     if n.is_nan() {
         return "NaN".into();
     }

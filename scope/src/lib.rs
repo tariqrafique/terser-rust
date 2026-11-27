@@ -58,6 +58,13 @@ struct Analyzer {
     refs: Vec<(N, usize)>,
     error: Option<ScopeError>,
     privates: Vec<String>,
+    opts: MangleOptions,
+}
+
+/// terser `scope.js` `format_mangler_options`. `module` implies `toplevel`.
+#[derive(Clone, Debug, Default)]
+pub struct MangleOptions {
+    pub toplevel: bool,
 }
 
 #[derive(Clone)]
@@ -68,7 +75,12 @@ pub struct ScopeError {
 }
 
 pub fn mangle_map(root: &N) -> Result<(HashMap<usize, String>, HashMap<String, String>), ScopeError> {
+    mangle_map_with(root, &MangleOptions::default())
+}
+
+pub fn mangle_map_with(root: &N, opts: &MangleOptions) -> Result<(HashMap<usize, String>, HashMap<String, String>), ScopeError> {
     let mut a = Analyzer::new();
+    a.opts = opts.clone();
     a.walk(root);
     if let Some(err) = a.error.clone() {
         return Err(err);
@@ -133,6 +145,7 @@ impl Analyzer {
             refs: Vec::new(),
             error: None,
             privates: Vec::new(),
+            opts: MangleOptions::default(),
         }
     }
 
@@ -656,7 +669,7 @@ impl Analyzer {
 
     fn unmangleable(&self, id: usize) -> bool {
         let d = &self.defs[id];
-        if d.global || d.undeclared || d.export_dont {
+        if (d.global && !self.opts.toplevel) || d.undeclared || d.export_dont {
             return true;
         }
         if self.scopes[d.scope].pinned {

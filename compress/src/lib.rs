@@ -84,6 +84,8 @@ struct Opts {
     expression: bool,
     /// terser `unsafe_methods`. Off unless set. A regexp only rewrites matching keys.
     unsafe_methods: UnsafeMethods,
+    /// terser `module`: implies `toplevel` and an enclosing `"use strict"`.
+    module: bool,
 }
 
 /// terser `unsafe_methods`: `false`, `true`, or a `RegExp`.
@@ -145,6 +147,7 @@ impl Opts {
             ecma: 5,
             expression: false,
             unsafe_methods: UnsafeMethods::Off,
+            module: false,
         }
     }
 
@@ -188,6 +191,7 @@ impl Opts {
             ecma: 5,
             expression: false,
             unsafe_methods: UnsafeMethods::Off,
+            module: false,
         }
     }
 
@@ -325,6 +329,13 @@ impl Opts {
         }
         if let Some(v) = obj.get("unsafe_methods") {
             opts.unsafe_methods = unsafe_methods_of(v);
+        }
+        if let Some(v) = bool_key(obj, "module") {
+            opts.module = v;
+        }
+        if opts.module {
+            opts.toplevel_vars = true;
+            opts.toplevel_funcs = true;
         }
         opts
     }
@@ -548,6 +559,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
     let toplevel_vars = opts.toplevel_vars;
     let toplevel_funcs = opts.toplevel_funcs;
     let evaluate = opts.evaluate;
+    let module = opts.module;
     let mut cx = Cx {
         opts,
         frames: vec![HashMap::new()],
@@ -569,6 +581,10 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         stack: Vec::new(),
         parents: Vec::new(),
     };
+    // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
+    if module {
+        cx.frames[0].insert("use strict".into(), 0);
+    }
     if reduce_vars_on {
         let mut table = syms::bind(root);
         reduce_vars::analyze(
@@ -584,11 +600,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
     } else {
         out
     };
-    let out = if collapse_vars {
-        tighten::collapse(&out, unused, toplevel_vars)
-    } else {
-        out
-    };
+    let _ = collapse_vars;
     if unused {
         drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs)
     } else {

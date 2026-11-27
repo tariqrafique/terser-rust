@@ -203,6 +203,30 @@ fn tighten_scope(stmts: &[N], env: &Env<'_>, params: &[N], in_fn: bool) -> Vec<N
     }
 }
 
+/// One `collapse` step for `body.rs` `tighten_body`, on the body of a function,
+/// toplevel, or static block. `scopes` is the bindings of each enclosing scope,
+/// outermost first; the last is this body's own (params included).
+pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, locals: &HashSet<String>, declared: &HashSet<String>, in_fn: bool) -> (Vec<N>, bool) {
+    let env = Env { unused, toplevel_vars, locals, declared, in_loop: false, in_try: false, in_fn };
+    collapse_statements(stmts, &env)
+}
+
+/// Bindings of a function (params and hoisted names) or a toplevel body.
+pub(crate) fn scope_bindings(params: &[N], body: &[N]) -> HashSet<String> {
+    let mut locals = HashSet::new();
+    for param in params {
+        if let Some(name) = sym_name(param) {
+            locals.insert(name.to_string());
+        }
+    }
+    collect_locals(body, &mut locals);
+    locals
+}
+
+pub(crate) fn drop_unmentioned_in(stmts: &[N]) -> Vec<N> {
+    drop_unmentioned(stmts)
+}
+
 fn collapse_list(mut stmts: Vec<N>, env: &Env<'_>) -> Vec<N> {
     // terser `tighten_body`: `do { collapse } while (CHANGED && max_iter-- > 0)`
     for _ in 0..10 {
