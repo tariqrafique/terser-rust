@@ -1,0 +1,10 @@
+/target
+**/target
+
+# Node is only the terser oracle and the corpus builders.
+/oracle/node_modules
+/oracle/.cache
+
+# Upstream checkouts and downloaded sources. Corpus outputs are committed.
+/harness/lwc/.cache
+/harness/corpus/bundles/files

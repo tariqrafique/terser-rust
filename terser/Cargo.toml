@@ -1,0 +1,16 @@
+[package]
+name = "terser"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Pure Rust port of terser. minify is still a stub."
+
+[dependencies]
+ast = { path = "../ast" }
+parser = { path = "../parser" }
+scope = { path = "../scope" }
+compress = { path = "../compress" }
+codegen = { path = "../codegen" }
+serde_json = "1"
+
+[dev-dependencies]

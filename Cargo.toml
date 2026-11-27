@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "ast",
+    "parser",
+    "scope",
+    "compress",
+    "codegen",
+    "terser",
+    "harness",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
