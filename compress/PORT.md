@@ -15,7 +15,9 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `drop-unused.js` `tt` | `drop_unused.rs` `rewrite_expr` | drop unread decls; write-only `=` becomes the rhs. `fixed_ids` recorded, not yet applied to in-use names |
 | `index.js` `before` / `OPT` | — | not started |
 
-Scores: default 1575/3013, fixture 1166/2671, drop-unused fixtures 45/169, lwc default 134/339. Default regressions vs `bb9330a`: 0.
+Scores: default 1582/3013, fixture 1169/2671, drop-unused fixtures 45/169, lwc default 134/339. Compare vs `fd070d0`: 0 newly failing.
+
+`assign_as_unused` does not apply to `let`/`const`. A non-strict `arguments` use marks every parameter in use. `let`/`const` are bound before refs in the block. Function passes rewrite inside nested blocks so a `var` assign there is still this function's.
 
 Stop: default 2260, fixture 1336, reduce_vars 261/261, collapse_vars 199/199, or lwc 339/339.
 

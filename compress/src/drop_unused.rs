@@ -77,6 +77,18 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
             scan_ref_scoped(init, table, &mut u, false);
         }
     }
+    // A non-strict function that reads `arguments` uses every parameter.
+    if mentions_arguments(stmts) {
+        if let Some(scope_id) = scope_id {
+            if let Some(ids) = table.scope_defs.get(&scope_id) {
+                for id in ids {
+                    if table.defs[*id].funarg {
+                        u.in_use.insert(*id);
+                    }
+                }
+            }
+        }
+    }
     let mut out = Vec::new();
     for stmt in stmts {
         rewrite_stmt(stmt, table, &u, scope_id, drop_vars, drop_funcs, &mut out);
@@ -86,7 +98,7 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
 
 /// `scan_ref_scoped` in drop-unused.js. `record_inits` is pass 1; pass 2 only marks refs.
 fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
-    if let Some(id) = assign_as_unused(n).and_then(|sym| def_id(table, sym)) {
+    if let Some(id) = assign_as_unused(n, table).and_then(|sym| def_id(table, sym)) {
         u.wrote.insert(id);
         u.fixed.remove(&id);
         if let Data::Assign { right, .. } = &n.data {
@@ -132,11 +144,17 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
     }
 }
 
-/// `assign_as_unused`: `=` of a symbol, not a logical assignment.
-fn assign_as_unused(n: &N) -> Option<&N> {
+/// `assign_as_unused`: `=` of a `var` symbol. A `let`/`const` (`AST_SymbolBlockDeclaration`)
+/// stays a use, so the binding is not dropped.
+fn assign_as_unused<'a>(n: &'a N, table: &SymTable) -> Option<&'a N> {
     match &n.data {
-        Data::Assign { op, left, logical, .. } if !*logical && op == "=" && is_ref(left) => Some(left),
-        Data::Simple { body } => assign_as_unused(body),
+        Data::Assign { op, left, logical, .. } if !*logical && op == "=" && is_ref(left) => {
+            if def_id(table, left).is_some_and(|id| table.defs[id].block_scoped) {
+                return None;
+            }
+            Some(left)
+        }
+        Data::Simple { body } => assign_as_unused(body, table),
         _ => None,
     }
 }
@@ -253,6 +271,13 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         Data::Array { elements } => Data::Array { elements: elements.iter().map(|e| go(e, false)).collect() },
         Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond, false), cons: go(cons, false), alt: go(alt, false) },
         Data::If { cond, body, alt } => Data::If { cond: go(cond, false), body: go(body, false), alt: alt.as_ref().map(|a| go(a, false)) },
+        Data::Block { body } => {
+            let mut stmts = Vec::new();
+            for stmt in body {
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+            }
+            Data::Block { body: stmts }
+        }
         Data::Template { segments } => Data::Template {
             segments: segments.iter().map(|seg| match seg {
                 Seg::Expr(e) => Seg::Expr(go(e, false)),
@@ -342,6 +367,21 @@ fn mark_names(n: &N, table: &SymTable, u: &mut Use) {
     descend(n, |c| mark_names(c, table, u));
 }
 
+fn mentions_arguments(stmts: &[N]) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" => true,
+            Data::Func { .. } => false,
+            _ => {
+                let mut hit = false;
+                descend(n, |c| hit |= rec(c));
+                hit
+            }
+        }
+    }
+    stmts.iter().any(rec)
+}
+
 fn contains_with(stmts: &[N]) -> bool {
     fn rec(n: &N) -> bool {
         match &n.data {
@@ -403,6 +443,8 @@ fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: 
         Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left), right: go(right) },
         Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond), cons: go(cons), alt: go(alt) },
         Data::Call { expr, args, optional, is_new } => Data::Call { expr: go(expr), args: args.iter().map(go).collect(), optional: *optional, is_new: *is_new },
+        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
+        Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(go).collect() },
         Data::Class { stmt, name, extends, props } => Data::Class {
             stmt: *stmt, name: name.clone(), extends: extends.as_ref().map(go), props: props.iter().map(go).collect(),
         },

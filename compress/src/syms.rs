@@ -96,6 +96,8 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             // `var` and `function` declarations are hoisted to the function scope
             // before any reference is resolved. terser `figure_out_scope`.
             hoist(body, id, scopes, table);
+            // `let`/`const` in the body are in scope before any reference is resolved.
+            hoist_lexical(body, id, scopes, table);
             for stmt in body {
                 walk(stmt, id, scopes, table);
             }
@@ -103,6 +105,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
         Data::Block { body } | Data::StaticBlock { body } => {
             let id = push_block(scope, scopes);
             table.node_scope.insert(ptr(n), id);
+            hoist_lexical(body, id, scopes, table);
             for stmt in body {
                 walk(stmt, id, scopes, table);
             }
@@ -219,6 +222,26 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
             }
             Data::Catch { body, .. } | Data::Finally { body } => hoist_node(body, fn_scope, scopes, table),
             _ => {}
+        }
+    }
+}
+
+/// Direct `let`/`const` in this statement list, before nested references.
+fn hoist_lexical(stmts: &[N], scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
+    for stmt in stmts {
+        let Data::Defs { kind, defs, .. } = &stmt.data else { continue };
+        if matches!(kind, DefKind::Var) {
+            continue;
+        }
+        for def in defs {
+            let Data::VarDef { name, value } = &def.data else { continue };
+            let Some(sym_name) = sym(name) else { continue };
+            let sk = match kind {
+                DefKind::Const => SymKind::Const,
+                DefKind::Let => SymKind::Let,
+                _ => SymKind::Var,
+            };
+            define(table, scopes, scope, sym_name, name, sk, value.clone(), false);
         }
     }
 }
