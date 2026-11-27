@@ -229,12 +229,18 @@ thread_local! {
     /// `let` / `const` names of the enclosing function: terser `get_lhs`
     /// never takes an assignment to one.
     static BLOCK_LETS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// Names `flatten_fn` injected, with terser's reference count for them.
+    static INJECTED: std::cell::RefCell<HashMap<String, usize>> = Default::default();
     /// A nested block's own `let` / `const`: its only collapse candidates.
     static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+}
+
+pub(crate) fn set_injected(map: HashMap<String, usize>) {
+    INJECTED.with(|d| *d.borrow_mut() = map);
 }
 
 pub(crate) fn set_block_lets(set: HashSet<String>) {
@@ -830,8 +836,13 @@ fn apply_candidate(
     }
     // The assignment is the value's only use, and nothing else observes the write.
     // `return (a = r * r - r) + (b = 7)` is `return r * r - r + 7`.
+    // A name `flatten_fn` injected is the parameter's definition in terser:
+    // its `references` are the parameter's reads in the inlined body plus the
+    // assignment, whatever the tree now holds.
+    let injected = INJECTED.with(|i| i.borrow().get(&cand.name).copied());
     let sink = cand.kind == Kind::Assign
         && !block_assign
+        && injected.is_none_or(|count| count == 2)
         && cand.op == "="
         && reads == 1
         && writes == 1
@@ -851,6 +862,7 @@ fn apply_candidate(
     // trusts them) is off for a block assignment.
     let replace_all = !side_effects
         && !block_assign
+        && injected.is_none_or(|count| count == 2)
         && (mangleable
             || (cand.kind == Kind::Var && total == 1)
             || (cand.kind != Kind::Var && total == 2 && hidden == 0));

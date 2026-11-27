@@ -601,6 +601,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pre_tighten: RefCell::new(HashMap::new()),
         fresh: RefCell::new(HashMap::new()),
         injected: RefCell::new(HashMap::new()),
+        injected_refs: RefCell::new(HashMap::new()),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -694,6 +695,9 @@ struct Cx {
     fresh: RefCell<HashMap<usize, N>>,
     /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
     injected: RefCell<HashMap<usize, HashSet<String>>>,
+    /// terser `def.references.length` of an injected name: the parameter's
+    /// reads in the inlined body plus the injected assignment.
+    injected_refs: RefCell<HashMap<String, usize>>,
 }
 
 impl Cx {

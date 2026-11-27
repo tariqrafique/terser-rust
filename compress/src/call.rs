@@ -331,6 +331,11 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         }
     }
     exprs.push(returned);
+    for name in &declared {
+        let reads = count_reads(body, name);
+        let writes = exprs.iter().filter(|e| matches!(&e.data, Data::Assign { left, .. } if sym_str(left) == Some(name.as_str()))).count();
+        cx.injected_refs.borrow_mut().insert(name.clone(), reads + writes);
+    }
     if !declared.is_empty() {
         cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());
     }
@@ -414,6 +419,30 @@ fn _expr_of(n: &N) -> &N {
         Data::Call { expr, .. } => expr,
         _ => n,
     }
+}
+
+/// Reads of `name` in `body` that resolve to the function's own binding.
+fn count_reads(body: &[N], name: &str) -> usize {
+    fn rec(n: &N, name: &str) -> usize {
+        match &n.data {
+            Data::Symbol { name: got, kind: SymKind::Ref, .. } if got == name => 1,
+            Data::Func { name: fname, args, body, .. } => {
+                if fname.as_ref().and_then(sym_str) == Some(name) || args.iter().any(|a| binds(a, name)) {
+                    return 0;
+                }
+                body.iter().map(|s| rec(s, name)).sum()
+            }
+            _ => {
+                let mut c = 0;
+                let _ = ast::map_children(n, &mut |k| {
+                    c += rec(k, name);
+                    Rc::clone(k)
+                });
+                c
+            }
+        }
+    }
+    body.iter().map(|s| rec(s, name)).sum()
 }
 
 fn ref_sym(span: &N, name: &str) -> N {

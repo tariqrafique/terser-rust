@@ -41,6 +41,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         if cx.opts.collapse_vars {
             if let Some(scope) = collapse_scope(&stmts, cx) {
                 let before = stmts.clone();
+                crate::tighten::set_injected(cx.injected_refs.borrow().clone());
                 // Function-statement names visible here, innermost declaration wins.
                 {
                     let mut defuns: std::collections::HashSet<String> = Default::default();
