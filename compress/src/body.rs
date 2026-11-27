@@ -138,7 +138,22 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
                     _ => {}
                 }
             }
-            (names, true, Some((in_loop, in_try)))
+            crate::tighten::set_block_candidates(names.clone());
+            // `may_modify` measures against the enclosing function.
+            let mut locals = names;
+            for p in cx.parents[..len.saturating_sub(1)].iter().rev() {
+                let own = match &p.data {
+                    Data::Func { .. } | Data::Toplevel { .. } => cx.cached_names(p, 0, |p| match &p.data {
+                        Data::Func { args, body, .. } => crate::tighten::scope_bindings(args, body),
+                        Data::Toplevel { body } => crate::tighten::scope_bindings(&[], body),
+                        _ => Default::default(),
+                    }),
+                    _ => continue,
+                };
+                locals.extend(own.iter().cloned());
+                break;
+            }
+            (locals, true, Some((in_loop, in_try)))
         }
         _ => return None,
     };

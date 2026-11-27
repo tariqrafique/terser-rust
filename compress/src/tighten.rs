@@ -226,10 +226,16 @@ pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, lo
 
 thread_local! {
     static PHANTOM: std::cell::RefCell<HashMap<String, usize>> = Default::default();
+    /// A nested block's own `let` / `const`: its only collapse candidates.
+    static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+}
+
+pub(crate) fn set_block_candidates(set: HashSet<String>) {
+    BLOCK_CANDS.with(|d| *d.borrow_mut() = set);
 }
 
 pub(crate) fn set_defuns(set: HashSet<String>) {
@@ -733,7 +739,7 @@ fn apply_candidate(
     escaped: &HashSet<String>,
     counts: &Counts,
 ) -> Option<Vec<N>> {
-    if env.block_only && !(cand.kind == Kind::Var && env.locals.contains(&cand.name)) {
+    if env.block_only && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
         return None;
     }
     // terser `get_lhs`: no references, nothing to fold.
