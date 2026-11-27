@@ -5,6 +5,7 @@
 //! Unchanged subtrees stay the same `Rc`, so a pass that does not fire
 //! prints exactly like the input tree.
 
+mod conditional;
 mod drop_unused;
 mod eval;
 mod hoist;
@@ -59,6 +60,8 @@ struct Opts {
     top_retain: Option<String>,
     /// terser `lib/compress/index.js` `compress()` `passes`.
     passes: u32,
+    /// terser `ecma`. `5` unless set. Values from 6 through 2014 become `year + 2009`.
+    ecma: i32,
 }
 
 impl Opts {
@@ -94,6 +97,7 @@ impl Opts {
             hoist_funs: false,
             top_retain: None,
             passes: 1,
+            ecma: 5,
         }
     }
 
@@ -129,6 +133,7 @@ impl Opts {
             hoist_funs: false,
             top_retain: None,
             passes: 1,
+            ecma: 5,
         }
     }
 
@@ -241,6 +246,10 @@ impl Opts {
                 Value::Number(n) => n.as_i64().unwrap_or(0) as i32,
                 _ => opts.inline,
             };
+        }
+        if let Some(v) = obj.get("ecma").and_then(Value::as_i64) {
+            let n = v as i32;
+            opts.ecma = if n > 5 && n < 2015 { n + 2009 } else { n };
         }
         opts
     }
@@ -378,6 +387,7 @@ fn compress_pass(root: &N, opts: Opts) -> N {
         squeezed: HashSet::new(),
         optimized: HashSet::new(),
         flag_keep: Vec::new(),
+        parents: Vec::new(),
     };
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -426,6 +436,8 @@ struct Cx {
     optimized: HashSet<usize>,
     /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
     flag_keep: Vec<N>,
+    /// terser `TreeWalker.stack`. Last node is `self()`, the one before it is `parent()`.
+    parents: Vec<N>,
 }
 
 impl Cx {
@@ -651,6 +663,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     } else {
         n
     };
+    cx.parents.push(Rc::clone(n));
     let entered = cx.enter(n);
     // `use asm`: `def_optimize` returns self before setting `OPTIMIZED`.
     // `before` still descends twice and sets `SQUEEZED`.
@@ -659,10 +672,15 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         let out = map_children(&once, cx);
         mark_squeezed(cx, &out);
         cx.leave(entered);
+        cx.parents.pop();
         return out;
     }
     let once = map_children(n, cx);
+    set_parent(cx, &once);
     let twice = map_children(&once, cx);
+    // Fold sees the original node on the stack. Terser mutates in place, so
+    // `parent.expression === self` still holds. The rebuilt `twice` is only the data.
+    set_parent(cx, n);
     // Statement joining (`tighten`) is part of the scope/block optimizer, so it
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
@@ -690,7 +708,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         mark_tree_squeezed(&out, cx);
         let dropped = drop_unused::drop_unused(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs);
         transfer_flags(&out, &dropped, cx);
+        set_parent(cx, &dropped);
         out = map_children(&dropped, cx);
+        set_parent(cx, &out);
         // The scope's `before` is finished. Squeezing it matches terser setting
         // `SQUEEZED` on the same scope object after `drop_unused`.
         mark_squeezed(cx, &out);
@@ -700,7 +720,16 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         mark_squeezed(cx, &out);
     }
     cx.leave(entered);
+    cx.parents.pop();
     out
+}
+
+fn set_parent(cx: &mut Cx, n: &N) {
+    if cx.parents.last().is_some_and(|top| Rc::ptr_eq(top, n)) {
+        return;
+    }
+    cx.parents.pop();
+    cx.parents.push(Rc::clone(n));
 }
 
 fn was_scope(data: &Data) -> bool {
