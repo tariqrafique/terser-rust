@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/carousel/carousel","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"8a4b767a8a18f95b43d1a62212a9f26db9068c566dd2540f6d61837b8e7219ee","sets":{"lwc-rollup":{"kind":"code","sha256":"49a4404249f5d7b5ef1ae7ce6e77ab348c86b6e917de6b544c5cadb82f563846","code":"export{b as default}from\"./carousel-!~{001}~.js\";"}}}

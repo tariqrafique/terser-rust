@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/buttonMenu/buttonMenu","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"d420ac6f25de30d7fa85ecf326fe117ac14035c6b53bda1fab7a235dff7d1ee7","sets":{"lwc-rollup":{"kind":"code","sha256":"0958835488a05fc317c464fcf9d80c320572837a1297ef385464a1d981c758f6","code":"export{b as default}from\"./buttonMenu-!~{001}~.js\";"}}}

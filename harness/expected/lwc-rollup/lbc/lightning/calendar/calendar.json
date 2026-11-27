@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/calendar/calendar","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"56874f4d2ea450779a6ee292d517d253d29820356332500ce956168f301ca524","sets":{"lwc-rollup":{"kind":"code","sha256":"0382b9b70037ae0aee9f6eb7650f8373cd468d195e4218b62d12ee5211ad14e9","code":"export{b as default}from\"./calendar-!~{001}~.js\";"}}}

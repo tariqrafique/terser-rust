@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/inputName/inputName","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"d8919b9f1830914dc4af2af04c8d81b6faf3c980485e3afb14881f9e74382706","sets":{"lwc-rollup":{"kind":"code","sha256":"ad2396027ef27ec59c808ee6f372020841095b90c72ae830ba8fda0645ae293a","code":"export{b as default}from\"./inputName-!~{001}~.js\";"}}}

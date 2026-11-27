@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/primitiveModal/primitiveModal","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"0bc2d5c651418be0a1859b78d11d71635b5c6f88d802c6476ebea9ea4b01e803","sets":{"lwc-rollup":{"kind":"code","sha256":"cf49d7b267ab6366685b5f1fcbebb82ef961cb8d9215b93b14bad68ed0acf1e6","code":"export{b as default}from\"./primitiveModal-!~{001}~.js\";"}}}

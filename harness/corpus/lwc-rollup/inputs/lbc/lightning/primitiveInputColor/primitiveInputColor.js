@@ -1,0 +1,1 @@
+export { b as default } from './primitiveInputColor-!~{001}~.js';

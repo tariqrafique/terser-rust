@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/alert/alert","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"5bd767551462277a71e5e262aa4ef3ed31f88b85716858ef71531a53fb1d0179","sets":{"lwc-rollup":{"kind":"code","sha256":"220a3c586769aea0297b14e6b6649b24893f8f74b4213db6f096b6aba78118f5","code":"export{b as default}from\"./alert-!~{001}~.js\";"}}}

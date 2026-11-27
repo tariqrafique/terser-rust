@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/dialog/dialog","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"f8f0c185b7394e78e7ee212cec4081e6a7d8a008393798e31cf2e30cfeb7e81b","sets":{"lwc-rollup":{"kind":"code","sha256":"77d5f2b9c163d9a90491d43e71a2e7d813d59a3cd30c32d30b371d3c940dc106","code":"export{b as default}from\"./dialog-!~{001}~.js\";"}}}

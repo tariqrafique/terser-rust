@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/stackedTab/stackedTab","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"df5d95cf4093a4dd5ab8ca02056b6dfd2e2abde2ed26584ccb7d32a48098a021","sets":{"lwc-rollup":{"kind":"code","sha256":"a05a13c9de83f4d21c32367ce262780d81fcccfb97a54ebbc6e91c9b239aaf1e","code":"export{b as default}from\"./stackedTab-!~{001}~.js\";"}}}

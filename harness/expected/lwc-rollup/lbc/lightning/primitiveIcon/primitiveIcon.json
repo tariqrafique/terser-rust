@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/primitiveIcon/primitiveIcon","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"a42d042f7c936340f086a18252ca5f8a9b6b5657466675f150c1e97651b2598e","sets":{"lwc-rollup":{"kind":"code","sha256":"9eea3d714ef1832cb12c3d37716d55fe71948aa7193e616b303da55e8f2c1f5f","code":"export{b as default}from\"./primitiveIcon-!~{001}~.js\";"}}}

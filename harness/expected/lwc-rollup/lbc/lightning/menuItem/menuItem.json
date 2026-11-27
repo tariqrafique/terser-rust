@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/menuItem/menuItem","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"279c35835abbd286bc5632dbe79e33127b319fb3f0f371848500f99407fdf235","sets":{"lwc-rollup":{"kind":"code","sha256":"b14d522df1b8a1d8a15abe92ebea1734648694eb4db7fd402189154acccfcad2","code":"export{b as default}from\"./menuItem-!~{001}~.js\";"}}}

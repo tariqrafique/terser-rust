@@ -1,0 +1,1 @@
+export { b as default } from './badge-!~{001}~.js';

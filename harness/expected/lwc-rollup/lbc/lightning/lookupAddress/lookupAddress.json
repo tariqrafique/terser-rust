@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/lookupAddress/lookupAddress","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"6545f8fc36eee38b28a281ef0429704fb5677856aad163f36e1e19cef51ce37e","sets":{"lwc-rollup":{"kind":"code","sha256":"6ee9f66978c2b6a2a4f57c949dd3d14ff4b03d20093c9be2dfc41006341f2dd9","code":"export{b as default}from\"./lookupAddress-!~{001}~.js\";"}}}

@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/navigation/navigation","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"7799377277b2ca0fd29c39e7fa6b96dc99cae4dee2628f95c3f137dee0f5ab70","sets":{"lwc-rollup":{"kind":"code","sha256":"854e70ff35dd0c22f1d4eb7779ef7a5f276845e58c185b61790bbb1f526e03aa","code":"export{CurrentPageReference,NavigationMixin}from\"force/navigation\";"}}}

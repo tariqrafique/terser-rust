@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/modalBase/modalBase","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"561f9ab5bad69039518a95067ea90bdf1130d73bff31afa11b3c44919454acfe","sets":{"lwc-rollup":{"kind":"code","sha256":"21632dfa11d2fef878406ef17325ddcf132c39350046d87ace154e6a9c7003df","code":"export{b as default}from\"./modalBase-!~{001}~.js\";"}}}

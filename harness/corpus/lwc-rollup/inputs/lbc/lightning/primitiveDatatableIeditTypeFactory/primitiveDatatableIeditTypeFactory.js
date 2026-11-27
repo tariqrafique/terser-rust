@@ -1,0 +1,1 @@
+export { b as default } from './primitiveDatatableIeditTypeFactory-!~{001}~.js';

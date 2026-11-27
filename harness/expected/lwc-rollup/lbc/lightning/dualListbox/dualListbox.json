@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/dualListbox/dualListbox","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"62d7acbd64fed8a5fce225b8260f1e23df70bb89b499c708093871a0faf7088a","sets":{"lwc-rollup":{"kind":"code","sha256":"ae239fe0d9a3984a31978ed7760a46c9d45a2257fb89a491f9fea4e1df46fc7d","code":"export{b as default}from\"./dualListbox-!~{001}~.js\";"}}}

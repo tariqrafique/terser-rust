@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/baseCombobox/baseCombobox","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"5d53d5572bf3e9c5f3781e54bb0996aec5c8f63229cf7edc5544d736f83dac91","sets":{"lwc-rollup":{"kind":"code","sha256":"6ee285a911624fd95f2c58def98bcc9a230abcce56b416f4070613218c0972fc","code":"export{b as default}from\"./baseCombobox-!~{001}~.js\";"}}}

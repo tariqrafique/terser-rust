@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/formattedEmail/formattedEmail","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"0b5a94ab40cff8fe145ea63856d3b6547ed340a01892b2b3808ad1773624278d","sets":{"lwc-rollup":{"kind":"code","sha256":"1127ca22ac0d2d1aa526dc8877760cbefb97519335f564b74ac9ef37a9c94c52","code":"export{b as default}from\"./formattedEmail-!~{001}~.js\";"}}}

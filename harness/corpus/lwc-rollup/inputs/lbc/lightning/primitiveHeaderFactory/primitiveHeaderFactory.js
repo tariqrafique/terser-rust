@@ -1,0 +1,1 @@
+export { b as default } from './primitiveHeaderFactory-!~{001}~.js';

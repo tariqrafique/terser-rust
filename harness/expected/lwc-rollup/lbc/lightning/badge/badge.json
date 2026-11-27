@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/badge/badge","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"881620f637d0f155b0342b0cf74813502f36b5520c611085d7622808c543e60f","sets":{"lwc-rollup":{"kind":"code","sha256":"f7b3f061d00abae99d410b711afcbf38a7f14579220a2e6f86668c47c787c36a","code":"export{b as default}from\"./badge-!~{001}~.js\";"}}}

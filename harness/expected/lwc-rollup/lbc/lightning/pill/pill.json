@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/pill/pill","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"d6438cc03ba1eec066cdff18e29515a3a7fac8b9de2b7e539f5f89215316bea3","sets":{"lwc-rollup":{"kind":"code","sha256":"9d0d940382c4c74e1885095406687e2f3c46d88f06f96aa173a27486c313800d","code":"export{b as default,c as relatedTarget}from\"./pill-!~{001}~.js\";"}}}

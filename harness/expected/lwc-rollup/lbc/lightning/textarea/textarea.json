@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/textarea/textarea","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"d28c10d8ff047b6f733f042cd04d0722a427908aa3bde23026ec334c2afc69d2","sets":{"lwc-rollup":{"kind":"code","sha256":"112cb792edb045d4785dab93cd40d49600d19c465f27fb38e71962404e0c2984","code":"export{b as default}from\"./textarea-!~{001}~.js\";"}}}

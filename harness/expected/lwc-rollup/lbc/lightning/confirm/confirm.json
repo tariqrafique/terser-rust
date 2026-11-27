@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/confirm/confirm","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"2af1feccea81754fce412db41f171cf573fb4c94d1a09889f0db5b825397bf5d","sets":{"lwc-rollup":{"kind":"code","sha256":"41f30c3541f0ac0dd66aff9492901017b5a7fa26e6e03fa4e8ac24ba3fa88756","code":"export{b as default}from\"./confirm-!~{001}~.js\";"}}}

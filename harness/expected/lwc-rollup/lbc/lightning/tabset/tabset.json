@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/tabset/tabset","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"435cae45d1c93aa2b9dba3c87e2009127cd9f35961c3e6be74f56e0cf2727334","sets":{"lwc-rollup":{"kind":"code","sha256":"86b9800436aab7a927ccf252d51f4ece28689d77a3f2cc30251783a843e213f8","code":"export{b as default}from\"./tabset-!~{001}~.js\";"}}}

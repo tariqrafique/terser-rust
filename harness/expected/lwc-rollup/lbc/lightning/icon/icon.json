@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/icon/icon","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"5b0ac1cd186f7e67f1f23840736e4171b65802d27e410cac97a7e499ee1dbf0f","sets":{"lwc-rollup":{"kind":"code","sha256":"82a89fa0bfa3537219868d4d25a96a0480d0e02791c821ee4c5a2863dba05491","code":"export{b as default}from\"./icon-!~{001}~.js\";"}}}

@@ -1,0 +1,1 @@
+export { CurrentPageReference, NavigationMixin } from 'force/navigation';

@@ -1,0 +1,1 @@
+{"schema":1,"id":"lwc-rollup/lbc/lightning/avatar/avatar","corpus":"lwc-rollup","terser":"5.51.4","input_sha256":"5587923e73216c3191ac8e0ea91c95b1dfd98295e91c839acf42a3fadfe72277","sets":{"lwc-rollup":{"kind":"code","sha256":"605d09d9fd2f6d9751098a65e459a5869110a3af1132b97173f8a6819559805c","code":"export{b as default}from\"./avatar-!~{001}~.js\";"}}}
