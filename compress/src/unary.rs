@@ -542,7 +542,8 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
     false
 }
 
-fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
+/// terser `lib/compress/drop-side-effect-free.js` `AST_Node#drop_side_effect_free`.
+pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }
@@ -557,7 +558,8 @@ fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         Data::Func { kind: FuncKind::Expr | FuncKind::Arrow, .. } => None,
         Data::Unary { op, expr, .. } => drop_unary(n, op, expr, cx, first),
         Data::Binary { op, left, right } => drop_binary(n, op, left, right, cx, first),
-        Data::Assign { .. } | Data::Call { .. } | Data::Yield { .. } | Data::Await { .. } => Some(Rc::clone(n)),
+        Data::Assign { .. } | Data::Yield { .. } | Data::Await { .. } => Some(Rc::clone(n)),
+        Data::Call { expr, is_new, .. } => drop_call(n, expr, *is_new, cx),
         Data::Seq { exprs } => drop_sequence(n, exprs, cx),
         Data::Cond { cond, cons, alt } => drop_cond(n, cond, cons, alt, cx),
         Data::Symbol { .. } => if symbol_read_is_pure(n, cx) { None } else { Some(Rc::clone(n)) },
@@ -573,9 +575,8 @@ fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
             }
             seq_from_parts(n, parts)
         }
-        Data::Dot { expr, optional, .. } | Data::Sub { expr, optional, .. } => {
-            if *optional { drop_side_effect_free(expr, cx, first) } else { Some(Rc::clone(n)) }
-        }
+        Data::Dot { expr, optional, .. } => drop_access(n, expr, None, *optional, cx, first),
+        Data::Sub { expr, prop, optional } => drop_access(n, expr, Some(prop), *optional, cx, first),
         Data::Chain { expr } | Data::Spread { expr } => drop_side_effect_free(expr, cx, first),
         Data::Template { segments } => {
             let mut parts = Vec::new();
@@ -591,6 +592,69 @@ fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
             seq_from_parts(n, parts)
         }
         _ => Some(Rc::clone(n)),
+    }
+}
+
+/// terser `drop_side_effect_free(AST_Call)`. A pure annotation keeps argument
+/// effects. An unreferenced function expression drops its completion value
+/// (`process_expression(false)`).
+fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
+    if let Some(effects) = crate::call::pure_effects(n) {
+        return seq_from_parts(n, effects);
+    }
+    if !is_new && func_expr_unreferenced(expr, cx) {
+        let rewritten = crate::eval::process_expression(expr, false, Some(cx));
+        if !Rc::ptr_eq(&rewritten, expr) {
+            let Data::Call { args, optional, is_new, .. } = &n.data else {
+                return Some(Rc::clone(n));
+            };
+            return Some(atom(
+                n,
+                Data::Call {
+                    expr: rewritten,
+                    args: args.clone(),
+                    optional: *optional,
+                    is_new: *is_new,
+                },
+            ));
+        }
+    }
+    Some(Rc::clone(n))
+}
+
+fn func_expr_unreferenced(expr: &N, cx: &Cx) -> bool {
+    let Data::Func { kind, name, .. } = &expr.data else {
+        return false;
+    };
+    if !matches!(kind, FuncKind::Expr | FuncKind::Arrow) {
+        return false;
+    }
+    let Some(name) = name else {
+        return true;
+    };
+    let Some(table) = &cx.syms else {
+        return false;
+    };
+    let Some(&id) = table.node_def.get(&crate::syms::ptr(name)) else {
+        return false;
+    };
+    table.defs.get(id).is_some_and(|d| d.references.is_empty())
+}
+
+/// terser `drop_side_effect_free(AST_Dot)` / `AST_Sub`.
+fn drop_access(n: &N, expr: &N, prop: Option<&N>, optional: bool, cx: &Cx, first: bool) -> Option<N> {
+    if !optional && crate::eval::may_throw_on_access(expr, cx) {
+        return Some(Rc::clone(n));
+    }
+    let property = prop.and_then(|p| drop_side_effect_free(p, cx, false));
+    if property.is_some() && optional {
+        return Some(Rc::clone(n));
+    }
+    match (drop_side_effect_free(expr, cx, first), property) {
+        (Some(e), Some(p)) => Some(sequence_node(n, vec![e, p])),
+        (Some(e), None) => Some(e),
+        (None, Some(p)) => Some(p),
+        (None, None) => None,
     }
 }
 

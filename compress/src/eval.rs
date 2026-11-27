@@ -41,10 +41,12 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = rewrite_global(n, cx) {
         return rewritten;
     }
+    // terser `lib/compress/index.js` `def_optimize(AST_Boolean)`.
     if let Some(rewritten) = fold_bool(n, cx) {
         return rewritten;
     }
     if cx.opts.evaluate {
+        // terser `evaluate.js` `AST_Node.evaluate`.
         if let Some(rewritten) = fold_value(n, cx) {
             return rewritten;
         }
@@ -96,12 +98,16 @@ pub fn fold(n: &N, cx: &Cx) -> N {
     if let Some(rewritten) = crate::call::optimize(n, cx) {
         return rewritten;
     }
+    // terser `inline.js` `negate_iife`: a statement call, and only when the
+    // option is on. `expression` rewrote that statement to `return` first, so
+    // the option off does not emit `!function`.
     if cx.opts.negate_iife {
         if let Some(rewritten) = negate_iife(n) {
             return rewritten;
         }
     }
     if cx.opts.side_effects {
+        // terser `drop-side-effect-free.js` `void`, then `AST_SimpleStatement`.
         if let Some(rewritten) = unwrap_void_statement(n, cx) {
             return rewritten;
         }
@@ -166,19 +172,21 @@ fn identifier_lhs(cx: &Cx) -> bool {
     }
 }
 
+/// terser `lib/compress/index.js` `def_optimize(AST_Boolean)`.
+///
+/// Boolean context and a parent `==` / `!=` become `1` / `0`. Otherwise
+/// `true` is `!0` and `false` is `!1` when `booleans` is on.
 fn fold_bool(n: &N, cx: &Cx) -> Option<N> {
-    if !cx.opts.booleans {
-        return None;
-    }
     let value = match &n.data {
-        Data::True => 1.0,
-        Data::False => 0.0,
+        Data::True => true,
+        Data::False => false,
         _ => return None,
     };
-    if cx.in_bool || cx.eq_cmp {
-        Some(num(n, value))
-    } else {
-        Some(unary(n, "!", num(n, 1.0 - value)))
+    let out = crate::unary::optimize_bool(value, n, cx);
+    match &out.data {
+        Data::True if value => None,
+        Data::False if !value => None,
+        _ => Some(out),
     }
 }
 
@@ -371,25 +379,21 @@ fn lift_key(key: &Key, cx: &Cx) -> Option<Key> {
     Some(Key::Static { name, quote })
 }
 
+/// terser `evaluate.js` `AST_Node.evaluate`, then `make_node_from_constant` and `best_of`.
+///
+/// `&&` / `||` / `??` and conditionals stay with their own optimizers. Folding
+/// them here would drop a side-effecting arm when the other arm is constant.
+/// Prefix operators already ran `evaluate` in `def_optimize(AST_UnaryPrefix)`.
 fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     if let Data::Binary { op, .. } = &n.data {
         if matches!(op.as_str(), "&&" | "||" | "??") {
             return None;
         }
     }
-    // A conditional returns the chosen branch (`def_optimize(AST_Conditional)`),
-    // which is already `!0` / `!1` when `booleans` rewrote `true` / `false`.
-    if matches!(n.data, Data::Cond { .. }) {
+    if matches!(n.data, Data::Cond { .. } | Data::Unary { prefix: true, .. }) {
         return None;
     }
-    let lit = eval(n)?;
-    if let Lit::Str(s) = &lit {
-        if s.len() + 2 > print_len(n) {
-            return None;
-        }
-    }
-    let folded = lit_node(n, lit, cx);
-    Some(prefer(n, folded))
+    finish_constant(n, eval(n)?, cx)
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Conditional)`.
@@ -2719,7 +2723,7 @@ fn symbol_read_pure(name: &str, cx: &Cx) -> bool {
 }
 
 /// terser `lib/compress/inference.js` `may_throw_on_access`.
-fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
+pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
     if cx.opts.pure_getters == crate::PureGetters::Off {
         return true;
     }
@@ -2798,21 +2802,19 @@ fn pure_key(key: &Key, cx: &Cx) -> bool {
     }
 }
 
+/// terser `drop-side-effect-free.js` `drop_side_effect_free(AST_Unary)` for `void`,
+/// from `def_optimize(AST_SimpleStatement)` with `first_in_statement`.
 fn unwrap_void_statement(n: &N, cx: &Cx) -> Option<N> {
     let Data::Simple { body } = &n.data else {
         return None;
     };
-    let Data::Unary { op, expr, prefix: true } = &body.data else {
+    let Data::Unary { op, prefix: true, .. } = &body.data else {
         return None;
     };
     if op != "void" {
         return None;
     }
-    if statement_pure(expr, cx) {
-        Some(empty(n))
-    } else {
-        Some(simple(n, Rc::clone(expr)))
-    }
+    statement_from_drop(n, body, cx)
 }
 
 
@@ -2896,6 +2898,12 @@ fn sequence(span: &N, exprs: Vec<N>) -> N {
     atom(span, Data::Seq { exprs })
 }
 
+/// terser `lib/compress/inline.js` `inline_into_call`.
+///
+/// `negate_iife` wraps a call whose parent is `AST_SimpleStatement`. The caller
+/// runs this only when the option is on. `expression` turns that statement into
+/// `return` before the passes, so the parent is not a simple statement and the
+/// call stays `(function(){...})()`.
 fn negate_iife(n: &N) -> Option<N> {
     let Data::Simple { body } = &n.data else {
         return None;
@@ -2947,33 +2955,128 @@ pub(crate) fn drop_trailing_return(mut body: Vec<N>, cx: &Cx) -> Vec<N> {
     }
 }
 
+/// terser `lib/compress/index.js` `def_optimize(AST_SimpleStatement)`.
+///
+/// `body.drop_side_effect_free(compressor, true)`. Nothing left becomes an
+/// empty statement. A trimmed body replaces the statement expression.
 fn drop_statement(n: &N, cx: &Cx) -> Option<N> {
-    if let Some(out) = drop_pure_call(n) {
-        return Some(out);
-    }
     let Data::Simple { body } = &n.data else {
         return None;
     };
-    if statement_pure(body, cx) {
-        Some(empty(n))
-    } else {
-        None
+    statement_from_drop(n, body, cx)
+}
+
+fn statement_from_drop(span: &N, body: &N, cx: &Cx) -> Option<N> {
+    match crate::unary::drop_side_effect_free(body, cx, true) {
+        None => Some(empty(span)),
+        Some(node) if Rc::ptr_eq(&node, body) => None,
+        Some(node) => Some(simple(span, node)),
     }
 }
 
-/// terser `inference.js` `AST_Call.is_callee_pure` when a pure annotation is already on the call.
-fn drop_pure_call(n: &N) -> Option<N> {
-    let Data::Simple { body } = &n.data else {
-        return None;
+/// terser `lib/compress/index.js` `AST_Scope.process_expression`.
+///
+/// `insert` turns the completion statement into `return`. The reverse turns
+/// that `return` back into a statement. When `cx` is set, the returned value
+/// is `drop_side_effect_free`'d first (an unused IIFE).
+pub(crate) fn process_expression(scope: &N, insert: bool, cx: Option<&Cx>) -> N {
+    let scope_ptr = Rc::as_ptr(scope) as usize;
+    rewrite_completion(scope, insert, cx, scope_ptr)
+}
+
+fn rewrite_completion(n: &N, insert: bool, cx: Option<&Cx>, scope_ptr: usize) -> N {
+    if Rc::as_ptr(n) as usize != scope_ptr && is_nested_scope(n) {
+        return Rc::clone(n);
+    }
+    if insert {
+        if let Data::Simple { body } = &n.data {
+            return atom(n, Data::Return { value: Some(Rc::clone(body)) });
+        }
+    } else if let Data::Return { value } = &n.data {
+        return return_to_statement(n, value.as_ref(), cx);
+    }
+    match &n.data {
+        Data::Toplevel { body } | Data::Block { body } | Data::StaticBlock { body } | Data::Func { body, .. } => {
+            rewrite_last(n, body, insert, cx, scope_ptr)
+        }
+        Data::If { cond, body, alt } => {
+            let body2 = rewrite_completion(body, insert, cx, scope_ptr);
+            let alt2 = alt.as_ref().map(|a| rewrite_completion(a, insert, cx, scope_ptr));
+            let alt_same = match (alt, &alt2) {
+                (None, None) => true,
+                (Some(a), Some(b)) => Rc::ptr_eq(a, b),
+                _ => false,
+            };
+            if Rc::ptr_eq(&body2, body) && alt_same {
+                Rc::clone(n)
+            } else {
+                if_node(n, Rc::clone(cond), body2, alt2)
+            }
+        }
+        Data::With { expr, body } => {
+            let body2 = rewrite_completion(body, insert, cx, scope_ptr);
+            if Rc::ptr_eq(&body2, body) {
+                Rc::clone(n)
+            } else {
+                atom(n, Data::With { expr: Rc::clone(expr), body: body2 })
+            }
+        }
+        _ => Rc::clone(n),
+    }
+}
+
+fn is_nested_scope(n: &N) -> bool {
+    matches!(n.data, Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. })
+}
+
+fn rewrite_last(span: &N, body: &[N], insert: bool, cx: Option<&Cx>, scope_ptr: usize) -> N {
+    let Some(last) = body.last() else {
+        return Rc::clone(span);
     };
-    let effects = crate::call::pure_effects(body)?;
-    if effects.is_empty() {
-        return Some(empty(n));
+    let rewritten = rewrite_completion(last, insert, cx, scope_ptr);
+    if Rc::ptr_eq(&rewritten, last) {
+        return Rc::clone(span);
     }
-    if effects.len() == 1 {
-        return Some(simple(n, effects.into_iter().next().unwrap()));
+    let mut next = body.to_vec();
+    let idx = next.len() - 1;
+    next[idx] = rewritten;
+    replace_stmt_list(span, next)
+}
+
+fn replace_stmt_list(span: &N, body: Vec<N>) -> N {
+    match &span.data {
+        Data::Toplevel { .. } => atom(span, Data::Toplevel { body }),
+        Data::Block { .. } => atom(span, Data::Block { body }),
+        Data::StaticBlock { .. } => atom(span, Data::StaticBlock { body }),
+        Data::Func { kind, name, args, async_, generator, .. } => atom(
+            span,
+            Data::Func {
+                kind: *kind,
+                name: name.clone(),
+                args: args.clone(),
+                body,
+                async_: *async_,
+                generator: *generator,
+            },
+        ),
+        _ => Rc::clone(span),
     }
-    Some(simple(n, sequence(n, effects)))
+}
+
+fn return_to_statement(span: &N, value: Option<&N>, cx: Option<&Cx>) -> N {
+    if let Some(cx) = cx {
+        let Some(value) = value else {
+            return empty(span);
+        };
+        return match crate::unary::drop_side_effect_free(value, cx, true) {
+            Some(kept) => simple(span, kept),
+            None => empty(span),
+        };
+    }
+    match value {
+        Some(v) => simple(span, Rc::clone(v)),
+        None => simple(span, void0(span)),
+    }
 }
 
 fn statement_pure(n: &N, cx: &Cx) -> bool {

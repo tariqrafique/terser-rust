@@ -39,6 +39,9 @@ struct Opts {
     sequences_limit: i32,
     join_vars: bool,
     negate_iife: bool,
+    /// terser `expression`. Off unless set. Completion statements are `return`
+    /// during the passes, then statements again.
+    expression: bool,
     properties: bool,
     loops: bool,
     computed_props: bool,
@@ -97,6 +100,7 @@ impl Opts {
             sequences_limit: 800,
             join_vars: true,
             negate_iife: true,
+            expression: false,
             properties: true,
             loops: true,
             computed_props: true,
@@ -137,6 +141,7 @@ impl Opts {
             sequences_limit: 0,
             join_vars: false,
             negate_iife: false,
+            expression: false,
             properties: false,
             loops: false,
             computed_props: false,
@@ -202,6 +207,9 @@ impl Opts {
         }
         if let Some(v) = bool_key(obj, "negate_iife") {
             opts.negate_iife = v;
+        }
+        if let Some(v) = bool_key(obj, "expression") {
+            opts.expression = v;
         }
         if let Some(v) = bool_key(obj, "properties") {
             opts.properties = v;
@@ -304,6 +312,7 @@ impl Opts {
             || self.sequences_limit > 0
             || self.join_vars
             || self.negate_iife
+            || self.expression
             || self.properties
             || self.loops
             || self.computed_props
@@ -410,10 +419,18 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         return Rc::clone(root);
     }
     // terser `lib/compress/index.js` `Compressor.compress`: repeat `passes` times.
+    // `expression` makes completion statements into returns for the passes, so
+    // `negate_iife` does not see a statement-leading function.
     let passes = opts.passes.max(1);
     let mut tree = Rc::clone(root);
+    if opts.expression {
+        tree = eval::process_expression(&tree, true, None);
+    }
     for _ in 0..passes {
         tree = compress_pass(&tree, opts.clone());
+    }
+    if opts.expression {
+        tree = eval::process_expression(&tree, false, None);
     }
     tree
 }
