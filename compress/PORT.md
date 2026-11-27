@@ -5,8 +5,8 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | Terser | Rust | State |
 | --- | --- | --- |
 | `compress/index.js` `compress` | `compress/src/lib.rs` `compress` | passes loop done. `expression` runs `process_expression` around the passes |
-| `reduce-vars.js` `reset_def` / `safe_to_assign` / `AST_SymbolRef` / `mark_escaped` | `reduce_vars.rs` | constants + function-body `let`/`const` + `direct_access`. Not: escaped depth beyond the mark, lambda single_use, IIFE virtual params |
-| `inline.js` `inline_into_symbolref` | `reduce_vars.rs` `inline_ref` | constants only. Regexp is not a constant. Const write clears `fixed` |
+| `reduce-vars.js` `reset_def` / `safe_to_assign` / `AST_SymbolRef` / `mark_escaped` / `mark_lambda` / `AST_Unary` | `reduce_vars.rs` | constants, lambda and class `single_use`, IIFE virtual params, `++`/`--` chained `fixed`, escaped depth through property reads. A function name is not a fixed write. Declaration names stay on the enclosing scope |
+| `inline.js` `inline_into_symbolref` | `reduce_vars.rs` `inline_ref` | constants, evaluated numeric `fixed`, and a single-use lambda or class (`reduce_funcs`, loop guard, scope enclosure). Regexp is not a constant. Const write clears `fixed` |
 | `tighten-body.js` `collapse` | `tighten.rs` `collapse` | scan + `find_stop`. Straight-line helper removed |
 | `drop-unused.js` `drop_unused` | `drop_unused.rs` `drop_unused` / `passes` | three walks. Not yet: `top_retain`, direct `eval`, `keep_fnames` |
 | `drop-unused.js` `assign_as_unused` | `drop_unused.rs` `assign_as_unused` | `=` of a symbol. Write-only `++` not yet |
@@ -60,3 +60,7 @@ Side-effect board: default 1896/3013 → 1991/3013, 95 newly passing, 0 newly fa
 `fold` is `opt_table`: one arm per node type. New arms: postfix `++`/`--` sequence lift, `AST_Chain`, `AST_Return`, `AST_Yield`, `AST_DefaultAssign`, `AST_VarDef`, empty `AST_Definitions`, `AST_TemplateString`, `AST_RegExp` in boolean context.
 
 Dispatch board: default 1991/3013 → 2008/3013, 17 newly passing, 0 newly failing, lwc 177/339 → 184/339.
+
+`reduce_funcs` defaults on. `inline_into_symbolref` turns a single-use function declaration into a function expression. IIFE parameters are fixed to the call arguments (`mark_lambda`). `mark_escaped` keeps depth above 1 when the value is a constant expression.
+
+Reduce-vars board `1c3bdeb06b1b-848142da17ac`: default 2008/3013 → 2041/3013, 33 newly passing, 0 newly failing, lwc 184/339.

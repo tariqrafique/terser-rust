@@ -5,8 +5,8 @@
 //! `references`, `assignments`, `single_use`, and `escaped` on these records.
 
 use ast::{Data, DefKind, N, Node, SymKind};
-use std::cell::Cell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,6 +43,8 @@ pub struct SymbolDef {
     pub references: Vec<usize>,
     pub single_use: SingleUse,
     pub replaced: Cell<u32>,
+    /// terser `SymbolDef.orig.length`. A parameter redeclared in the body is more than one.
+    pub orig_count: u32,
 }
 
 pub struct SymTable {
@@ -54,6 +56,13 @@ pub struct SymTable {
     pub scope_parent: Vec<Option<usize>>,
     /// Function scope that owns each scope id.
     pub fn_of: Vec<usize>,
+    /// `scope.pinned()` for each scope id. Direct `eval` or `with` sets it.
+    pub scope_pinned: Vec<bool>,
+    /// Function and class nodes currently stored in `fixed`, so a compressed
+    /// replacement can follow them. Built at the end of `reduce_vars::analyze`.
+    pub fixed_of_node: HashMap<usize, Vec<usize>>,
+    /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
+    pub inlined_scopes: RefCell<HashSet<usize>>,
 }
 
 struct Scope {
@@ -81,6 +90,9 @@ pub fn bind(root: &N) -> SymTable {
         scope_defs: HashMap::new(),
         scope_parent: Vec::new(),
         fn_of: Vec::new(),
+        scope_pinned: Vec::new(),
+        fixed_of_node: HashMap::new(),
+        inlined_scopes: RefCell::new(HashSet::new()),
     };
     table.node_scope.insert(ptr(root), 0);
     if let Data::Toplevel { body } = &root.data {
@@ -89,16 +101,24 @@ pub fn bind(root: &N) -> SymTable {
     walk(root, 0, &mut scopes, &mut table);
     table.scope_parent = scopes.iter().map(|s| s.parent).collect();
     table.fn_of = scopes.iter().map(|s| s.fn_scope).collect();
+    table.scope_pinned = scopes.iter().map(|s| s.pinned).collect();
     table
 }
 
 fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
     match &n.data {
-        Data::Func { name, args, body, .. } => {
+        Data::Func { kind, name, args, body, .. } => {
             let id = push_func(scope, scopes);
             table.node_scope.insert(ptr(n), id);
-            if let Some(name) = name.as_ref().and_then(sym) {
-                define(table, scopes, id, name, n, SymKind::Defun, None, false);
+            if let Some(name_node) = name {
+                if let Some(sym_name) = sym(name_node) {
+                    // terser `scope.js`: a declaration name is only on the enclosing
+                    // scope (`AST_SymbolDefun`). A function expression's name is bound
+                    // inside the function (`AST_SymbolLambda`) and its `init` is the function.
+                    if !matches!(kind, ast::FuncKind::Decl) {
+                        define(table, scopes, id, sym_name, name_node, SymKind::Defun, Some(Rc::clone(n)), false);
+                    }
+                }
             }
             for arg in args {
                 if let Some(sym_name) = sym(arg) {
@@ -209,7 +229,8 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
             Data::Func { .. } => {
                 if let Data::Func { kind: ast::FuncKind::Decl, name: Some(name), .. } = &stmt.data {
                     if let Some(sym_name) = sym(name) {
-                        define(table, scopes, fn_scope, sym_name, name, SymKind::Defun, None, false);
+                        // terser `scope.js` `def_function`: a declaration's `init` is the function.
+                        define(table, scopes, fn_scope, sym_name, name, SymKind::Defun, Some(Rc::clone(stmt)), false);
                     }
                 }
             }
@@ -326,6 +347,7 @@ fn define(
     let key = ptr(node);
     if let Some(&id) = scopes[scope].names.get(&name) {
         table.node_def.insert(key, id);
+        table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
         if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
@@ -355,6 +377,7 @@ fn define(
         references: Vec::new(),
         single_use: SingleUse::No,
         replaced: Cell::new(0),
+        orig_count: 1,
     });
     scopes[scope].names.insert(name, id);
     table.node_def.insert(key, id);
@@ -513,6 +536,31 @@ fn sym(n: &N) -> Option<String> {
 
 pub fn ptr(n: &N) -> usize {
     Rc::as_ptr(n) as usize
+}
+
+/// Index function and class `fixed` values so `retarget_fixed` can follow a compressed node.
+/// terser mutates those nodes in place; `fixed()` then sees the optimized tree.
+pub fn index_func_fixed(table: &mut SymTable) {
+    table.fixed_of_node.clear();
+    for (id, def) in table.defs.iter().enumerate() {
+        let Some(value) = &def.fixed else { continue };
+        if matches!(value.data, Data::Func { .. } | Data::Class { .. }) {
+            table.fixed_of_node.entry(ptr(value)).or_default().push(id);
+        }
+    }
+}
+
+/// Point `fixed` at `new_node` when it still holds the node that was just compressed.
+pub fn retarget_fixed(table: &mut SymTable, old_ptr: usize, new_node: &N) {
+    let Some(ids) = table.fixed_of_node.remove(&old_ptr) else { return };
+    for id in &ids {
+        if let Some(def) = table.defs.get_mut(*id) {
+            def.fixed = Some(Rc::clone(new_node));
+        }
+    }
+    if matches!(new_node.data, Data::Func { .. } | Data::Class { .. }) {
+        table.fixed_of_node.entry(ptr(new_node)).or_default().extend(ids);
+    }
 }
 
 /// Drop declarations whose references were all replaced.

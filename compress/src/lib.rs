@@ -54,6 +54,8 @@ struct Opts {
     inline: i32,
     switches: bool,
     reduce_vars: bool,
+    /// terser `reduce_funcs`. On unless the fixture turns it off.
+    reduce_funcs: bool,
     collapse_vars: bool,
     unused: bool,
     toplevel_vars: bool,
@@ -125,6 +127,7 @@ impl Opts {
             inline: 3,
             switches: true,
             reduce_vars: true,
+            reduce_funcs: true,
             collapse_vars: true,
             unused: true,
             toplevel_vars: false,
@@ -167,6 +170,7 @@ impl Opts {
             inline: 0,
             switches: false,
             reduce_vars: false,
+            reduce_funcs: false,
             collapse_vars: false,
             unused: false,
             toplevel_vars: false,
@@ -254,6 +258,9 @@ impl Opts {
         }
         if let Some(v) = bool_key(obj, "reduce_vars") {
             opts.reduce_vars = v;
+        }
+        if let Some(v) = bool_key(obj, "reduce_funcs") {
+            opts.reduce_funcs = v;
         }
         if let Some(v) = bool_key(obj, "collapse_vars") {
             opts.collapse_vars = v;
@@ -946,6 +953,7 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 /// switch that became `if (c) { stmt; }` is not then rewritten to `c && stmt`.
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
+    let orig_ptr = ptr;
     if cx.squeezed.contains(&ptr) {
         return Rc::clone(n);
     }
@@ -967,6 +975,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         mark_squeezed(cx, &out);
         cx.leave(entered);
         cx.parents.pop();
+        retarget(cx, orig_ptr, &out);
         return out;
     }
     // The stack top is the once-rewritten node during the second descend so
@@ -1028,7 +1037,17 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.stack.pop();
     cx.leave(entered);
     cx.parents.pop();
+    retarget(cx, orig_ptr, &out);
     out
+}
+
+fn retarget(cx: &mut Cx, orig_ptr: usize, out: &N) {
+    if Rc::as_ptr(out) as usize == orig_ptr {
+        return;
+    }
+    if let Some(table) = cx.syms.as_mut() {
+        syms::retarget_fixed(table, orig_ptr, out);
+    }
 }
 
 fn set_parent(cx: &mut Cx, n: &N) {

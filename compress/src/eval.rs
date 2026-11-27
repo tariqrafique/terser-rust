@@ -370,11 +370,18 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
             if let Some(value) = crate::reduce_vars::inline_ref(
                 n,
                 table,
-                &crate::reduce_vars::Env {
-                    unused: cx.opts.unused,
-                    evaluate: cx.opts.evaluate,
-                    toplevel_vars: cx.opts.toplevel_vars,
-                    toplevel_funcs: cx.opts.toplevel_funcs,
+                &crate::reduce_vars::At {
+                    env: &crate::reduce_vars::Env {
+                        unused: cx.opts.unused,
+                        evaluate: cx.opts.evaluate,
+                        toplevel_vars: cx.opts.toplevel_vars,
+                        toplevel_funcs: cx.opts.toplevel_funcs,
+                    },
+                    parents: &cx.parents,
+                    in_loop: cx.in_loop(),
+                    reduce_funcs: cx.opts.reduce_funcs,
+                    in_computed_key: cx.in_computed_key(),
+                    top_retain: cx.opts.top_retain.as_deref(),
                 },
             ) {
                 return Some(value);
