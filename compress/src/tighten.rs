@@ -1,101 +1,280 @@
 //! Port of terser `lib/compress/tighten-body.js`.
 //!
-//! `tighten_body` repeats its steps until the statement list stops changing.
-//! `collapse` is the scan from the end of the list: an assignment or `var`
-//! initializer is folded into a later read only when the scan reaches that
-//! read before a stop (a loop, `try`, `switch`, or a conditional branch when
-//! the value has side effects).
+//! `collapse` (`tighten-body.js` `collapse`) walks a statement list from the
+//! end. Each assignment, `var` initializer, or `++`/`--` is a candidate.
+//! `find_stop` limits how far the value may move. The scanner then folds the
+//! candidate into the first safe read.
 
-use ast::{Data, DefKind, N, Node, SymKind};
+use ast::{Data, DefKind, Key, Node, SymKind, N};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-/// terser `tighten-body.js` `tighten_body` — the `do { ... } while (CHANGED && max_iter-- > 0)` loop.
-/// Sequence joining, `if_return`, and `join_vars` already run in `compress/src/lib.rs`.
-/// This loop is `collapse` until stable, which is the step that was still a heuristic.
+/// terser `tighten-body.js` `tighten_body` — `collapse` until the list settles.
+/// Sequence joining, `if_return`, and `join_vars` already ran in `lib.rs`.
 pub fn collapse(root: &N, unused: bool, toplevel_vars: bool) -> N {
-    walk(root, unused, toplevel_vars)
+    let locals = HashSet::new();
+    let env = Env {
+        unused,
+        toplevel_vars,
+        locals: &locals,
+        declared: &locals,
+        in_loop: false,
+        in_try: false,
+        in_fn: false,
+    };
+    walk(root, &env)
 }
 
-fn walk(n: &N, unused: bool, toplevel_vars: bool) -> N {
+struct Env<'a> {
+    unused: bool,
+    toplevel_vars: bool,
+    /// Bindings of the function being collapsed.
+    locals: &'a HashSet<String>,
+    /// Those bindings plus every enclosing function. A name outside this set is undeclared.
+    declared: &'a HashSet<String>,
+    in_loop: bool,
+    in_try: bool,
+    in_fn: bool,
+}
+
+fn child_env<'a>(env: &Env<'a>, in_loop: bool, in_try: bool) -> Env<'a> {
+    Env {
+        unused: env.unused,
+        toplevel_vars: env.toplevel_vars,
+        locals: env.locals,
+        declared: env.declared,
+        in_loop,
+        in_try,
+        in_fn: env.in_fn,
+    }
+}
+
+fn walk(n: &N, env: &Env<'_>) -> N {
     match &n.data {
-        Data::Toplevel { body } => node(n, Data::Toplevel { body: tighten_list(body, unused, toplevel_vars, &[], false) }),
-        Data::StaticBlock { body } => node(n, Data::StaticBlock { body: tighten_list(body, unused, toplevel_vars, &[], true) }),
-        Data::Func { kind, name, args, body, async_, generator } => node(
+        Data::Toplevel { body } => node(
+            n,
+            Data::Toplevel {
+                body: tighten_scope(body, env, &[], false),
+            },
+        ),
+        Data::StaticBlock { body } => node(
+            n,
+            Data::StaticBlock {
+                body: tighten_scope(body, env, &[], true),
+            },
+        ),
+        Data::Func {
+            kind,
+            name,
+            args,
+            body,
+            async_,
+            generator,
+        } => node(
             n,
             Data::Func {
                 kind: *kind,
                 name: name.clone(),
                 args: args.clone(),
-                body: tighten_list(body, unused, toplevel_vars, args, true),
+                body: tighten_scope(body, env, args, true),
                 async_: *async_,
                 generator: *generator,
             },
         ),
-        // A plain block is not a scope. `collapse` stops at it; nested
-        // functions inside it still get their own `tighten_body`.
-        Data::Block { body } => node(n, Data::Block { body: body.iter().map(|s| walk(s, unused, toplevel_vars)).collect() }),
-        other => map_walk(n, other, unused, toplevel_vars),
+        // A block is its own `tighten_body`, but a `var` inside it is function-scoped.
+        // Collapsing that `var` from the block alone misses reads after the block
+        // (`for (b in ...) { var c = 3; x(c) } x(c)`). Nested functions still collapse.
+        Data::Block { body } => node(
+            n,
+            Data::Block {
+                body: body.iter().map(|s| walk(s, env)).collect(),
+            },
+        ),
+        Data::For {
+            init,
+            cond,
+            step,
+            body,
+        } => {
+            let loop_env = child_env(env, true, env.in_try);
+            node(
+                n,
+                Data::For {
+                    init: init.as_ref().map(|v| walk(v, env)),
+                    cond: cond.as_ref().map(|v| walk(v, env)),
+                    step: step.as_ref().map(|v| walk(v, env)),
+                    body: walk(body, &loop_env),
+                },
+            )
+        }
+        Data::While { cond, body } => {
+            let loop_env = child_env(env, true, env.in_try);
+            node(
+                n,
+                Data::While {
+                    cond: walk(cond, env),
+                    body: walk(body, &loop_env),
+                },
+            )
+        }
+        Data::Do { body, cond } => {
+            let loop_env = child_env(env, true, env.in_try);
+            node(
+                n,
+                Data::Do {
+                    body: walk(body, &loop_env),
+                    cond: walk(cond, env),
+                },
+            )
+        }
+        Data::ForIn { init, object, body } => {
+            let loop_env = child_env(env, true, env.in_try);
+            node(
+                n,
+                Data::ForIn {
+                    init: walk(init, env),
+                    object: walk(object, env),
+                    body: walk(body, &loop_env),
+                },
+            )
+        }
+        Data::ForOf {
+            init,
+            object,
+            body,
+            await_,
+        } => {
+            let loop_env = child_env(env, true, env.in_try);
+            node(
+                n,
+                Data::ForOf {
+                    init: walk(init, env),
+                    object: walk(object, env),
+                    body: walk(body, &loop_env),
+                    await_: *await_,
+                },
+            )
+        }
+        Data::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            let tried = child_env(env, env.in_loop, true);
+            node(
+                n,
+                Data::Try {
+                    body: walk(body, &tried),
+                    catch: catch.as_ref().map(|c| walk(c, env)),
+                    finally: finally.as_ref().map(|f| walk(f, env)),
+                },
+            )
+        }
+        other => map_walk(n, other, env),
     }
 }
 
-fn tighten_list(stmts: &[N], unused: bool, toplevel_vars: bool, params: &[N], in_fn: bool) -> Vec<N> {
-    let mut stmts: Vec<N> = stmts.iter().map(|s| walk(s, unused, toplevel_vars)).collect();
-    let mut locals = std::collections::HashSet::new();
+/// Statement list of a function, toplevel, static block, or block.
+fn tighten_scope(stmts: &[N], env: &Env<'_>, params: &[N], in_fn: bool) -> Vec<N> {
+    let mut locals = HashSet::new();
     for param in params {
         if let Some(name) = sym_name(param) {
             locals.insert(name.to_string());
         }
     }
-    collect_locals(&stmts, &mut locals);
+    collect_locals(stmts, &mut locals);
+    let mut declared = env.declared.clone();
+    declared.extend(locals.iter().cloned());
+    let child = Env {
+        unused: env.unused,
+        toplevel_vars: env.toplevel_vars,
+        locals: &locals,
+        declared: &declared,
+        in_loop: false,
+        in_try: false,
+        in_fn,
+    };
+    let stmts: Vec<N> = stmts.iter().map(|s| walk(s, &child)).collect();
+    let stmts = collapse_list(stmts, &child);
+    if env.unused && in_fn {
+        drop_unmentioned(&stmts)
+    } else {
+        stmts
+    }
+}
+
+fn collapse_list(mut stmts: Vec<N>, env: &Env<'_>) -> Vec<N> {
     // terser `tighten_body`: `do { collapse } while (CHANGED && max_iter-- > 0)`
     for _ in 0..10 {
-        let (next, changed) = collapse_statements(stmts, unused, toplevel_vars, in_fn, &locals);
+        let (next, changed) = collapse_statements(stmts, env);
         stmts = next;
         if !changed {
             break;
         }
-    }
-    // A local nobody reads or writes, whose initializer cannot run code, is
-    // the part of `drop-unused.js` that runs after the reads have been inlined.
-    // One walk records every remaining use. Toplevel stays (`toplevel` is false).
-    if unused && in_fn {
-        stmts = drop_unmentioned(&stmts);
     }
     stmts
 }
 
 fn drop_unmentioned(stmts: &[N]) -> Vec<N> {
     let used = names_used(stmts);
-    stmts.iter().filter_map(|stmt| match &stmt.data {
-        Data::Defs { kind, defs, await_ } => {
-            let defs: Vec<N> = defs.iter().filter(|d| match &d.data {
-                Data::VarDef { name, value } => {
-                    let Some(sym) = sym_name(name) else { return true };
-                    used.contains(sym) || value.as_ref().is_some_and(has_side_effects)
+    stmts
+        .iter()
+        .filter_map(|stmt| match &stmt.data {
+            Data::Defs { kind, defs, await_ } => {
+                let defs: Vec<N> = defs
+                    .iter()
+                    .filter(|d| match &d.data {
+                        Data::VarDef { name, value } => {
+                            let Some(sym) = sym_name(name) else {
+                                return true;
+                            };
+                            used.contains(sym) || value.as_ref().is_some_and(has_side_effects)
+                        }
+                        _ => true,
+                    })
+                    .cloned()
+                    .collect();
+                if defs.is_empty() {
+                    None
+                } else {
+                    Some(node(
+                        stmt,
+                        Data::Defs {
+                            kind: *kind,
+                            defs,
+                            await_: *await_,
+                        },
+                    ))
                 }
-                _ => true,
-            }).cloned().collect();
-            if defs.is_empty() { None } else { Some(node(stmt, Data::Defs { kind: *kind, defs, await_: *await_ })) }
-        }
-        _ => Some(Rc::clone(stmt)),
-    }).collect()
+            }
+            _ => Some(Rc::clone(stmt)),
+        })
+        .collect()
 }
 
-fn names_used(stmts: &[N]) -> std::collections::HashSet<String> {
-    let mut used = std::collections::HashSet::new();
-    fn rec(n: &N, used: &mut std::collections::HashSet<String>) {
+fn names_used(stmts: &[N]) -> HashSet<String> {
+    let mut used = HashSet::new();
+    fn rec(n: &N, used: &mut HashSet<String>) {
         if let Some(name) = ref_name(n) {
             used.insert(name.to_string());
         }
         match &n.data {
-            Data::Func { body, .. } | Data::Block { body } | Data::Switch { body, .. } | Data::Default { body } | Data::Case { body, .. } => {
+            Data::Func { body, .. }
+            | Data::Block { body }
+            | Data::Switch { body, .. }
+            | Data::Default { body }
+            | Data::Case { body, .. } => {
                 body.iter().for_each(|s| rec(s, used));
             }
             Data::Class { extends, props, .. } => {
-                if let Some(extends) = extends { rec(extends, used); }
+                if let Some(extends) = extends {
+                    rec(extends, used);
+                }
                 props.iter().for_each(|p| rec(p, used));
             }
-            Data::Assign { left, right, .. } | Data::Binary { left, right, .. } | Data::DefaultAssign { left, right } => {
+            Data::Assign { left, right, .. }
+            | Data::Binary { left, right, .. }
+            | Data::DefaultAssign { left, right } => {
                 rec(left, used);
                 rec(right, used);
             }
@@ -103,25 +282,53 @@ fn names_used(stmts: &[N]) -> std::collections::HashSet<String> {
                 rec(expr, used);
                 args.iter().for_each(|a| rec(a, used));
             }
-            Data::Unary { expr, .. } | Data::Return { value: Some(expr) } | Data::Simple { body: expr } | Data::Throw { value: expr } | Data::Dot { expr, .. } | Data::Await { expr } | Data::Spread { expr } | Data::Chain { expr } | Data::Yield { expr: Some(expr), .. } => rec(expr, used),
-            Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().for_each(|e| rec(e, used)),
+            Data::Unary { expr, .. }
+            | Data::Return { value: Some(expr) }
+            | Data::Simple { body: expr }
+            | Data::Throw { value: expr }
+            | Data::Dot { expr, .. }
+            | Data::Await { expr }
+            | Data::Spread { expr }
+            | Data::Chain { expr }
+            | Data::Yield {
+                expr: Some(expr), ..
+            } => rec(expr, used),
+            Data::Seq { exprs } | Data::Array { elements: exprs } => {
+                exprs.iter().for_each(|e| rec(e, used))
+            }
             Data::If { cond, body, alt } => {
                 rec(cond, used);
                 rec(body, used);
-                if let Some(alt) = alt { rec(alt, used); }
+                if let Some(alt) = alt {
+                    rec(alt, used);
+                }
             }
             Data::Cond { cond, cons, alt } => {
                 rec(cond, used);
                 rec(cons, used);
                 rec(alt, used);
             }
-            Data::For { init, cond, step, body } => {
-                if let Some(init) = init { rec(init, used); }
-                if let Some(cond) = cond { rec(cond, used); }
-                if let Some(step) = step { rec(step, used); }
+            Data::For {
+                init,
+                cond,
+                step,
+                body,
+            } => {
+                if let Some(init) = init {
+                    rec(init, used);
+                }
+                if let Some(cond) = cond {
+                    rec(cond, used);
+                }
+                if let Some(step) = step {
+                    rec(step, used);
+                }
                 rec(body, used);
             }
-            Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
+            Data::ForIn { init, object, body }
+            | Data::ForOf {
+                init, object, body, ..
+            } => {
                 rec(init, used);
                 rec(object, used);
                 rec(body, used);
@@ -130,24 +337,41 @@ fn names_used(stmts: &[N]) -> std::collections::HashSet<String> {
                 rec(cond, used);
                 rec(body, used);
             }
-            Data::Try { body, catch, finally } => {
+            Data::Try {
+                body,
+                catch,
+                finally,
+            } => {
                 rec(body, used);
-                if let Some(catch) = catch { rec(catch, used); }
-                if let Some(finally) = finally { rec(finally, used); }
+                if let Some(catch) = catch {
+                    rec(catch, used);
+                }
+                if let Some(finally) = finally {
+                    rec(finally, used);
+                }
             }
-            Data::Catch { body, .. } | Data::Finally { body } | Data::Labeled { body, .. } | Data::With { body, .. } => rec(body, used),
+            Data::Catch { body, .. }
+            | Data::Finally { body }
+            | Data::Labeled { body, .. }
+            | Data::With { body, .. } => rec(body, used),
             Data::Defs { defs, .. } => defs.iter().for_each(|d| rec(d, used)),
-            Data::VarDef { value: Some(value), .. } => rec(value, used),
+            Data::VarDef {
+                value: Some(value), ..
+            } => rec(value, used),
             Data::Destructuring { names, .. } => names.iter().for_each(|n| rec(n, used)),
             Data::Prop { key, value, .. } => {
-                if let ast::Key::Computed(expr) = key { rec(expr, used); }
+                if let Key::Computed(expr) = key {
+                    rec(expr, used);
+                }
                 rec(value, used);
             }
             Data::Sub { expr, prop, .. } => {
                 rec(expr, used);
                 rec(prop, used);
             }
-            Data::Field { value: Some(value), .. } => rec(value, used),
+            Data::Field {
+                value: Some(value), ..
+            } => rec(value, used),
             _ => {}
         }
     }
@@ -157,563 +381,1904 @@ fn names_used(stmts: &[N]) -> std::collections::HashSet<String> {
     used
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Assign,
+    Var,
+    Post,
+    Pre,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Single remaining reference: substitute the value (`maintain_this_binding`).
+    ValueOne,
+    /// `mangleable_var`: substitute the symbol at every read.
+    ValueAll,
+    /// Move the assignment (or a prefix update) to the first read.
+    Move,
+}
+
+struct Cand {
+    path: Vec<usize>,
+    kind: Kind,
+    name: String,
+    value: N,
+    node: N,
+    op: String,
+}
+
 /// terser `tighten-body.js` `collapse`.
-fn collapse_statements(mut stmts: Vec<N>, unused: bool, toplevel_vars: bool, in_fn: bool, locals: &std::collections::HashSet<String>) -> (Vec<N>, bool) {
+fn collapse_statements(mut stmts: Vec<N>, env: &Env<'_>) -> (Vec<N>, bool) {
     let block_names = block_scoped_names(&stmts);
+    let escaped = escaped_names(&stmts);
     let mut changed = false;
+    let mut guard = 0;
     let mut index = stmts.len();
-    while index > 0 {
+    while index > 0 && guard < 400 {
         index -= 1;
         // terser `extract_candidates`, then `candidates.pop()` so the last one runs first.
-        let mut candidates = extract_candidates(&stmts[index]);
+        let mut candidates = extract_candidates(&stmts[index], env, &block_names);
+        let mut restarted = false;
         while let Some(cand) = candidates.pop() {
-            let cx = Collapse { unused, toplevel_vars, in_fn, locals, block_names: &block_names };
-            if let Some(next) = apply_candidate(&stmts, index, &cand, &cx) {
+            if let Some(next) = apply_candidate(&stmts, index, &cand, env, &escaped) {
                 stmts = next;
                 changed = true;
-                // The list shrank. Scan again from the end.
+                guard += 1;
                 index = stmts.len();
+                restarted = true;
                 break;
             }
+        }
+        if restarted {
+            continue;
         }
     }
     (stmts, changed)
 }
 
-struct Cand {
-    ptr: usize,
-    name: String,
-    value: N,
-    vardef: bool,
-}
-
 /// terser `tighten-body.js` `extract_candidates`.
-fn extract_candidates(n: &N) -> Vec<Cand> {
+fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Vec<Cand> {
     let mut out = Vec::new();
-    fn rec(n: &N, out: &mut Vec<Cand>) {
+    let mut path = Vec::new();
+    fn rec(
+        n: &N,
+        path: &mut Vec<usize>,
+        out: &mut Vec<Cand>,
+        env: &Env<'_>,
+        block_names: &HashSet<String>,
+    ) {
+        path.push(ptr(n));
         match &n.data {
-            Data::Assign { left, right, logical, op } => {
-                if !*logical && op == "=" && !has_side_effects(left) && !matches!(right.data, Data::Chain { .. }) {
+            Data::Assign {
+                left,
+                right,
+                logical,
+                op,
+            } => {
+                if !*logical && !lhs_bad(left) && !matches!(right.data, Data::Chain { .. }) {
                     if let Some(name) = ref_name(left) {
-                        out.push(Cand { ptr: ptr(n), name: name.to_string(), value: Rc::clone(right), vardef: false });
+                        // terser `get_lhs`: `let` / `const` / `using` are not collapsed.
+                        // A free or global target is left for `may_modify`.
+                        if !block_names.contains(name) && env.locals.contains(name) {
+                            out.push(Cand {
+                                path: path.clone(),
+                                kind: Kind::Assign,
+                                name: name.to_string(),
+                                value: Rc::clone(right),
+                                node: Rc::clone(n),
+                                op: op.clone(),
+                            });
+                        }
                     }
                 }
-                rec(right, out);
+                rec(right, path, out, env, block_names);
             }
-            Data::VarDef { name, value: Some(value) } => {
+            Data::VarDef {
+                name,
+                value: Some(value),
+            } => {
                 if !matches!(value.data, Data::Chain { .. }) {
                     if let Some(sym) = sym_name(name) {
-                        out.push(Cand { ptr: ptr(n), name: sym.to_string(), value: Rc::clone(value), vardef: true });
+                        if matches!(
+                            name.data,
+                            Data::Symbol {
+                                kind: SymKind::Var
+                                    | SymKind::Let
+                                    | SymKind::Const
+                                    | SymKind::Funarg,
+                                ..
+                            }
+                        ) {
+                            out.push(Cand {
+                                path: path.clone(),
+                                kind: Kind::Var,
+                                name: sym.to_string(),
+                                value: Rc::clone(value),
+                                node: Rc::clone(n),
+                                op: "=".into(),
+                            });
+                        }
                     }
                 }
-                rec(value, out);
+                rec(value, path, out, env, block_names);
             }
             Data::Binary { left, right, .. } => {
-                rec(left, out);
-                rec(right, out);
+                rec(left, path, out, env, block_names);
+                rec(right, path, out, env, block_names);
             }
             Data::Call { expr, args, .. } => {
-                rec(expr, out);
+                rec(expr, path, out, env, block_names);
                 for a in args {
-                    rec(a, out);
+                    rec(a, path, out, env, block_names);
                 }
             }
+            Data::Case { expr, .. } => rec(expr, path, out, env, block_names),
             Data::Cond { cond, cons, alt } => {
-                rec(cond, out);
-                rec(cons, out);
-                rec(alt, out);
+                rec(cond, path, out, env, block_names);
+                rec(cons, path, out, env, block_names);
+                rec(alt, path, out, env, block_names);
             }
             Data::Defs { defs, .. } => {
                 let start = defs.len().saturating_sub(200);
                 for d in &defs[start..] {
-                    rec(d, out);
+                    rec(d, path, out, env, block_names);
+                }
+            }
+            Data::While { cond, body } | Data::Do { body, cond } => {
+                rec(cond, path, out, env, block_names);
+                if !matches!(body.data, Data::Block { .. }) {
+                    rec(body, path, out, env, block_names);
+                }
+            }
+            Data::Return { value: Some(v) } | Data::Throw { value: v } => {
+                rec(v, path, out, env, block_names)
+            }
+            Data::For {
+                init,
+                cond,
+                step,
+                body,
+            } => {
+                if let Some(init) = init {
+                    rec(init, path, out, env, block_names);
+                }
+                if let Some(cond) = cond {
+                    rec(cond, path, out, env, block_names);
+                }
+                if let Some(step) = step {
+                    rec(step, path, out, env, block_names);
+                }
+                if !matches!(body.data, Data::Block { .. }) {
+                    rec(body, path, out, env, block_names);
+                }
+            }
+            Data::ForIn { object, body, .. } | Data::ForOf { object, body, .. } => {
+                rec(object, path, out, env, block_names);
+                if !matches!(body.data, Data::Block { .. }) {
+                    rec(body, path, out, env, block_names);
                 }
             }
             Data::If { cond, body, alt } => {
-                rec(cond, out);
+                rec(cond, path, out, env, block_names);
                 if !matches!(body.data, Data::Block { .. }) {
-                    rec(body, out);
+                    rec(body, path, out, env, block_names);
                 }
                 if let Some(alt) = alt {
                     if !matches!(alt.data, Data::Block { .. }) {
-                        rec(alt, out);
+                        rec(alt, path, out, env, block_names);
                     }
                 }
             }
-            Data::Return { value: Some(v) } | Data::Throw { value: v } | Data::Simple { body: v } | Data::Unary { expr: v, .. } => rec(v, out),
             Data::Seq { exprs } => {
                 for e in exprs {
-                    rec(e, out);
+                    rec(e, path, out, env, block_names);
                 }
             }
-            Data::For { init, cond, step, body } => {
-                if let Some(init) = init {
-                    rec(init, out);
+            Data::Simple { body } => rec(body, path, out, env, block_names),
+            Data::Switch { expr, body } => {
+                rec(expr, path, out, env, block_names);
+                for s in body {
+                    rec(s, path, out, env, block_names);
                 }
-                if let Some(cond) = cond {
-                    rec(cond, out);
+            }
+            Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
+                if let Some(name) = ref_name(expr) {
+                    if !block_names.contains(name) && env.locals.contains(name) {
+                        out.push(Cand {
+                            path: path.clone(),
+                            kind: if *prefix { Kind::Pre } else { Kind::Post },
+                            name: name.to_string(),
+                            value: Rc::clone(expr),
+                            node: Rc::clone(n),
+                            op: op.clone(),
+                        });
+                    }
                 }
-                if let Some(step) = step {
-                    rec(step, out);
-                }
-                if !matches!(body.data, Data::Block { .. }) {
-                    rec(body, out);
-                }
+            }
+            Data::Dot { expr, .. }
+            | Data::Await { expr }
+            | Data::Spread { expr }
+            | Data::Chain { expr } => {
+                rec(expr, path, out, env, block_names);
+            }
+            Data::Sub { expr, prop, .. } => {
+                rec(expr, path, out, env, block_names);
+                rec(prop, path, out, env, block_names);
             }
             _ => {}
         }
+        path.pop();
     }
-    rec(n, &mut out);
+    rec(n, &mut path, &mut out, env, block_names);
     out
 }
 
-struct Collapse<'a> {
-    unused: bool,
-    toplevel_vars: bool,
-    in_fn: bool,
-    locals: &'a std::collections::HashSet<String>,
-    block_names: &'a std::collections::HashSet<String>,
+fn lhs_bad(n: &N) -> bool {
+    match &n.data {
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } | Data::Chain { expr } => {
+            expr_effects(n, &HashSet::new()) || lhs_bad(expr)
+        }
+        _ => false,
+    }
 }
 
-fn apply_candidate(stmts: &[N], index: usize, cand: &Cand, cx: &Collapse<'_>) -> Option<Vec<N>> {
-    // terser `get_lhs` / `exposed`: a toplevel binding is not collapsed while
-    // `toplevel` is false. The declaration's reads stay as names.
-    if cand.vardef && !cx.in_fn && !cx.toplevel_vars {
+fn apply_candidate(
+    stmts: &[N],
+    index: usize,
+    cand: &Cand,
+    env: &Env<'_>,
+    escaped: &HashSet<String>,
+) -> Option<Vec<N>> {
+    // terser `get_lhs`: no references, nothing to fold.
+    let (reads, writes, hidden) = count_refs(stmts, &cand.name);
+    let total = reads + writes + hidden;
+    if total == 0 {
         return None;
     }
-    // terser `get_lhs`: assignments to `let` / `const` are not collapsed.
-    // An undeclared or outer assignment target has side effects (`may_modify`).
-    if !cand.vardef && (cx.block_names.contains(&cand.name) || !cx.locals.contains(&cand.name)) {
-        return None;
+    let declared = count_decls(stmts, &cand.name);
+    let exposed = cand.kind == Kind::Var && !env.in_fn && !env.toplevel_vars;
+    // terser `mangleable_var` — only when `referenced > 1` and this is the single declaration.
+    let mangleable = cand.kind == Kind::Var
+        && declared <= 1
+        && total > 1
+        && is_mangleable(&cand.value, &cand.name, env);
+    if cand.kind == Kind::Var {
+        let ok = (declared > 1) || if total > 1 { mangleable } else { !exposed };
+        if !ok {
+            return None;
+        }
     }
-    if mentions(&cand.value, &cand.name) {
-        return None;
-    }
-    // Lambda and class values have their own inlining rules (`noinline`, `this`).
-    if matches!(cand.value.data, Data::Func { .. } | Data::Class { .. }) {
-        return None;
-    }
-    let watched = watched_symbols(&cand.value);
-    // terser `find_stop`: the candidate's value is already consumed (a
-    // `return`, a call argument that is the tail, …) so it cannot move.
-    let fence = match find_stop(&stmts[index], cand.ptr) {
-        Stop::Candidate => return None,
-        Stop::Ancestor(limit) => Some(limit),
-        Stop::None => None,
+    // terser `value_has_side_effects`.
+    let side_effects = match cand.kind {
+        Kind::Post | Kind::Pre => true,
+        _ => expr_effects(&cand.value, env.declared),
     };
-    let side_effects = has_side_effects(&cand.value);
-    // terser `replace_all_symbols`: a side-effect-free value used once, or a value that is itself a symbol.
-    let symbol_value = matches!(cand.value.data, Data::Symbol { kind: SymKind::Ref, .. });
-    let reads = reads_after(stmts, index, cand, fence, side_effects, cx.locals, &watched);
-    if reads.is_empty() {
+    // A value_def collapse that cannot see every reference is cancelled.
+    if mangleable && hidden > 0 {
         return None;
     }
-    let replace_all = !side_effects && (symbol_value || reads.len() == 1);
-    if side_effects && (reads.len() != 1 || reads.iter().any(|r| r.conditional || r.stopped)) {
-        return None;
-    }
-    if !replace_all && reads.iter().any(|r| r.conditional || r.stopped) {
-        return None;
-    }
-    if replace_all && reads.iter().any(|r| r.stopped) {
-        return None;
-    }
-    // Whole-function reads must all be in the scan, otherwise a read before the
-    // initializer or inside a nested function would be left behind.
-    let total = count_reads(stmts, &cand.name);
-    let in_scan = reads.len();
-    // Every read has to sit in the scanned region, after the candidate.
-    if total != in_scan {
-        return None;
-    }
-    if !replace_all && in_scan != 1 {
-        return None;
-    }
-    let replacement = if cand.vardef || in_scan == total {
-        // VarDef with one remaining reference substitutes the value
-        // (`tighten-body.js` `collapse`, the `AST_VarDef` arm).
-        // An assignment whose name is otherwise unread substitutes the
-        // right-hand side (`drop-unused.js` `assign_as_unused`).
-        Rc::clone(&cand.value)
+    // The assignment is the value's only use, and nothing else observes the write.
+    // `return (a = r * r - r) + (b = 7)` is `return r * r - r + 7`.
+    let sink = cand.kind == Kind::Assign
+        && cand.op == "="
+        && reads == 1
+        && writes == 1
+        && hidden == 0
+        && env.in_fn
+        && !escaped.contains(&cand.name);
+    let mode = if cand.kind == Kind::Var && total == 1 && !exposed || sink {
+        Mode::ValueOne
+    } else if mangleable {
+        Mode::ValueAll
     } else {
-        return None;
+        Mode::Move
     };
-    let mut next = rebuild_from(stmts, index, cand, &replacement);
-    // A read we counted but did not rewrite must keep the candidate.
-    if count_reads(&next, &cand.name) != 0 {
+    // terser `replace_all_symbols`: a var's single read, or an assignment whose
+    // only other reference is that one read (the write itself is the other).
+    let replace_all = !side_effects
+        && (mangleable
+            || (cand.kind == Kind::Var && total == 1)
+            || (cand.kind != Kind::Var && total == 2 && hidden == 0));
+    let mut lvalues = if matches!(cand.kind, Kind::Post | Kind::Pre) {
+        HashMap::new()
+    } else {
+        lvalues_of(&cand.value)
+    };
+    // terser `is_lhs_local` reads `lvalues` before the lhs name is inserted.
+    let value_reads_lhs = lvalues.contains_key(&cand.name);
+    let compound = cand.kind == Kind::Assign && cand.op != "=";
+    let lhs_local = env.locals.contains(&cand.name)
+        && !(env.in_loop
+            && (value_reads_lhs || matches!(cand.kind, Kind::Post | Kind::Pre) || compound));
+    // The lhs itself is an lvalue that later writes must not cross.
+    lvalues.entry(cand.name.clone()).or_insert(false);
+    let may_throw = expr_may_throw(&cand.value, env.declared);
+    let target_reads = if mode == Mode::ValueAll { reads } else { 1 };
+    let mut scan = Scan {
+        cand,
+        at: 0,
+        seeking: true,
+        abort: false,
+        stop_after: None,
+        stop_if_hit: None,
+        parents: Vec::new(),
+        sites: Vec::new(),
+        mode,
+        replace_all,
+        lhs_local,
+        side_effects,
+        lvalues: &lvalues,
+        locals: env.locals,
+        declared: env.declared,
+        escaped,
+        may_throw,
+        in_try: env.in_try,
+        reads_left: target_reads,
+    };
+    scan_node(&stmts[index], &mut scan);
+    if !scan.abort {
+        for stmt in &stmts[index + 1..] {
+            if scan.abort {
+                break;
+            }
+            scan.seeking = false;
+            scan_node(stmt, &mut scan);
+        }
+    }
+    if scan.sites.is_empty() {
         return None;
     }
-    // drop-unused.js: a `var` left with no initializer and no reads is dropped.
-    if cx.unused && count_reads_deep(&next, &cand.name) == 0 {
-        next = drop_unread_var(&next, &cand.name);
+    if mode == Mode::ValueAll && scan.sites.len() != reads {
+        return None;
+    }
+    let sites: HashSet<usize> = scan.sites.into_iter().collect();
+    let mut rw = Rw {
+        hit: 0,
+        saw_cand: false,
+    };
+    let mut next = Vec::with_capacity(stmts.len());
+    for (i, stmt) in stmts.iter().enumerate() {
+        if i < index {
+            next.push(Rc::clone(stmt));
+            continue;
+        }
+        if let Some(stmt) = rewrite_stmt(stmt, cand, &sites, mode, &mut rw) {
+            next.push(stmt);
+        }
+    }
+    if rw.hit != sites.len() || !rw.saw_cand {
+        return None;
+    }
+    if env.unused {
+        next = sweep_duplicate_vars(next);
     }
     Some(next)
 }
 
-struct Read {
-    conditional: bool,
-    stopped: bool,
+struct Scan<'a> {
+    cand: &'a Cand,
+    at: usize,
+    seeking: bool,
+    abort: bool,
+    stop_after: Option<usize>,
+    stop_if_hit: Option<usize>,
+    parents: Vec<N>,
+    sites: Vec<usize>,
+    mode: Mode,
+    replace_all: bool,
+    lhs_local: bool,
+    side_effects: bool,
+    lvalues: &'a HashMap<String, bool>,
+    locals: &'a HashSet<String>,
+    declared: &'a HashSet<String>,
+    escaped: &'a HashSet<String>,
+    may_throw: bool,
+    in_try: bool,
+    reads_left: usize,
 }
 
-enum Stop {
-    /// `find_stop` returned the candidate. Collapse aborts.
-    Candidate,
-    /// Scan may continue inside this ancestor, and not past it.
-    Ancestor(usize),
-    None,
+fn scan_node(n: &N, st: &mut Scan<'_>) {
+    if st.abort {
+        return;
+    }
+    if st.seeking {
+        if st.at >= st.cand.path.len() || ptr(n) != st.cand.path[st.at] {
+            return;
+        }
+        st.at += 1;
+        if st.at == st.cand.path.len() {
+            // Hit the candidate. terser `find_stop`.
+            st.seeking = false;
+            let stop = find_stop(&st.parents, ptr(n), false, st.lvalues);
+            if stop == Some(ptr(n)) {
+                st.abort = true;
+            } else {
+                st.stop_after = stop;
+            }
+            return;
+        }
+    } else if !pre_scan(n, st) {
+        return;
+    }
+    st.parents.push(Rc::clone(n));
+    if let Data::Switch { expr, body } = &n.data {
+        // terser `handle_custom_scan_order` for `AST_Switch`.
+        scan_switch(expr, body, st);
+    } else if !matches!(
+        n.data,
+        Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. }
+    ) {
+        scan_children(n, st);
+    }
+    st.parents.pop();
+    if st.stop_after == Some(ptr(n)) {
+        st.abort = true;
+    }
+    if st.stop_if_hit == Some(ptr(n)) {
+        st.stop_if_hit = None;
+    }
+}
+
+/// Returns false when the node (and its children) must not be scanned.
+fn pre_scan(n: &N, st: &mut Scan<'_>) -> bool {
+    let parent = st.parents.last();
+    // terser `collapse` scanner: stop immediately on these nodes.
+    if immediate_abort(n, parent, st) {
+        st.abort = true;
+        return false;
+    }
+    // Conditional branch: a read here is not safe unless `replace_all` and the lhs is local.
+    if st.stop_if_hit.is_none() && !(st.lhs_local && st.replace_all) {
+        if let Some(parent) = parent {
+            let branch = match &parent.data {
+                Data::Binary { op, left, .. } if lazy(op) && ptr(left) != ptr(n) => true,
+                Data::Cond { cond, .. } if ptr(cond) != ptr(n) => true,
+                Data::If { cond, .. } if ptr(cond) != ptr(n) => true,
+                _ => false,
+            };
+            if branch {
+                st.stop_if_hit = Some(ptr(parent));
+            }
+        }
+    }
+    if ref_name(n) == Some(st.cand.name.as_str())
+        && !is_write(n, parent)
+        && !shadows(&st.parents, &st.cand.path, st.lvalues)
+    {
+        if st.stop_if_hit.is_some() {
+            st.abort = true;
+            return false;
+        }
+        st.sites.push(ptr(n));
+        if st.mode != Mode::ValueAll {
+            st.abort = true;
+            return false;
+        }
+        if st.sites.len() >= st.reads_left {
+            st.abort = true;
+            return false;
+        }
+    }
+    if stop_after_node(n, st) {
+        st.stop_after = Some(ptr(n));
+        if matches!(n.data, Data::Func { .. } | Data::Class { .. }) {
+            st.abort = true;
+            return false;
+        }
+    }
+    // Functions are not entered (`handle_custom_scan_order`).
+    if matches!(
+        n.data,
+        Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. }
+    ) {
+        return false;
+    }
+    true
+}
+
+fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
+    (match &n.data {
+        Data::Assign {
+            op, left, logical, ..
+        } if *logical || (*op != "=" && ref_name(left) == Some(st.cand.name.as_str())) => true,
+        Data::Await { .. }
+        | Data::Debugger
+        | Data::Destructuring { .. }
+        | Data::Try { .. }
+        | Data::With { .. }
+        | Data::Yield { .. }
+        | Data::Export { .. }
+        | Data::Class { .. } => true,
+        Data::Call { optional, .. } | Data::Dot { optional, .. } | Data::Sub { optional, .. }
+            if *optional =>
+        {
+            true
+        }
+        Data::While { .. } | Data::Do { .. } | Data::ForIn { .. } | Data::ForOf { .. } => true,
+        Data::Break { .. } | Data::Continue { .. } => true,
+        Data::Spread { expr } => match &expr.data {
+            Data::This => true,
+            Data::Symbol {
+                kind: SymKind::Ref, ..
+            } => true,
+            _ => false,
+        },
+        Data::Prop {
+            key: Key::Computed(_),
+            ..
+        } => true,
+        _ => false,
+    }) || parent.is_some_and(|parent| {
+        if let Data::For { init, .. } = &parent.data {
+            init.as_ref().map(|i| ptr(i) != ptr(n)).unwrap_or(true)
+        } else {
+            false
+        }
+    }) || (!st.replace_all
+        && ref_name(n).is_some_and(|name| !st.declared.contains(name) && !pure_global(name)))
+}
+
+fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
+    match &n.data {
+        Data::Call { .. } => true,
+        Data::Return { .. } | Data::Throw { .. } => {
+            st.side_effects || may_modify(&st.cand.name, st)
+        }
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } => st.side_effects || !safe_receiver(expr),
+        Data::Symbol {
+            name,
+            kind: SymKind::Ref,
+            ..
+        } => {
+            (st.lvalues.get(name).copied().unwrap_or(false))
+                || (st.side_effects && may_modify(name, st))
+        }
+        Data::VarDef {
+            name,
+            value: Some(_),
+        } => sym_name(name).is_some_and(|sym| {
+            st.lvalues.contains_key(sym) || (st.side_effects && may_modify(sym, st))
+        }),
+        Data::Assign { left, .. } | Data::Unary { expr: left, .. } => {
+            is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym))
+        }
+        Data::ForIn { init, .. } | Data::ForOf { init, .. } => {
+            is_prop(init) || ref_name(init).is_some_and(|sym| st.lvalues.contains_key(sym))
+        }
+        _ => {
+            st.may_throw
+                && if st.in_try {
+                    expr_effects(n, st.declared)
+                } else {
+                    side_effects_external(n, st.locals)
+                }
+        }
+    }
+}
+
+fn may_modify(name: &str, st: &Scan<'_>) -> bool {
+    !st.locals.contains(name) || st.escaped.contains(name)
+}
+
+fn scan_switch(expr: &N, body: &[N], st: &mut Scan<'_>) {
+    scan_node(expr, st);
+    for branch in body {
+        if st.abort {
+            break;
+        }
+        let Data::Case {
+            expr: case_expr, ..
+        } = &branch.data
+        else {
+            continue;
+        };
+        if st.seeking {
+            if st.at >= st.cand.path.len() || ptr(branch) != st.cand.path[st.at] {
+                continue;
+            }
+            st.at += 1;
+            if st.at == st.cand.path.len() {
+                st.seeking = false;
+                continue;
+            }
+        }
+        scan_node(case_expr, st);
+        if !st.replace_all {
+            break;
+        }
+    }
+    st.abort = true;
+}
+
+fn scan_children(n: &N, st: &mut Scan<'_>) {
+    let go = |c: &N, st: &mut Scan<'_>| {
+        if !st.abort {
+            scan_node(c, st);
+        }
+    };
+    match &n.data {
+        Data::Labeled { label, body } => {
+            go(label, st);
+            go(body, st);
+        }
+        Data::Simple { body }
+        | Data::Throw { value: body }
+        | Data::Unary { expr: body, .. }
+        | Data::Dot { expr: body, .. }
+        | Data::Await { expr: body }
+        | Data::Spread { expr: body }
+        | Data::Chain { expr: body }
+        | Data::Return { value: Some(body) } => go(body, st),
+        Data::Block { body } | Data::Default { body } | Data::StaticBlock { body } => {
+            for s in body {
+                go(s, st);
+            }
+        }
+        Data::Do { body, cond } => {
+            go(body, st);
+            go(cond, st);
+        }
+        Data::While { cond, body } => {
+            go(cond, st);
+            go(body, st);
+        }
+        Data::For {
+            init,
+            cond,
+            step,
+            body,
+        } => {
+            if let Some(v) = init {
+                go(v, st);
+            }
+            if let Some(v) = cond {
+                go(v, st);
+            }
+            if let Some(v) = step {
+                go(v, st);
+            }
+            go(body, st);
+        }
+        Data::ForIn { init, object, body }
+        | Data::ForOf {
+            init, object, body, ..
+        } => {
+            go(init, st);
+            go(object, st);
+            go(body, st);
+        }
+        Data::If { cond, body, alt } => {
+            go(cond, st);
+            go(body, st);
+            if let Some(alt) = alt {
+                go(alt, st);
+            }
+        }
+        Data::Case { expr, body } => {
+            go(expr, st);
+            for s in body {
+                go(s, st);
+            }
+        }
+        Data::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            go(body, st);
+            if let Some(c) = catch {
+                go(c, st);
+            }
+            if let Some(f) = finally {
+                go(f, st);
+            }
+        }
+        Data::Catch { arg, body } => {
+            if let Some(arg) = arg {
+                go(arg, st);
+            }
+            go(body, st);
+        }
+        Data::Finally { body } | Data::With { body, .. } => go(body, st),
+        Data::Defs { defs, .. } => {
+            for d in defs {
+                go(d, st);
+            }
+        }
+        Data::VarDef { name, value } => {
+            go(name, st);
+            if let Some(v) = value {
+                go(v, st);
+            }
+        }
+        Data::Destructuring { names, .. } => {
+            for d in names {
+                go(d, st);
+            }
+        }
+        Data::Call { expr, args, .. } => {
+            go(expr, st);
+            for a in args {
+                go(a, st);
+            }
+        }
+        Data::Seq { exprs } | Data::Array { elements: exprs } => {
+            for e in exprs {
+                go(e, st);
+            }
+        }
+        Data::Sub { expr, prop, .. } => {
+            go(expr, st);
+            go(prop, st);
+        }
+        Data::Yield { expr, .. } => {
+            if let Some(e) = expr {
+                go(e, st);
+            }
+        }
+        Data::Binary { left, right, .. }
+        | Data::Assign { left, right, .. }
+        | Data::DefaultAssign { left, right } => {
+            go(left, st);
+            go(right, st);
+        }
+        Data::Cond { cond, cons, alt } => {
+            go(cond, st);
+            go(cons, st);
+            go(alt, st);
+        }
+        Data::Object { props } => {
+            for p in props {
+                go(p, st);
+            }
+        }
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(expr) = key {
+                go(expr, st);
+            }
+            go(value, st);
+        }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let ast::Seg::Expr(expr) = seg {
+                    go(expr, st);
+                }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => {
+            go(tag, st);
+            go(template, st);
+        }
+        // An unlisted container might hide a call. Stop after it.
+        Data::Symbol { .. }
+        | Data::This
+        | Data::Super
+        | Data::NewTarget
+        | Data::Null
+        | Data::True
+        | Data::False
+        | Data::Infinity
+        | Data::Number { .. }
+        | Data::BigInt { .. }
+        | Data::String { .. }
+        | Data::RegExp { .. }
+        | Data::Hole
+        | Data::Empty
+        | Data::Directive { .. }
+        | Data::ImportMeta
+        | Data::Debugger
+        | Data::Break { .. }
+        | Data::Continue { .. } => {}
+        _ => st.stop_after = Some(ptr(n)),
+    }
 }
 
 /// terser `tighten-body.js` `find_stop`.
-fn find_stop(stmt: &N, cand_ptr: usize) -> Stop {
-    let Some(parents) = parent_chain(stmt, cand_ptr) else {
-        return Stop::Candidate;
-    };
-    fn rec(parents: &[N], level: usize, write_only: bool, cand_ptr: usize) -> Stop {
-        if level >= parents.len() {
-            return Stop::None;
-        }
-        let here = |level: usize| {
-            if level == 0 { Stop::Candidate } else { Stop::Ancestor(ptr(&parents[level - 1])) }
-        };
-        let node_ptr = if level == 0 { cand_ptr } else { ptr(&parents[level - 1]) };
-        match &parents[level].data {
+fn find_stop(
+    parents: &[N],
+    mut node_ptr: usize,
+    mut write_only: bool,
+    lvalues: &HashMap<String, bool>,
+) -> Option<usize> {
+    let mut idx = parents.len();
+    while idx > 0 {
+        idx -= 1;
+        let parent = &parents[idx];
+        match &parent.data {
             Data::Assign { logical, left, .. } => {
-                if write_only && !*logical && ref_name(left).is_some() {
-                    rec(parents, level + 1, write_only, cand_ptr)
-                } else {
-                    here(level)
+                let blocked =
+                    is_prop(left) || ref_name(left).is_some_and(|name| lvalues.contains_key(name));
+                if write_only && !*logical && !blocked {
+                    node_ptr = ptr(parent);
+                    continue;
                 }
+                return Some(node_ptr);
             }
-            Data::Return { .. } | Data::Throw { .. } => {
-                if write_only { rec(parents, level + 1, write_only, cand_ptr) } else { here(level) }
-            }
-            Data::Simple { .. } => rec(parents, level + 1, true, cand_ptr),
-            Data::Defs { .. } => rec(parents, level + 1, true, cand_ptr),
-            Data::Seq { exprs } => {
-                let tail = exprs.last().is_some_and(|e| ptr(e) == node_ptr);
-                rec(parents, level + 1, !tail, cand_ptr)
-            }
-            Data::Call { .. } | Data::Switch { .. } | Data::For { .. } | Data::While { .. } | Data::Do { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::VarDef { .. } => here(level),
             Data::Binary { op, left, .. } => {
-                let lazy = matches!(op.as_str(), "&&" | "||" | "??");
-                if write_only && (!lazy || ptr(left) == node_ptr) {
-                    rec(parents, level + 1, write_only, cand_ptr)
-                } else {
-                    here(level)
+                if write_only && (!lazy(op) || ptr(left) == node_ptr) {
+                    node_ptr = ptr(parent);
+                    continue;
                 }
+                return Some(node_ptr);
+            }
+            Data::Call { .. }
+            | Data::Case { .. }
+            | Data::Switch { .. }
+            | Data::VarDef { .. }
+            | Data::For { .. }
+            | Data::While { .. }
+            | Data::Do { .. }
+            | Data::ForIn { .. }
+            | Data::ForOf { .. } => {
+                return Some(node_ptr);
             }
             Data::Cond { cond, .. } | Data::If { cond, .. } => {
                 if write_only && ptr(cond) == node_ptr {
-                    rec(parents, level + 1, write_only, cand_ptr)
-                } else {
-                    here(level)
+                    node_ptr = ptr(parent);
+                    continue;
+                }
+                return Some(node_ptr);
+            }
+            Data::Defs { .. } | Data::Simple { .. } => {
+                write_only = true;
+                node_ptr = ptr(parent);
+            }
+            Data::Return { .. } | Data::Throw { .. } => {
+                if write_only {
+                    node_ptr = ptr(parent);
+                    continue;
+                }
+                return Some(node_ptr);
+            }
+            Data::Seq { exprs } => {
+                let tail = exprs.last().is_some_and(|e| ptr(e) == node_ptr);
+                write_only = !tail;
+                node_ptr = ptr(parent);
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn shadows(parents: &[N], cand_path: &[usize], lvalues: &HashMap<String, bool>) -> bool {
+    if lvalues.is_empty() {
+        return false;
+    }
+    for parent in parents {
+        if cand_path.contains(&ptr(parent)) {
+            continue;
+        }
+        match &parent.data {
+            Data::Block { body } => {
+                if binds_any(body, lvalues) {
+                    return true;
                 }
             }
-            _ => Stop::None,
-        }
-    }
-    rec(&parents, 0, false, cand_ptr)
-}
-
-fn parent_chain(root: &N, cand_ptr: usize) -> Option<Vec<N>> {
-    fn rec(n: &N, cand_ptr: usize, stack: &mut Vec<N>) -> bool {
-        if ptr(n) == cand_ptr {
-            return true;
-        }
-        let mark = stack.len();
-        stack.push(Rc::clone(n));
-        let hit = match &n.data {
-            Data::Assign { left, right, .. } => rec(left, cand_ptr, stack) || rec(right, cand_ptr, stack),
-            Data::Binary { left, right, .. } => rec(left, cand_ptr, stack) || rec(right, cand_ptr, stack),
-            Data::Call { expr, args, .. } => rec(expr, cand_ptr, stack) || args.iter().any(|a| rec(a, cand_ptr, stack)),
-            Data::Cond { cond, cons, alt } => rec(cond, cand_ptr, stack) || rec(cons, cand_ptr, stack) || rec(alt, cand_ptr, stack),
-            Data::Defs { defs, .. } => defs.iter().any(|d| rec(d, cand_ptr, stack)),
-            Data::VarDef { value, .. } => value.as_ref().is_some_and(|v| rec(v, cand_ptr, stack)),
-            Data::If { cond, body, alt } => rec(cond, cand_ptr, stack) || rec(body, cand_ptr, stack) || alt.as_ref().is_some_and(|a| rec(a, cand_ptr, stack)),
-            Data::Return { value } => value.as_ref().is_some_and(|v| rec(v, cand_ptr, stack)),
-            Data::Throw { value } | Data::Simple { body: value } | Data::Unary { expr: value, .. } => rec(value, cand_ptr, stack),
-            Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().any(|e| rec(e, cand_ptr, stack)),
-            Data::For { init, cond, step, body } => {
-                init.as_ref().is_some_and(|v| rec(v, cand_ptr, stack))
-                    || cond.as_ref().is_some_and(|v| rec(v, cand_ptr, stack))
-                    || step.as_ref().is_some_and(|v| rec(v, cand_ptr, stack))
-                    || rec(body, cand_ptr, stack)
-            }
-            _ => false,
-        };
-        if !hit {
-            stack.truncate(mark);
-        }
-        hit
-    }
-    let mut stack = Vec::new();
-    if rec(root, cand_ptr, &mut stack) {
-        stack.reverse();
-        Some(stack)
-    } else {
-        None
-    }
-}
-
-struct St<'a> {
-    cand: &'a Cand,
-    seen: bool,
-    halt: bool,
-    side_effects: bool,
-    locals: &'a std::collections::HashSet<String>,
-    watched: &'a std::collections::HashSet<String>,
-    out: Vec<Read>,
-}
-
-fn reads_after(stmts: &[N], index: usize, cand: &Cand, fence: Option<usize>, side_effects: bool, locals: &std::collections::HashSet<String>, watched: &std::collections::HashSet<String>) -> Vec<Read> {
-    let mut st = St { cand, seen: false, halt: false, side_effects, locals, watched, out: Vec::new() };
-    if let Some(limit) = fence {
-        if let Some(node) = find_node(&stmts[index], limit) {
-            scan_stmt(node, &mut st, false, false);
-        }
-        return st.out;
-    }
-    scan_stmt(&stmts[index], &mut st, false, false);
-    for stmt in &stmts[index + 1..] {
-        if st.halt {
-            break;
-        }
-        scan_stmt(stmt, &mut st, false, false);
-    }
-    st.out
-}
-
-fn find_node(n: &N, want: usize) -> Option<&N> {
-    if ptr(n) == want {
-        return Some(n);
-    }
-    match &n.data {
-        Data::Assign { left, right, .. } => find_node(left, want).or_else(|| find_node(right, want)),
-        Data::Binary { left, right, .. } => find_node(left, want).or_else(|| find_node(right, want)),
-        Data::Call { expr, args, .. } => find_node(expr, want).or_else(|| args.iter().find_map(|a| find_node(a, want))),
-        Data::Seq { exprs } => exprs.iter().find_map(|e| find_node(e, want)),
-        Data::Simple { body } | Data::Return { value: Some(body) } | Data::Unary { expr: body, .. } | Data::Throw { value: body } => find_node(body, want),
-        Data::Return { value: None } => None,
-        Data::Defs { defs, .. } => defs.iter().find_map(|d| find_node(d, want)),
-        Data::VarDef { value, .. } => value.as_ref().and_then(|v| find_node(v, want)),
-        Data::If { cond, body, alt } => find_node(cond, want).or_else(|| find_node(body, want)).or_else(|| alt.as_ref().and_then(|a| find_node(a, want))),
-        Data::Cond { cond, cons, alt } => find_node(cond, want).or_else(|| find_node(cons, want)).or_else(|| find_node(alt, want)),
-        _ => None,
-    }
-}
-
-fn scan_stmt(n: &N, st: &mut St<'_>, conditional: bool, stopped: bool) {
-    if st.halt {
-        return;
-    }
-    if ptr(n) == st.cand.ptr {
-        st.seen = true;
-        // Still walk the value; reads of other names don't matter. A read of
-        // the lhs inside the value was rejected by `mentions`.
-        if let Data::Assign { right, .. } = &n.data {
-            scan_stmt(right, st, conditional, stopped);
-        } else if let Data::VarDef { value: Some(v), .. } = &n.data {
-            scan_stmt(v, st, conditional, stopped);
-        }
-        return;
-    }
-    if !st.seen {
-        match &n.data {
-            Data::Assign { right, .. } => scan_stmt(right, st, conditional, stopped),
-            Data::VarDef { value: Some(v), .. } => scan_stmt(v, st, conditional, stopped),
-            Data::Seq { exprs } | Data::Array { elements: exprs } => {
-                for e in exprs {
-                    scan_stmt(e, st, conditional, stopped);
-                }
-            }
-            Data::Simple { body } | Data::Return { value: Some(body) } | Data::Unary { expr: body, .. } => {
-                scan_stmt(body, st, conditional, stopped);
-            }
-            Data::Binary { left, right, .. } => {
-                scan_stmt(left, st, conditional, stopped);
-                scan_stmt(right, st, conditional, stopped);
-            }
-            Data::Call { expr, args, .. } => {
-                scan_stmt(expr, st, conditional, stopped);
-                for a in args {
-                    scan_stmt(a, st, conditional, stopped);
-                }
-            }
-            Data::Defs { defs, .. } => {
-                for d in defs {
-                    scan_stmt(d, st, conditional, stopped);
+            Data::Catch { arg, .. } => {
+                if arg
+                    .as_ref()
+                    .and_then(sym_name)
+                    .is_some_and(|name| lvalues.contains_key(name))
+                {
+                    return true;
                 }
             }
             _ => {}
         }
-        return;
     }
-    match &n.data {
-        Data::Func { .. } | Data::Class { .. } => {}
-        // `AST_Try` aborts the scan. The other nodes are not entered.
-        // `AST_Yield` aborts: moving a `yield` past another changes order.
-        Data::Yield { .. } | Data::Try { .. } | Data::With { .. } | Data::Switch { .. } => {
-            st.halt = true;
-            st.out.push(Read { conditional, stopped: true });
+    false
+}
+
+fn binds_any(body: &[N], lvalues: &HashMap<String, bool>) -> bool {
+    for stmt in body {
+        let Data::Defs { kind, defs, .. } = &stmt.data else {
+            continue;
+        };
+        if !matches!(kind, DefKind::Let | DefKind::Const | DefKind::Using) {
+            continue;
         }
-        Data::ForIn { .. } | Data::ForOf { .. } | Data::Break { .. } | Data::Continue { .. } => {
-            if count_reads_node(n, &st.cand.name) > 0 {
-                st.out.push(Read { conditional, stopped: true });
+        for def in defs {
+            if let Data::VarDef { name, .. } = &def.data {
+                if sym_name(name).is_some_and(|n| lvalues.contains_key(n)) {
+                    return true;
+                }
             }
         }
-        // A `while`/`for` that only reads the name can take a side-effect-free
-        // value. A write of the name, or a value that runs code, stops the scan.
-        Data::While { cond, body } => {
-            if writes_name(n, &st.cand.name) || st.side_effects && count_reads_node(n, &st.cand.name) > 0 {
-                st.out.push(Read { conditional, stopped: true });
+    }
+    false
+}
+
+struct Rw {
+    hit: usize,
+    saw_cand: bool,
+}
+
+fn rewrite_stmt(n: &N, cand: &Cand, sites: &HashSet<usize>, mode: Mode, rw: &mut Rw) -> Option<N> {
+    rewrite(n, cand, sites, mode, None, rw)
+}
+
+fn rewrite(
+    n: &N,
+    cand: &Cand,
+    sites: &HashSet<usize>,
+    mode: Mode,
+    parent: Option<&N>,
+    rw: &mut Rw,
+) -> Option<N> {
+    if ptr(n) == ptr(&cand.node) {
+        rw.saw_cand = true;
+        return remove_candidate(n, cand);
+    }
+    if sites.contains(&ptr(n)) {
+        rw.hit += 1;
+        return Some(replacement(n, cand, mode, parent));
+    }
+    let data = match &n.data {
+        Data::Simple { body } => {
+            let body = rewrite(body, cand, sites, mode, Some(n), rw)?;
+            if empty_seq(&body) {
+                return None;
+            }
+            Data::Simple { body }
+        }
+        Data::Seq { exprs } => {
+            let exprs: Vec<N> = exprs
+                .iter()
+                .filter_map(|e| rewrite(e, cand, sites, mode, Some(n), rw))
+                .filter(|e| !empty_seq(e))
+                .collect();
+            return match exprs.len() {
+                0 => None,
+                1 => Some(exprs.into_iter().next().unwrap()),
+                _ => Some(node(n, Data::Seq { exprs })),
+            };
+        }
+        Data::Defs { kind, defs, await_ } => {
+            let defs: Vec<N> = defs
+                .iter()
+                .filter_map(|d| rewrite(d, cand, sites, mode, Some(n), rw))
+                .collect();
+            if defs.is_empty() {
+                return None;
+            }
+            Data::Defs {
+                kind: *kind,
+                defs,
+                await_: *await_,
+            }
+        }
+        Data::VarDef { name, value } => {
+            let value = value
+                .as_ref()
+                .and_then(|v| rewrite(v, cand, sites, mode, Some(n), rw));
+            Data::VarDef {
+                name: Rc::clone(name),
+                value,
+            }
+        }
+        Data::Block { body } => Data::Block {
+            body: rewrite_list(body, cand, sites, mode, rw),
+        },
+        Data::Return { value } => Data::Return {
+            value: value
+                .as_ref()
+                .and_then(|v| rewrite(v, cand, sites, mode, Some(n), rw)),
+        },
+        Data::Throw { value } => Data::Throw {
+            value: rewrite(value, cand, sites, mode, Some(n), rw).unwrap_or_else(|| num0(value)),
+        },
+        Data::If { cond, body, alt } => Data::If {
+            cond: rewrite(cond, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(cond)),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+            alt: alt
+                .as_ref()
+                .and_then(|a| rewrite(a, cand, sites, mode, Some(n), rw)),
+        },
+        Data::Cond { cond, cons, alt } => Data::Cond {
+            cond: rewrite(cond, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(cond)),
+            cons: rewrite(cons, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(cons)),
+            alt: rewrite(alt, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(alt)),
+        },
+        Data::Binary { op, left, right } => Data::Binary {
+            op: op.clone(),
+            left: rewrite(left, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(left)),
+            right: rewrite(right, cand, sites, mode, Some(n), rw)
+                .unwrap_or_else(|| Rc::clone(right)),
+        },
+        Data::Assign {
+            op,
+            left,
+            right,
+            logical,
+        } => Data::Assign {
+            op: op.clone(),
+            left: if ref_name(left) == Some(cand.name.as_str()) {
+                Rc::clone(left)
             } else {
-                scan_stmt(cond, st, conditional, stopped);
-                scan_stmt(body, st, conditional, stopped);
-            }
-        }
-        Data::Do { body, cond } => {
-            if writes_name(n, &st.cand.name) || st.side_effects && count_reads_node(n, &st.cand.name) > 0 {
-                st.out.push(Read { conditional, stopped: true });
-            } else {
-                scan_stmt(body, st, conditional, stopped);
-                scan_stmt(cond, st, conditional, stopped);
-            }
-        }
-        Data::For { init, cond, step, body } => {
-            if writes_name(n, &st.cand.name) || st.side_effects && count_reads_node(n, &st.cand.name) > 0 {
-                st.out.push(Read { conditional, stopped: true });
-            } else {
-                if let Some(init) = init { scan_stmt(init, st, conditional, stopped); }
-                if let Some(cond) = cond { scan_stmt(cond, st, conditional, stopped); }
-                if let Some(step) = step { scan_stmt(step, st, conditional, stopped); }
-                scan_stmt(body, st, conditional, stopped);
-            }
-        }
-        Data::Symbol { name, kind: SymKind::Ref, .. } => {
-            // terser `may_modify`: a side-effecting value cannot move past a
-            // symbol defined outside this function.
-            if st.side_effects && !st.locals.contains(name) {
-                st.halt = true;
-                st.out.push(Read { conditional, stopped: true });
-                return;
-            }
-            if name == &st.cand.name {
-                st.out.push(Read { conditional, stopped });
-            }
-        }
-        Data::If { cond, body, alt } => {
-            scan_stmt(cond, st, conditional, stopped);
-            scan_stmt(body, st, true, stopped);
-            if let Some(alt) = alt {
-                scan_stmt(alt, st, true, stopped);
-            }
-        }
-        Data::Cond { cond, cons, alt } => {
-            scan_stmt(cond, st, conditional, stopped);
-            scan_stmt(cons, st, true, stopped);
-            scan_stmt(alt, st, true, stopped);
-        }
-        Data::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||" | "??") => {
-            scan_stmt(left, st, conditional, stopped);
-            scan_stmt(right, st, true, stopped);
-        }
-        Data::Assign { op, left, right, .. } => {
-            // `+=`, a later write of the candidate, or a write of a symbol
-            // that the value reads (`lvalues`) aborts the scan.
-            let left_name = ref_name(left);
-            if left_name == Some(st.cand.name.as_str()) && (op != "=" || ptr(n) != st.cand.ptr)
-                || left_name.is_some_and(|name| st.watched.contains(name))
-            {
-                st.halt = true;
-                st.out.push(Read { conditional, stopped: true });
-                return;
-            }
-            if ref_name(left) != Some(st.cand.name.as_str()) {
-                scan_stmt(left, st, conditional, stopped);
-            }
-            scan_stmt(right, st, conditional, stopped);
-        }
-        // `inference.js` `may_throw_on_access`: a property read on an unsafe
-        // receiver stops the scan after the read, so `console.log(c)` does not
-        // see `c`. The object's own reads are still visited.
-        Data::Dot { expr, .. } => {
-            scan_stmt(expr, st, conditional, stopped);
-            if !safe_receiver(expr) {
-                st.halt = true;
-            }
-        }
-        Data::Sub { expr, prop, .. } => {
-            scan_stmt(expr, st, conditional, stopped);
-            if !st.halt {
-                scan_stmt(prop, st, conditional, stopped);
-            }
-            if !safe_receiver(expr) {
-                st.halt = true;
-            }
-        }
-        Data::Unary { op, expr, .. } if op == "delete" && ref_name(expr) == Some(st.cand.name.as_str())
-            || matches!(op.as_str(), "++" | "--") && ref_name(expr).is_some_and(|name| name == st.cand.name || st.watched.contains(name)) =>
-        {
-            st.halt = true;
-            st.out.push(Read { conditional, stopped: true });
-        }
-        Data::Return { .. } | Data::Throw { .. } => {
-            scan_children(&n.data, st, conditional, stopped);
-            if st.side_effects {
-                st.halt = true;
-            }
-        }
-        other => scan_children(other, st, conditional, stopped),
+                rewrite(left, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(left))
+            },
+            right: rewrite(right, cand, sites, mode, Some(n), rw)
+                .unwrap_or_else(|| Rc::clone(right)),
+            logical: *logical,
+        },
+        Data::Unary { op, expr, prefix } => Data::Unary {
+            op: op.clone(),
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            prefix: *prefix,
+        },
+        Data::Call {
+            expr,
+            args,
+            optional,
+            is_new,
+        } => Data::Call {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            args: args
+                .iter()
+                .map(|a| rewrite(a, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(a)))
+                .collect(),
+            optional: *optional,
+            is_new: *is_new,
+        },
+        Data::Dot {
+            expr,
+            prop,
+            optional,
+            quote,
+            private,
+        } => Data::Dot {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            prop: prop.clone(),
+            optional: *optional,
+            quote: *quote,
+            private: *private,
+        },
+        Data::Sub {
+            expr,
+            prop,
+            optional,
+        } => Data::Sub {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            prop: rewrite(prop, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(prop)),
+            optional: *optional,
+        },
+        Data::Array { elements } => Data::Array {
+            elements: elements
+                .iter()
+                .filter_map(|e| rewrite(e, cand, sites, mode, Some(n), rw))
+                .collect(),
+        },
+        Data::Object { props } => Data::Object {
+            props: props
+                .iter()
+                .map(|p| rewrite(p, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(p)))
+                .collect(),
+        },
+        Data::Prop {
+            method,
+            key,
+            value,
+            static_,
+            private,
+            generator,
+            async_,
+        } => Data::Prop {
+            method: *method,
+            key: match key {
+                Key::Computed(expr) => Key::Computed(
+                    rewrite(expr, cand, sites, mode, Some(n), rw)
+                        .unwrap_or_else(|| Rc::clone(expr)),
+                ),
+                other => other.clone(),
+            },
+            value: rewrite(value, cand, sites, mode, Some(n), rw)
+                .unwrap_or_else(|| Rc::clone(value)),
+            static_: *static_,
+            private: *private,
+            generator: *generator,
+            async_: *async_,
+        },
+        Data::For {
+            init,
+            cond,
+            step,
+            body,
+        } => Data::For {
+            init: init
+                .as_ref()
+                .and_then(|v| rewrite(v, cand, sites, mode, Some(n), rw)),
+            cond: cond
+                .as_ref()
+                .and_then(|v| rewrite(v, cand, sites, mode, Some(n), rw)),
+            step: step
+                .as_ref()
+                .and_then(|v| rewrite(v, cand, sites, mode, Some(n), rw)),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::While { cond, body } => Data::While {
+            cond: rewrite(cond, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(cond)),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::Do { body, cond } => Data::Do {
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+            cond: rewrite(cond, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(cond)),
+        },
+        Data::ForIn { init, object, body } => Data::ForIn {
+            init: rewrite(init, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(init)),
+            object: rewrite(object, cand, sites, mode, Some(n), rw)
+                .unwrap_or_else(|| Rc::clone(object)),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::ForOf {
+            init,
+            object,
+            body,
+            await_,
+        } => Data::ForOf {
+            init: rewrite(init, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(init)),
+            object: rewrite(object, cand, sites, mode, Some(n), rw)
+                .unwrap_or_else(|| Rc::clone(object)),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+            await_: *await_,
+        },
+        Data::Try {
+            body,
+            catch,
+            finally,
+        } => Data::Try {
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+            catch: catch
+                .as_ref()
+                .and_then(|c| rewrite(c, cand, sites, mode, Some(n), rw)),
+            finally: finally
+                .as_ref()
+                .and_then(|f| rewrite(f, cand, sites, mode, Some(n), rw)),
+        },
+        Data::Catch { arg, body } => Data::Catch {
+            arg: arg.clone(),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::Finally { body } => Data::Finally {
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::With { expr, body } => Data::With {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::Case { expr, body } => Data::Case {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            body: rewrite_list(body, cand, sites, mode, rw),
+        },
+        Data::Default { body } => Data::Default {
+            body: rewrite_list(body, cand, sites, mode, rw),
+        },
+        Data::Switch { expr, body } => Data::Switch {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
+            body: body
+                .iter()
+                .map(|s| rewrite(s, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(s)))
+                .collect(),
+        },
+        Data::Labeled { label, body } => Data::Labeled {
+            label: Rc::clone(label),
+            body: rewrite(body, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(body)),
+        },
+        Data::Template { segments } => Data::Template {
+            segments: segments
+                .iter()
+                .map(|seg| match seg {
+                    ast::Seg::Expr(expr) => ast::Seg::Expr(
+                        rewrite(expr, cand, sites, mode, Some(n), rw)
+                            .unwrap_or_else(|| Rc::clone(expr)),
+                    ),
+                    other => other.clone(),
+                })
+                .collect(),
+        },
+        Data::TaggedTemplate { tag, template } => Data::TaggedTemplate {
+            tag: rewrite(tag, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(tag)),
+            template: rewrite(template, cand, sites, mode, Some(n), rw)
+                .unwrap_or_else(|| Rc::clone(template)),
+        },
+        _ => return Some(Rc::clone(n)),
+    };
+    Some(node(n, data))
+}
+
+fn rewrite_list(
+    body: &[N],
+    cand: &Cand,
+    sites: &HashSet<usize>,
+    mode: Mode,
+    rw: &mut Rw,
+) -> Vec<N> {
+    body.iter()
+        .filter_map(|s| rewrite(s, cand, sites, mode, None, rw))
+        .collect()
+}
+
+/// terser `remove_candidate`.
+fn remove_candidate(n: &N, cand: &Cand) -> Option<N> {
+    if cand.kind == Kind::Var {
+        let value = if matches!(sym_kind(&cand.node), Some(SymKind::Const)) {
+            Some(void0(n))
+        } else {
+            None
+        };
+        let Data::VarDef { name, .. } = &n.data else {
+            return None;
+        };
+        return Some(node(
+            n,
+            Data::VarDef {
+                name: Rc::clone(name),
+                value,
+            },
+        ));
+    }
+    None
+}
+
+/// terser replacement at the read: value, `name = value`, or prefix `++`/`--`.
+fn replacement(slot: &N, cand: &Cand, mode: Mode, parent: Option<&N>) -> N {
+    match mode {
+        Mode::ValueOne => maintain_this(parent, slot, &cand.value),
+        Mode::ValueAll => Rc::clone(&cand.value),
+        Mode::Move => match cand.kind {
+            Kind::Var => node(
+                &cand.node,
+                Data::Assign {
+                    op: "=".into(),
+                    left: sym_ref(&cand.name, &cand.node),
+                    right: Rc::clone(&cand.value),
+                    logical: false,
+                },
+            ),
+            Kind::Post => node(
+                &cand.node,
+                Data::Unary {
+                    op: cand.op.clone(),
+                    expr: Rc::clone(&cand.value),
+                    prefix: true,
+                },
+            ),
+            Kind::Assign | Kind::Pre => Rc::clone(&cand.node),
+        },
     }
 }
 
-fn scan_children(data: &Data, st: &mut St<'_>, conditional: bool, stopped: bool) {
-    if st.halt {
-        return;
+/// terser `common.js` `maintain_this_binding`.
+fn maintain_this(parent: Option<&N>, slot: &N, value: &N) -> N {
+    let Some(parent) = parent else {
+        return Rc::clone(value);
+    };
+    let needs = match &parent.data {
+        Data::Unary { op, expr, .. } if op == "delete" && ptr(expr) == ptr(slot) => true,
+        Data::Call { expr, .. } if ptr(expr) == ptr(slot) => {
+            matches!(
+                value.data,
+                Data::Dot { .. } | Data::Sub { .. } | Data::Chain { .. }
+            ) || ref_name(value) == Some("eval")
+        }
+        _ => false,
+    };
+    if !needs {
+        return Rc::clone(value);
     }
-    match data {
-        Data::Simple { body } | Data::Return { value: Some(body) } | Data::Throw { value: body } | Data::Unary { expr: body, .. } | Data::Dot { expr: body, .. } | Data::Await { expr: body } | Data::Spread { expr: body } | Data::Chain { expr: body } => {
-            scan_stmt(body, st, conditional, stopped);
-        }
-        Data::Binary { left, right, .. } => {
-            scan_stmt(left, st, conditional, stopped);
-            scan_stmt(right, st, conditional, stopped);
-        }
-        Data::Call { expr, args, .. } => {
-            scan_stmt(expr, st, conditional, stopped);
-            if !st.halt {
-                for a in args {
-                    if st.halt {
-                        break;
+    node(
+        slot,
+        Data::Seq {
+            exprs: vec![num0(slot), Rc::clone(value)],
+        },
+    )
+}
+
+fn sweep_duplicate_vars(stmts: Vec<N>) -> Vec<N> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    let mut valued: HashSet<String> = HashSet::new();
+    fn tally(n: &N, counts: &mut HashMap<String, usize>, valued: &mut HashSet<String>) {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } => {}
+            Data::Defs {
+                kind: DefKind::Var,
+                defs,
+                ..
+            } => {
+                for d in defs {
+                    if let Data::VarDef { name, value } = &d.data {
+                        if let Some(sym) = sym_name(name) {
+                            *counts.entry(sym.to_string()).or_insert(0) += 1;
+                            if value.is_some() {
+                                valued.insert(sym.to_string());
+                            }
+                        }
                     }
-                    scan_stmt(a, st, conditional, stopped);
                 }
             }
-            // A call is `stop_after`: reads inside it count, reads after it do not.
-            st.halt = true;
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => {
-            for e in exprs {
-                scan_stmt(e, st, conditional, stopped);
+            Data::Block { body }
+            | Data::Switch { body, .. }
+            | Data::Case { body, .. }
+            | Data::Default { body } => body.iter().for_each(|s| tally(s, counts, valued)),
+            Data::If { body, alt, .. } => {
+                tally(body, counts, valued);
+                if let Some(alt) = alt {
+                    tally(alt, counts, valued);
+                }
             }
+            Data::For { init, body, .. } => {
+                if let Some(init) = init {
+                    tally(init, counts, valued);
+                }
+                tally(body, counts, valued);
+            }
+            Data::While { body, .. }
+            | Data::Do { body, .. }
+            | Data::Labeled { body, .. }
+            | Data::With { body, .. }
+            | Data::Finally { body }
+            | Data::Catch { body, .. } => {
+                tally(body, counts, valued);
+            }
+            Data::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                tally(body, counts, valued);
+                if let Some(c) = catch {
+                    tally(c, counts, valued);
+                }
+                if let Some(f) = finally {
+                    tally(f, counts, valued);
+                }
+            }
+            _ => {}
         }
-        Data::Block { body } | Data::Default { body } => {
+    }
+    for s in &stmts {
+        tally(s, &mut counts, &mut valued);
+    }
+    fn strip<'a>(n: &N, counts: &HashMap<String, usize>, valued: &HashSet<String>) -> Option<N> {
+        match &n.data {
+            Data::Defs {
+                kind: DefKind::Var,
+                defs,
+                await_,
+            } => {
+                let mut kept_empty = HashSet::new();
+                let defs: Vec<N> = defs
+                    .iter()
+                    .filter(|d| match &d.data {
+                        Data::VarDef { name, value: None } => {
+                            let Some(sym) = sym_name(name) else {
+                                return true;
+                            };
+                            if counts.get(sym).copied().unwrap_or(0) <= 1 {
+                                return true;
+                            }
+                            if valued.contains(sym) {
+                                return false;
+                            }
+                            // `var a, a` keeps one declaration.
+                            kept_empty.insert(sym.to_string())
+                        }
+                        _ => true,
+                    })
+                    .cloned()
+                    .collect();
+                if defs.is_empty() {
+                    None
+                } else {
+                    Some(node(
+                        n,
+                        Data::Defs {
+                            kind: DefKind::Var,
+                            defs,
+                            await_: *await_,
+                        },
+                    ))
+                }
+            }
+            _ => Some(Rc::clone(n)),
+        }
+    }
+    stmts
+        .iter()
+        .filter_map(|s| strip(s, &counts, &valued))
+        .collect()
+}
+
+/// terser `mangleable_var`: the value is a declared symbol other than `arguments`.
+fn is_mangleable(value: &N, cand_name: &str, env: &Env<'_>) -> bool {
+    let Some(name) = ref_name(value) else {
+        return false;
+    };
+    name != "arguments" && name != cand_name && env.declared.contains(name)
+}
+
+/// `(reads, writes, hidden)`. Writes are `a = …` / `a++` / `delete a`. Hidden refs sit in nested functions.
+fn count_refs(stmts: &[N], name: &str) -> (usize, usize, usize) {
+    fn rec(
+        n: &N,
+        parent: Option<&N>,
+        name: &str,
+        hidden: bool,
+        reads: &mut usize,
+        writes: &mut usize,
+        hid: &mut usize,
+    ) {
+        if let Data::Func { body, .. } = &n.data {
             for s in body {
-                scan_stmt(s, st, conditional, stopped);
+                rec(s, None, name, true, reads, writes, hid);
+            }
+            return;
+        }
+        if ref_name(n) == Some(name) {
+            if hidden {
+                *hid += 1;
+            } else if is_write(n, parent) {
+                *writes += 1;
+            } else {
+                *reads += 1;
             }
         }
-        Data::Defs { defs, .. } => {
-            for d in defs {
-                scan_stmt(d, st, conditional, stopped);
+        each_child(&n.data, |c| {
+            rec(c, Some(n), name, hidden, reads, writes, hid)
+        });
+    }
+    let (mut reads, mut writes, mut hid) = (0, 0, 0);
+    for s in stmts {
+        rec(s, None, name, false, &mut reads, &mut writes, &mut hid);
+    }
+    (reads, writes, hid)
+}
+
+fn count_decls(stmts: &[N], name: &str) -> usize {
+    fn rec(n: &N, name: &str) -> usize {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } => 0,
+            Data::VarDef { name: sym, .. } if sym_name(sym) == Some(name) => 1,
+            other => {
+                let mut n = 0;
+                each_child(other, |c| n += rec(c, name));
+                n
             }
         }
-        Data::VarDef { value: Some(value), .. } => scan_stmt(value, st, conditional, stopped),
+    }
+    stmts.iter().map(|s| rec(s, name)).sum()
+}
+
+fn escaped_names(stmts: &[N]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    fn rec(n: &N, in_fn: bool, out: &mut HashSet<String>) {
+        if let Data::Func { body, .. } = &n.data {
+            for s in body {
+                rec(s, true, out);
+            }
+            return;
+        }
+        if in_fn {
+            if let Some(name) = ref_name(n) {
+                out.insert(name.to_string());
+            }
+        }
+        each_child(&n.data, |c| rec(c, in_fn, out));
+    }
+    for s in stmts {
+        rec(s, false, &mut out);
+    }
+    out
+}
+
+fn each_child(data: &Data, mut f: impl FnMut(&N)) {
+    match data {
+        Data::Block { body }
+        | Data::Default { body }
+        | Data::Switch { body, .. }
+        | Data::Case { body, .. }
+        | Data::StaticBlock { body } => body.iter().for_each(&mut f),
+        Data::Simple { body }
+        | Data::Throw { value: body }
+        | Data::Unary { expr: body, .. }
+        | Data::Dot { expr: body, .. }
+        | Data::Await { expr: body }
+        | Data::Spread { expr: body }
+        | Data::Chain { expr: body }
+        | Data::Return { value: Some(body) } => f(body),
+        Data::If { cond, body, alt } => {
+            f(cond);
+            f(body);
+            if let Some(a) = alt {
+                f(a);
+            }
+        }
+        Data::Binary { left, right, .. }
+        | Data::Assign { left, right, .. }
+        | Data::DefaultAssign { left, right } => {
+            f(left);
+            f(right);
+        }
+        Data::Seq { exprs } | Data::Array { elements: exprs } | Data::Defs { defs: exprs, .. } => {
+            exprs.iter().for_each(&mut f)
+        }
+        Data::VarDef { name, value } => {
+            f(name);
+            if let Some(v) = value {
+                f(v);
+            }
+        }
+        Data::For {
+            init,
+            cond,
+            step,
+            body,
+        } => {
+            if let Some(v) = init {
+                f(v);
+            }
+            if let Some(v) = cond {
+                f(v);
+            }
+            if let Some(v) = step {
+                f(v);
+            }
+            f(body);
+        }
+        Data::ForIn { init, object, body }
+        | Data::ForOf {
+            init, object, body, ..
+        } => {
+            f(init);
+            f(object);
+            f(body);
+        }
+        Data::While { cond, body } | Data::Do { body, cond } => {
+            f(cond);
+            f(body);
+        }
+        Data::Call { expr, args, .. } => {
+            f(expr);
+            args.iter().for_each(&mut f);
+        }
+        Data::Cond { cond, cons, alt } => {
+            f(cond);
+            f(cons);
+            f(alt);
+        }
+        Data::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            f(body);
+            if let Some(c) = catch {
+                f(c);
+            }
+            if let Some(f2) = finally {
+                f(f2);
+            }
+        }
+        Data::Catch { arg, body } => {
+            if let Some(arg) = arg {
+                f(arg);
+            }
+            f(body);
+        }
+        Data::Finally { body } | Data::Labeled { body, .. } | Data::With { body, .. } => f(body),
+        Data::Sub { expr, prop, .. } => {
+            f(expr);
+            f(prop);
+        }
+        Data::Object { props } => props.iter().for_each(&mut f),
+        Data::Prop { key, value, .. } => {
+            if let Key::Computed(expr) = key {
+                f(expr);
+            }
+            f(value);
+        }
+        Data::Class { extends, props, .. } => {
+            if let Some(e) = extends {
+                f(e);
+            }
+            props.iter().for_each(&mut f);
+        }
+        Data::Yield { expr, .. } => {
+            if let Some(e) = expr {
+                f(e);
+            }
+        }
+        Data::Template { segments } => {
+            for seg in segments {
+                if let ast::Seg::Expr(expr) = seg {
+                    f(expr);
+                }
+            }
+        }
+        Data::TaggedTemplate { tag, template } => {
+            f(tag);
+            f(template);
+        }
         _ => {}
     }
 }
 
-fn collect_locals(stmts: &[N], names: &mut std::collections::HashSet<String>) {
-    fn rec(n: &N, names: &mut std::collections::HashSet<String>) {
+/// terser `get_lvalues` / `is_modified`: symbols the value reads, and whether it writes them.
+fn lvalues_of(value: &N) -> HashMap<String, bool> {
+    let mut out = HashMap::new();
+    let mut stack = Vec::new();
+    fn rec(n: &N, stack: &mut Vec<N>, out: &mut HashMap<String, bool>) {
+        if let Some(name) = symbol_root(n) {
+            if modified(n, stack) {
+                out.insert(name, true);
+            } else {
+                out.entry(name).or_insert(false);
+            }
+        }
+        stack.push(Rc::clone(n));
+        each_child(&n.data, |c| rec(c, stack, out));
+        stack.pop();
+    }
+    rec(value, &mut stack, &mut out);
+    out
+}
+
+fn symbol_root(n: &N) -> Option<String> {
+    match &n.data {
+        Data::Symbol {
+            name,
+            kind: SymKind::Ref,
+            ..
+        } => Some(name.clone()),
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } | Data::Chain { expr } => symbol_root(expr),
+        _ => None,
+    }
+}
+
+fn modified(n: &N, stack: &[N]) -> bool {
+    let mut cur = n;
+    for parent in stack.iter().rev() {
+        if is_write(cur, Some(parent)) || is_callee(cur, parent) {
+            return true;
+        }
+        if !bubbles(cur, parent) {
+            return false;
+        }
+        cur = parent;
+    }
+    false
+}
+
+fn bubbles(n: &N, parent: &N) -> bool {
+    match &parent.data {
+        Data::Array { .. } => true,
+        Data::Prop { value, .. } if ptr(value) == ptr(n) => true,
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } if ptr(expr) == ptr(n) => true,
+        _ => false,
+    }
+}
+
+fn is_callee(n: &N, parent: &N) -> bool {
+    match &parent.data {
+        Data::Call { expr, .. } if ptr(expr) == ptr(n) => !matches!(
+            n.data,
+            Data::Func {
+                kind: ast::FuncKind::Arrow,
+                ..
+            }
+        ),
+        _ => false,
+    }
+}
+
+fn is_write(n: &N, parent: Option<&N>) -> bool {
+    let Some(parent) = parent else { return false };
+    match &parent.data {
+        Data::Unary { op, expr, .. }
+            if matches!(op.as_str(), "++" | "--" | "delete") && ptr(expr) == ptr(n) =>
+        {
+            true
+        }
+        Data::Assign { left, .. } if ptr(left) == ptr(n) => true,
+        Data::ForIn { init, .. } | Data::ForOf { init, .. } if ptr(init) == ptr(n) => true,
+        _ => false,
+    }
+}
+
+fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::True
+        | Data::False
+        | Data::Null
+        | Data::This
+        | Data::Infinity
+        | Data::RegExp { .. }
+        | Data::BigInt { .. }
+        | Data::Hole
+        | Data::Func { .. } => false,
+        Data::Symbol {
+            kind: SymKind::Ref,
+            name,
+            ..
+        } => !locals.contains(name) && !pure_global(name),
+        Data::Unary { op, expr, .. } => {
+            matches!(op.as_str(), "delete" | "++" | "--") || expr_effects(expr, locals)
+        }
+        Data::Binary { left, right, .. } => {
+            expr_effects(left, locals) || expr_effects(right, locals)
+        }
+        Data::Assign { .. }
+        | Data::Call { .. }
+        | Data::Await { .. }
+        | Data::Yield { .. }
+        | Data::NewTarget => true,
+        Data::Seq { exprs } | Data::Array { elements: exprs } => {
+            exprs.iter().any(|e| expr_effects(e, locals))
+        }
+        Data::Object { props } => props.iter().any(|p| expr_effects(p, locals)),
+        Data::Prop { key, value, .. } => {
+            matches!(key, Key::Computed(e) if expr_effects(e, locals))
+                || expr_effects(value, locals)
+        }
+        Data::Cond { cond, cons, alt } => {
+            expr_effects(cond, locals) || expr_effects(cons, locals) || expr_effects(alt, locals)
+        }
+        Data::Dot { expr, optional, .. } => {
+            if *optional {
+                expr_effects(expr, locals)
+            } else {
+                !safe_receiver(expr) || expr_effects(expr, locals)
+            }
+        }
+        Data::Sub {
+            expr,
+            prop,
+            optional,
+        } => {
+            if *optional {
+                expr_effects(expr, locals) || expr_effects(prop, locals)
+            } else {
+                !safe_receiver(expr) || expr_effects(expr, locals) || expr_effects(prop, locals)
+            }
+        }
+        Data::Chain { expr } => expr_effects(expr, locals),
+        _ => true,
+    }
+}
+
+fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::True
+        | Data::False
+        | Data::Null
+        | Data::This
+        | Data::Infinity
+        | Data::RegExp { .. }
+        | Data::BigInt { .. }
+        | Data::Func { .. }
+        | Data::Hole => false,
+        Data::Symbol {
+            kind: SymKind::Ref,
+            name,
+            ..
+        } => !locals.contains(name) && !pure_global(name),
+        Data::Unary { op, expr, .. }
+            if op == "typeof" && matches!(expr.data, Data::Symbol { .. }) =>
+        {
+            false
+        }
+        Data::Unary { expr, .. } => expr_may_throw(expr, locals),
+        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => {
+            expr_may_throw(left, locals) || expr_may_throw(right, locals)
+        }
+        Data::Seq { exprs } | Data::Array { elements: exprs } => {
+            exprs.iter().any(|e| expr_may_throw(e, locals))
+        }
+        Data::Cond { cond, cons, alt } => {
+            expr_may_throw(cond, locals)
+                || expr_may_throw(cons, locals)
+                || expr_may_throw(alt, locals)
+        }
+        Data::Dot { expr, optional, .. } => {
+            !*optional && !safe_receiver(expr) || expr_may_throw(expr, locals)
+        }
+        Data::Sub {
+            expr,
+            prop,
+            optional,
+        } => {
+            !*optional && !safe_receiver(expr)
+                || expr_may_throw(expr, locals)
+                || expr_may_throw(prop, locals)
+        }
+        Data::Call { .. } => true,
+        _ => false,
+    }
+}
+
+fn side_effects_external(n: &N, locals: &HashSet<String>) -> bool {
+    match &n.data {
+        Data::Assign { left, .. } => {
+            side_effects_external(left, locals)
+                || ref_name(left).is_some_and(|name| !locals.contains(name))
+        }
+        Data::Unary { op, expr, .. } if matches!(op.as_str(), "++" | "--" | "delete") => {
+            ref_name(expr).is_some_and(|name| !locals.contains(name))
+                || side_effects_external(expr, locals)
+        }
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } => side_effects_external(expr, locals),
+        Data::VarDef { value, .. } => value
+            .as_ref()
+            .is_some_and(|v| side_effects_external(v, locals)),
+        _ => false,
+    }
+}
+
+fn safe_receiver(n: &N) -> bool {
+    matches!(
+        n.data,
+        Data::Number { .. }
+            | Data::String { .. }
+            | Data::True
+            | Data::False
+            | Data::Null
+            | Data::Array { .. }
+            | Data::Object { .. }
+            | Data::Func { .. }
+            | Data::Class { .. }
+    )
+}
+
+fn pure_global(name: &str) -> bool {
+    // terser `native-objects.js` `pure_prop_access_globals`.
+    matches!(
+        name,
+        "Number" | "String" | "Array" | "Object" | "Function" | "Promise"
+    )
+}
+
+fn lazy(op: &str) -> bool {
+    matches!(op, "&&" | "||" | "??")
+}
+
+fn is_prop(n: &N) -> bool {
+    matches!(n.data, Data::Dot { .. } | Data::Sub { .. })
+}
+
+fn empty_seq(n: &N) -> bool {
+    matches!(&n.data, Data::Seq { exprs } if exprs.is_empty())
+}
+
+fn has_side_effects(n: &N) -> bool {
+    match &n.data {
+        Data::Number { .. }
+        | Data::String { .. }
+        | Data::True
+        | Data::False
+        | Data::Null
+        | Data::This => false,
+        Data::Symbol {
+            kind: SymKind::Ref, ..
+        } => false,
+        Data::Unary {
+            op,
+            expr,
+            prefix: true,
+        } if matches!(op.as_str(), "void" | "!" | "~" | "-" | "+") => has_side_effects(expr),
+        Data::Binary { op, left, right } if !matches!(op.as_str(), "=" | "+=" | "-=") => {
+            has_side_effects(left) || has_side_effects(right)
+        }
+        _ => true,
+    }
+}
+
+fn collect_locals(stmts: &[N], names: &mut HashSet<String>) {
+    fn rec(n: &N, names: &mut HashSet<String>) {
         match &n.data {
             Data::Func { name, .. } => {
                 if let Some(name) = name {
@@ -738,41 +2303,12 @@ fn collect_locals(stmts: &[N], names: &mut std::collections::HashSet<String>) {
                     }
                 }
             }
-            Data::Symbol { name, kind, .. } if !matches!(kind, SymKind::Ref | SymKind::Label | SymKind::LabelRef) => {
+            Data::Symbol { name, kind, .. }
+                if !matches!(kind, SymKind::Ref | SymKind::Label | SymKind::LabelRef) =>
+            {
                 names.insert(name.clone());
             }
-            other => {
-                let walk = |c: &N, names: &mut std::collections::HashSet<String>| rec(c, names);
-                match other {
-                    Data::Block { body } | Data::Default { body } => body.iter().for_each(|s| walk(s, names)),
-                    Data::If { body, alt, .. } => {
-                        walk(body, names);
-                        if let Some(alt) = alt { walk(alt, names); }
-                    }
-                    Data::For { init, body, .. } => {
-                        if let Some(init) = init { walk(init, names); }
-                        walk(body, names);
-                    }
-                    Data::While { body, .. } | Data::Do { body, .. } | Data::Labeled { body, .. } | Data::With { body, .. } | Data::Finally { body } => walk(body, names),
-                    Data::ForIn { init, body, .. } | Data::ForOf { init, body, .. } => {
-                        walk(init, names);
-                        walk(body, names);
-                    }
-                    Data::Switch { body, .. } => body.iter().for_each(|s| walk(s, names)),
-                    Data::Case { body, .. } => body.iter().for_each(|s| walk(s, names)),
-                    Data::Try { body, catch, finally } => {
-                        walk(body, names);
-                        if let Some(c) = catch { walk(c, names); }
-                        if let Some(f) = finally { walk(f, names); }
-                    }
-                    Data::Catch { arg, body } => {
-                        if let Some(arg) = arg { walk(arg, names); }
-                        walk(body, names);
-                    }
-                    Data::Simple { body } | Data::Return { value: Some(body) } | Data::Throw { value: body } => walk(body, names),
-                    _ => {}
-                }
-            }
+            other => each_child(other, |c| rec(c, names)),
         }
     }
     for s in stmts {
@@ -780,117 +2316,15 @@ fn collect_locals(stmts: &[N], names: &mut std::collections::HashSet<String>) {
     }
 }
 
-fn rebuild_from(stmts: &[N], index: usize, cand: &Cand, replacement: &N) -> Vec<N> {
-    let mut out = Vec::new();
-    for (i, stmt) in stmts.iter().enumerate() {
-        if i < index {
-            out.push(Rc::clone(stmt));
-            continue;
-        }
-        if let Some(stmt) = rewrite_stmt(stmt, cand, replacement) {
-            out.push(stmt);
-        }
-    }
-    out
-}
-
-fn rewrite_stmt(n: &N, cand: &Cand, replacement: &N) -> Option<N> {
-    if ptr(n) == cand.ptr {
-        return None;
-    }
-    match &n.data {
-        Data::Defs { kind, defs, await_ } => {
-            let defs: Vec<N> = defs.iter().filter_map(|d| rewrite_stmt(d, cand, replacement)).collect();
-            if defs.is_empty() {
-                return None;
-            }
-            return Some(node(n, Data::Defs { kind: *kind, defs, await_: *await_ }));
-        }
-        Data::VarDef { name, value } => {
-            if ptr(n) == cand.ptr {
-                return None;
-            }
-            let value = value.as_ref().map(|v| rewrite_expr(v, cand, replacement));
-            return Some(node(n, Data::VarDef { name: Rc::clone(name), value }));
-        }
-        Data::Simple { body } => {
-            if ptr(body) == cand.ptr {
-                return None;
-            }
-            let body = rewrite_expr(body, cand, replacement);
-            if matches!(body.data, Data::Seq { .. }) {
-                if let Data::Seq { exprs } = &body.data {
-                    if exprs.is_empty() {
-                        return None;
-                    }
-                }
-            }
-            return Some(node(n, Data::Simple { body }));
-        }
-        _ => {}
-    }
-    Some(rewrite_expr(n, cand, replacement))
-}
-
-fn rewrite_expr(n: &N, cand: &Cand, replacement: &N) -> N {
-    if ptr(n) == cand.ptr {
-        // Dropped assignment inside a sequence.
-        return node(n, Data::Seq { exprs: vec![] });
-    }
-    if ref_name(n) == Some(cand.name.as_str()) {
-        // Don't replace a write.
-        return Rc::clone(replacement);
-    }
-    let go = |c: &N| rewrite_expr(c, cand, replacement);
-    let data = match &n.data {
-        Data::Assign { op, left, right, logical } => {
-            let left = if ref_name(left) == Some(cand.name.as_str()) { Rc::clone(left) } else { go(left) };
-            Data::Assign { op: op.clone(), left, right: go(right), logical: *logical }
-        }
-        Data::Seq { exprs } => {
-            let exprs: Vec<N> = exprs
-                .iter()
-                .filter(|e| ptr(e) != cand.ptr)
-                .map(go)
-                .filter(|e| !matches!(&e.data, Data::Seq { exprs } if exprs.is_empty()))
-                .collect();
-            if exprs.len() == 1 {
-                return Rc::clone(&exprs[0]);
-            }
-            Data::Seq { exprs }
-        }
-        Data::Call { expr, args, optional, is_new } => Data::Call {
-            expr: go(expr),
-            args: args.iter().map(go).collect(),
-            optional: *optional,
-            is_new: *is_new,
-        },
-        Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left), right: go(right) },
-        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
-        Data::Return { value } => Data::Return { value: value.as_ref().map(go) },
-        Data::Simple { body } => Data::Simple { body: go(body) },
-        Data::If { cond, body, alt } => Data::If { cond: go(cond), body: go(body), alt: alt.as_ref().map(go) },
-        Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond), cons: go(cons), alt: go(alt) },
-        Data::Sub { expr, prop, optional } => Data::Sub { expr: go(expr), prop: go(prop), optional: *optional },
-        Data::Dot { expr, prop, optional, quote, private } => Data::Dot {
-            expr: go(expr),
-            prop: prop.clone(),
-            optional: *optional,
-            quote: *quote,
-            private: *private,
-        },
-        Data::Array { elements } => Data::Array { elements: elements.iter().map(go).collect() },
-        Data::Block { body } => Data::Block { body: body.iter().filter_map(|s| rewrite_stmt(s, cand, replacement)).collect() },
-        _ => return Rc::clone(n),
-    };
-    node(n, data)
-}
-
-fn block_scoped_names(stmts: &[N]) -> std::collections::HashSet<String> {
-    let mut names = std::collections::HashSet::new();
-    fn rec(n: &N, names: &mut std::collections::HashSet<String>) {
+fn block_scoped_names(stmts: &[N]) -> HashSet<String> {
+    let mut names = HashSet::new();
+    fn rec(n: &N, names: &mut HashSet<String>) {
         match &n.data {
-            Data::Defs { kind: DefKind::Let | DefKind::Const, defs, .. } => {
+            Data::Defs {
+                kind: DefKind::Let | DefKind::Const | DefKind::Using,
+                defs,
+                ..
+            } => {
                 for d in defs {
                     if let Data::VarDef { name, .. } = &d.data {
                         if let Some(sym) = sym_name(name) {
@@ -919,154 +2353,13 @@ fn block_scoped_names(stmts: &[N]) -> std::collections::HashSet<String> {
     names
 }
 
-fn writes_name(n: &N, name: &str) -> bool {
-    fn rec(n: &N, name: &str) -> bool {
-        match &n.data {
-            Data::Func { .. } | Data::Class { .. } => false,
-            Data::Assign { left, right, .. } => ref_name(left) == Some(name) || rec(left, name) || rec(right, name),
-            Data::Unary { op, expr, .. } if matches!(op.as_str(), "++" | "--") => ref_name(expr) == Some(name) || rec(expr, name),
-            Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => rec(init, name) || rec(object, name) || rec(body, name),
-            Data::VarDef { name: bound, value } => sym_name(bound) == Some(name) || value.as_ref().is_some_and(|v| rec(v, name)),
-            other => count_child_writes(other, name, rec),
-        }
-    }
-    fn count_child_writes(data: &Data, name: &str, rec: fn(&N, &str) -> bool) -> bool {
-        match data {
-            Data::Block { body } | Data::Defs { defs: body, .. } => body.iter().any(|s| rec(s, name)),
-            Data::If { cond, body, alt } => rec(cond, name) || rec(body, name) || alt.as_ref().is_some_and(|a| rec(a, name)),
-            Data::While { cond, body } | Data::Do { body, cond } => rec(cond, name) || rec(body, name),
-            Data::For { init, cond, step, body } => {
-                init.as_ref().is_some_and(|v| rec(v, name)) || cond.as_ref().is_some_and(|v| rec(v, name)) || step.as_ref().is_some_and(|v| rec(v, name)) || rec(body, name)
-            }
-            Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => rec(left, name) || rec(right, name),
-            Data::Call { expr, args, .. } => rec(expr, name) || args.iter().any(|a| rec(a, name)),
-            Data::Seq { exprs } => exprs.iter().any(|e| rec(e, name)),
-            Data::Unary { expr, .. } | Data::Return { value: Some(expr) } | Data::Simple { body: expr } | Data::Dot { expr, .. } => rec(expr, name),
-            Data::Cond { cond, cons, alt } => rec(cond, name) || rec(cons, name) || rec(alt, name),
-            _ => false,
-        }
-    }
-    rec(n, name)
-}
-
-fn count_reads(stmts: &[N], name: &str) -> usize {
-    stmts.iter().map(|s| count_reads_node(s, name)).sum()
-}
-
-fn count_reads_node(n: &N, name: &str) -> usize {
-    if ref_name(n) == Some(name) {
-        return 1;
-    }
-    match &n.data {
-        // Reads inside a nested function count, so a straight-line scan
-        // that cannot see them refuses the collapse.
-        Data::Func { body, .. } => body.iter().map(|s| count_reads_node(s, name)).sum(),
-        Data::Class { .. } => 0,
-        Data::Assign { left, right, .. } => {
-            let left_n = if ref_name(left) == Some(name) { 0 } else { count_reads_node(left, name) };
-            left_n + count_reads_node(right, name)
-        }
-        Data::Call { expr, args, .. } => count_reads_node(expr, name) + args.iter().map(|a| count_reads_node(a, name)).sum::<usize>(),
-        Data::Binary { left, right, .. } => count_reads_node(left, name) + count_reads_node(right, name),
-        Data::Unary { expr, .. } | Data::Return { value: Some(expr) } | Data::Simple { body: expr } | Data::Dot { expr, .. } | Data::Await { expr } | Data::Spread { expr } => count_reads_node(expr, name),
-        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().map(|e| count_reads_node(e, name)).sum(),
-        Data::If { cond, body, alt } => {
-            count_reads_node(cond, name) + count_reads_node(body, name) + alt.as_ref().map(|a| count_reads_node(a, name)).unwrap_or(0)
-        }
-        Data::Cond { cond, cons, alt } => count_reads_node(cond, name) + count_reads_node(cons, name) + count_reads_node(alt, name),
-        Data::Block { body } => body.iter().map(|s| count_reads_node(s, name)).sum(),
-        Data::VarDef { value, .. } => value.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0),
-        Data::Defs { defs, .. } => defs.iter().map(|d| count_reads_node(d, name)).sum(),
-        Data::For { init, cond, step, body } => {
-            init.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0)
-                + cond.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0)
-                + step.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0)
-                + count_reads_node(body, name)
-        }
-        Data::ForIn { init, object, body } => count_reads_node(init, name) + count_reads_node(object, name) + count_reads_node(body, name),
-        Data::ForOf { init, object, body, .. } => count_reads_node(init, name) + count_reads_node(object, name) + count_reads_node(body, name),
-        Data::While { cond, body } | Data::Do { body, cond } => count_reads_node(cond, name) + count_reads_node(body, name),
-        Data::Switch { expr, body } => count_reads_node(expr, name) + body.iter().map(|s| count_reads_node(s, name)).sum::<usize>(),
-        Data::Try { body, catch, finally } => {
-            count_reads_node(body, name)
-                + catch.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0)
-                + finally.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0)
-        }
-        Data::Catch { body, .. } | Data::Finally { body } | Data::Labeled { body, .. } => count_reads_node(body, name),
-        Data::Yield { expr, .. } => expr.as_ref().map(|v| count_reads_node(v, name)).unwrap_or(0),
-        _ => 0,
-    }
-}
-
-/// Receiver whose property read cannot throw under `pure_getters: "strict"`.
-fn safe_receiver(n: &N) -> bool {
-    matches!(
-        n.data,
-        Data::Number { .. }
-            | Data::String { .. }
-            | Data::True
-            | Data::False
-            | Data::Null
-            | Data::Array { .. }
-            | Data::Object { .. }
-            | Data::Func { .. }
-            | Data::Class { .. }
-    )
-}
-
-fn mentions(n: &N, name: &str) -> bool {
-    count_reads_node(n, name) > 0
-}
-
-/// Symbols the candidate value reads. A later write of one of them changes
-/// the value, so the scan stops (`lvalues` in `tighten-body.js`).
-fn watched_symbols(n: &N) -> std::collections::HashSet<String> {
-    let mut out = std::collections::HashSet::new();
-    fn rec(n: &N, out: &mut std::collections::HashSet<String>) {
-        if let Some(name) = ref_name(n) {
-            out.insert(name.to_string());
-        }
-        match &n.data {
-            Data::Func { .. } | Data::Class { .. } => {}
-            Data::Assign { left, right, .. } => {
-                rec(left, out);
-                rec(right, out);
-            }
-            Data::Binary { left, right, .. } => {
-                rec(left, out);
-                rec(right, out);
-            }
-            Data::Call { expr, args, .. } => {
-                rec(expr, out);
-                args.iter().for_each(|a| rec(a, out));
-            }
-            Data::Unary { expr, .. } | Data::Dot { expr, .. } | Data::Return { value: Some(expr) } => rec(expr, out),
-            Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().for_each(|e| rec(e, out)),
-            Data::Cond { cond, cons, alt } => {
-                rec(cond, out);
-                rec(cons, out);
-                rec(alt, out);
-            }
-            _ => {}
-        }
-    }
-    rec(n, &mut out);
-    out
-}
-
-fn has_side_effects(n: &N) -> bool {
-    match &n.data {
-        Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null | Data::This => false,
-        Data::Symbol { kind: SymKind::Ref, .. } => false,
-        Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "void" | "!" | "~" | "-" | "+") => has_side_effects(expr),
-        Data::Binary { op, left, right } if !matches!(op.as_str(), "=" | "+=" | "-=") => has_side_effects(left) || has_side_effects(right),
-        _ => true,
-    }
-}
-
 fn ref_name(n: &N) -> Option<&str> {
     match &n.data {
-        Data::Symbol { name, kind: SymKind::Ref, .. } => Some(name),
+        Data::Symbol {
+            name,
+            kind: SymKind::Ref,
+            ..
+        } => Some(name),
         _ => None,
     }
 }
@@ -1078,99 +2371,175 @@ fn sym_name(n: &N) -> Option<&str> {
     }
 }
 
+fn sym_kind(n: &N) -> Option<SymKind> {
+    match &n.data {
+        Data::VarDef { name, .. } => match &name.data {
+            Data::Symbol { kind, .. } => Some(*kind),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn sym_ref(name: &str, span: &N) -> N {
+    node(
+        span,
+        Data::Symbol {
+            name: name.to_string(),
+            kind: SymKind::Ref,
+            quote: None,
+        },
+    )
+}
+
 fn ptr(n: &N) -> usize {
     Rc::as_ptr(n) as usize
 }
 
 fn node(orig: &N, data: Data) -> N {
-    Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+    Rc::new(Node {
+        start: orig.start.clone(),
+        end: orig.end.clone(),
+        data,
+    })
 }
 
-fn drop_unread_var(stmts: &[N], name: &str) -> Vec<N> {
-    stmts.iter().filter_map(|stmt| match &stmt.data {
-        Data::Defs { kind, defs, await_ } => {
-            let defs: Vec<N> = defs.iter().filter(|d| match &d.data {
-                Data::VarDef { name: sym, value: None } => sym_name(sym) != Some(name),
-                _ => true,
-            }).cloned().collect();
-            if defs.is_empty() {
-                None
-            } else {
-                Some(node(stmt, Data::Defs { kind: *kind, defs, await_: *await_ }))
-            }
-        }
-        _ => Some(Rc::clone(stmt)),
-    }).collect()
+fn num0(span: &N) -> N {
+    node(
+        span,
+        Data::Number {
+            value: 0.0,
+            raw: "0".into(),
+        },
+    )
 }
 
-fn count_reads_deep(stmts: &[N], name: &str) -> usize {
-    fn rec(n: &N, name: &str) -> usize {
-        let here = if ref_name(n) == Some(name) { 1 } else { 0 };
-        let nested = match &n.data {
-            Data::Assign { left, right, .. } => {
-                let left_n = if ref_name(left) == Some(name) { 0 } else { rec(left, name) };
-                left_n + rec(right, name)
-            }
-            Data::Func { body, .. } | Data::Block { body } => body.iter().map(|s| rec(s, name)).sum(),
-            Data::Call { expr, args, .. } => rec(expr, name) + args.iter().map(|a| rec(a, name)).sum::<usize>(),
-            Data::Binary { left, right, .. } => rec(left, name) + rec(right, name),
-            Data::Seq { exprs } => exprs.iter().map(|e| rec(e, name)).sum(),
-            Data::If { cond, body, alt } => rec(cond, name) + rec(body, name) + alt.as_ref().map(|a| rec(a, name)).unwrap_or(0),
-            Data::VarDef { value, .. } => value.as_ref().map(|v| rec(v, name)).unwrap_or(0),
-            Data::Defs { defs, .. } => defs.iter().map(|d| rec(d, name)).sum(),
-            Data::Return { value } => value.as_ref().map(|v| rec(v, name)).unwrap_or(0),
-            Data::Simple { body } | Data::Unary { expr: body, .. } => rec(body, name),
-            _ => 0,
-        };
-        here + nested
-    }
-    stmts.iter().map(|s| rec(s, name)).sum()
+fn void0(span: &N) -> N {
+    node(
+        span,
+        Data::Unary {
+            op: "void".into(),
+            expr: num0(span),
+            prefix: true,
+        },
+    )
 }
 
-fn map_walk(n: &N, data: &Data, unused: bool, toplevel_vars: bool) -> N {
-    let go = |c: &N| walk(c, unused, toplevel_vars);
+fn map_walk(n: &N, data: &Data, env: &Env<'_>) -> N {
+    let go = |c: &N| walk(c, env);
     let rebuilt = match data {
-        Data::If { cond, body, alt } => Data::If { cond: go(cond), body: go(body), alt: alt.as_ref().map(go) },
-        Data::For { init, cond, step, body } => Data::For {
-            init: init.as_ref().map(go),
-            cond: cond.as_ref().map(go),
-            step: step.as_ref().map(go),
+        Data::If { cond, body, alt } => Data::If {
+            cond: go(cond),
             body: go(body),
+            alt: alt.as_ref().map(go),
         },
-        Data::While { cond, body } => Data::While { cond: go(cond), body: go(body) },
-        Data::Do { body, cond } => Data::Do { body: go(body), cond: go(cond) },
         Data::Simple { body } => Data::Simple { body: go(body) },
-        Data::Return { value } => Data::Return { value: value.as_ref().map(go) },
-        Data::Throw { value } => Data::Throw { value: go(value) },
-        Data::Switch { expr, body } => Data::Switch { expr: go(expr), body: body.iter().map(go).collect() },
-        Data::Case { expr, body } => Data::Case { expr: go(expr), body: body.iter().map(go).collect() },
-        Data::Default { body } => Data::Default { body: body.iter().map(go).collect() },
-        Data::Try { body, catch, finally } => Data::Try {
-            body: go(body),
-            catch: catch.as_ref().map(go),
-            finally: finally.as_ref().map(go),
+        Data::Return { value } => Data::Return {
+            value: value.as_ref().map(go),
         },
-        Data::Catch { arg, body } => Data::Catch { arg: arg.clone(), body: go(body) },
+        Data::Throw { value } => Data::Throw { value: go(value) },
+        Data::Switch { expr, body } => Data::Switch {
+            expr: go(expr),
+            body: body.iter().map(go).collect(),
+        },
+        Data::Case { expr, body } => Data::Case {
+            expr: go(expr),
+            body: body.iter().map(go).collect(),
+        },
+        Data::Default { body } => Data::Default {
+            body: body.iter().map(go).collect(),
+        },
+        Data::Catch { arg, body } => Data::Catch {
+            arg: arg.clone(),
+            body: go(body),
+        },
         Data::Finally { body } => Data::Finally { body: go(body) },
-        Data::Labeled { label, body } => Data::Labeled { label: Rc::clone(label), body: go(body) },
-        Data::ForIn { init, object, body } => Data::ForIn { init: go(init), object: go(object), body: go(body) },
-        Data::ForOf { init, object, body, await_ } => Data::ForOf { init: go(init), object: go(object), body: go(body), await_: *await_ },
-        Data::With { expr, body } => Data::With { expr: go(expr), body: go(body) },
-        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr), prefix: *prefix },
-        Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left), right: go(right) },
-        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: go(left), right: go(right), logical: *logical },
-        Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(go).collect() },
-        Data::Call { expr, args, optional, is_new } => Data::Call { expr: go(expr), args: args.iter().map(go).collect(), optional: *optional, is_new: *is_new },
-        Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond), cons: go(cons), alt: go(alt) },
-        Data::Array { elements } => Data::Array { elements: elements.iter().map(go).collect() },
-        Data::Object { props } => Data::Object { props: props.iter().map(go).collect() },
-        Data::Defs { kind, defs, await_ } => Data::Defs { kind: *kind, defs: defs.iter().map(go).collect(), await_: *await_ },
-        Data::VarDef { name, value } => Data::VarDef { name: Rc::clone(name), value: value.as_ref().map(go) },
-        Data::Class { stmt, name, extends, props } => Data::Class { stmt: *stmt, name: name.clone(), extends: extends.as_ref().map(go), props: props.iter().map(go).collect() },
-        Data::Prop { method, key, value, static_, private, generator, async_ } => Data::Prop {
+        Data::Labeled { label, body } => Data::Labeled {
+            label: Rc::clone(label),
+            body: go(body),
+        },
+        Data::With { expr, body } => Data::With {
+            expr: go(expr),
+            body: go(body),
+        },
+        Data::Unary { op, expr, prefix } => Data::Unary {
+            op: op.clone(),
+            expr: go(expr),
+            prefix: *prefix,
+        },
+        Data::Binary { op, left, right } => Data::Binary {
+            op: op.clone(),
+            left: go(left),
+            right: go(right),
+        },
+        Data::Assign {
+            op,
+            left,
+            right,
+            logical,
+        } => Data::Assign {
+            op: op.clone(),
+            left: go(left),
+            right: go(right),
+            logical: *logical,
+        },
+        Data::Seq { exprs } => Data::Seq {
+            exprs: exprs.iter().map(go).collect(),
+        },
+        Data::Call {
+            expr,
+            args,
+            optional,
+            is_new,
+        } => Data::Call {
+            expr: go(expr),
+            args: args.iter().map(go).collect(),
+            optional: *optional,
+            is_new: *is_new,
+        },
+        Data::Cond { cond, cons, alt } => Data::Cond {
+            cond: go(cond),
+            cons: go(cons),
+            alt: go(alt),
+        },
+        Data::Array { elements } => Data::Array {
+            elements: elements.iter().map(go).collect(),
+        },
+        Data::Object { props } => Data::Object {
+            props: props.iter().map(go).collect(),
+        },
+        Data::Defs { kind, defs, await_ } => Data::Defs {
+            kind: *kind,
+            defs: defs.iter().map(go).collect(),
+            await_: *await_,
+        },
+        Data::VarDef { name, value } => Data::VarDef {
+            name: Rc::clone(name),
+            value: value.as_ref().map(go),
+        },
+        Data::Class {
+            stmt,
+            name,
+            extends,
+            props,
+        } => Data::Class {
+            stmt: *stmt,
+            name: name.clone(),
+            extends: extends.as_ref().map(go),
+            props: props.iter().map(go).collect(),
+        },
+        Data::Prop {
+            method,
+            key,
+            value,
+            static_,
+            private,
+            generator,
+            async_,
+        } => Data::Prop {
             method: *method,
             key: match key {
-                ast::Key::Computed(expr) => ast::Key::Computed(go(expr)),
+                Key::Computed(expr) => Key::Computed(go(expr)),
                 other => other.clone(),
             },
             value: go(value),
@@ -1179,9 +2548,14 @@ fn map_walk(n: &N, data: &Data, unused: bool, toplevel_vars: bool) -> N {
             generator: *generator,
             async_: *async_,
         },
-        Data::Field { key, value, static_, private } => Data::Field {
+        Data::Field {
+            key,
+            value,
+            static_,
+            private,
+        } => Data::Field {
             key: match key {
-                ast::Key::Computed(expr) => ast::Key::Computed(go(expr)),
+                Key::Computed(expr) => Key::Computed(go(expr)),
                 other => other.clone(),
             },
             value: value.as_ref().map(go),

@@ -7,7 +7,7 @@ Terser 5.51.4. Byte-exact output first. Board: `git rev-parse HEAD` (12) + `-` +
 | `compress/index.js` `compress` | `compress/src/lib.rs` `compress` | passes loop done. `expression` runs `process_expression` around the passes |
 | `reduce-vars.js` `reset_def` / `safe_to_assign` / `AST_SymbolRef` / `mark_escaped` | `reduce_vars.rs` | constants + function-body `let`/`const` + `direct_access`. Not: escaped depth beyond the mark, lambda single_use, IIFE virtual params |
 | `inline.js` `inline_into_symbolref` | `reduce_vars.rs` `inline_ref` | constants only. Regexp is not a constant. Const write clears `fixed` |
-| `tighten-body.js` `collapse` | `tighten.rs` `collapse` | scan + `find_stop`. Straight-line helper removed |
+| `tighten-body.js` `collapse` | `tighten.rs` `collapse` | `extract_candidates`, `find_stop`, `get_lhs`, `mangleable_var`, `replace_all_symbols`, `is_lhs_local`, `get_lvalues`, `value_has_side_effects`, `handle_custom_scan_order`, `remove_candidate`, `maintain_this_binding`. One read is replaced; a single-use `var` substitutes the value |
 | `drop-unused.js` `drop_unused` | `drop_unused.rs` `drop_unused` / `passes` | three walks. Not yet: `top_retain`, direct `eval`, `keep_fnames` |
 | `drop-unused.js` `assign_as_unused` | `drop_unused.rs` `assign_as_unused` | `=` of a symbol. Write-only `++` not yet |
 | `drop-unused.js` `scan_ref_scoped` | `drop_unused.rs` `scan_ref_scoped` | pass 1. Side-effect inits only; destructuring values always |
@@ -60,3 +60,5 @@ Side-effect board: default 1896/3013 → 1991/3013, 95 newly passing, 0 newly fa
 `fold` is `opt_table`: one arm per node type. New arms: postfix `++`/`--` sequence lift, `AST_Chain`, `AST_Return`, `AST_Yield`, `AST_DefaultAssign`, `AST_VarDef`, empty `AST_Definitions`, `AST_TemplateString`, `AST_RegExp` in boolean context.
 
 Dispatch board: default 1991/3013 → 2008/3013, 17 newly passing, 0 newly failing, lwc 177/339 → 184/339.
+
+Collapse board: default 2008/3013 → 2055/3013, 47 newly passing, 0 newly failing. `collapse_vars` default 115/212 → 127/212, fixture 113/212 → 129/212.
