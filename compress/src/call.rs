@@ -35,7 +35,7 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
     let resolved = resolve_callee(expr, cx, ann.noinline);
     // Unused-argument trimming runs before `inline_into_call`, including for globals.
     let (func, args, trimmed) = match &resolved.func {
-        Some(func) if cx.opts.unused && !uses_arguments(func) => trim_unused(func, &args, resolved.direct),
+        Some(func) if cx.opts.unused && !uses_arguments(func) => trim_unused(func, &args, resolved.direct, cx),
         _ => (resolved.func, args, false),
     };
     // A pure call in statement position contributes only its arguments' side effects.
@@ -829,7 +829,7 @@ fn inline_array_like_spread(args: &[N]) -> (Vec<N>, bool) {
     (out, changed)
 }
 
-fn trim_unused(func: &N, args: &[N], direct: bool) -> (Option<N>, Vec<N>, bool) {
+fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N>, bool) {
     // `def_optimize(AST_Call)` returns before trimming when the function is pinned.
     if fn_pinned(func) || args.iter().any(|a| matches!(a.data, Data::Spread { .. })) {
         return (Some(Rc::clone(func)), args.to_vec(), false);
@@ -853,17 +853,27 @@ fn trim_unused(func: &N, args: &[N], direct: bool) -> (Option<N>, Vec<N>, bool) 
         Data::Func { body, .. } => body,
         _ => body,
     };
+    // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
+    // after the function's own body is optimized: a call from inside the
+    // callee sees none.
+    let inside_callee = cx.parents.iter().any(|p| {
+        Rc::ptr_eq(p, func)
+            || matches!((&p.data, &func.data), (Data::Func { name: Some(a), .. }, Data::Func { name: Some(b), .. }) if sym_str(a).is_some() && sym_str(a) == sym_str(b) && params_same(p, func))
+    });
     let mut kept = Vec::new();
     let mut last = 0usize;
     for (i, arg) in args.iter().enumerate() {
         let extra = i >= params.len();
-        let unused = extra || sym_str(&params[i]).is_some_and(|name| !refs_name(body, name));
+        let unused = extra || (!inside_callee && sym_str(&params[i]).is_some_and(|name| !refs_name(body, name)));
         if unused {
-            if !eval::is_pure(arg) {
-                kept.push(Rc::clone(arg));
-            } else if !extra {
-                kept.push(num(arg, 0.0));
-                continue;
+            // terser `self.args[i].drop_side_effect_free(compressor)`.
+            match crate::unary::drop_side_effect_free(arg, cx, false) {
+                Some(node) => kept.push(node),
+                None if !extra => {
+                    kept.push(num(arg, 0.0));
+                    continue;
+                }
+                None => {}
             }
         } else {
             kept.push(Rc::clone(arg));
@@ -874,6 +884,13 @@ fn trim_unused(func: &N, args: &[N], direct: bool) -> (Option<N>, Vec<N>, bool) 
     let args_changed = kept.len() != args.len() || kept.iter().zip(args.iter()).any(|(a, b)| !Rc::ptr_eq(a, b));
     let func = if func_changed { Some(func_with_params(func, params)) } else { Some(Rc::clone(func)) };
     (func, kept, func_changed || args_changed)
+}
+
+fn params_same(a: &N, b: &N) -> bool {
+    match (&a.data, &b.data) {
+        (Data::Func { args: x, .. }, Data::Func { args: y, .. }) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| sym_str(p) == sym_str(q)),
+        _ => false,
+    }
 }
 
 fn iife_drops_params(func: &N) -> bool {
