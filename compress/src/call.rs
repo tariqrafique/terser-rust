@@ -856,7 +856,8 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
     // callee sees none.
-    let inside_callee = cx.parents.iter().any(|p| {
+    let processed = direct || cx.squeezed.contains(&(Rc::as_ptr(func) as usize)) || cx.optimized.contains(&(Rc::as_ptr(func) as usize));
+    let inside_callee = !processed || cx.parents.iter().any(|p| {
         Rc::ptr_eq(p, func)
             || matches!((&p.data, &func.data), (Data::Func { name: Some(a), .. }, Data::Func { name: Some(b), .. }) if sym_str(a).is_some() && sym_str(a) == sym_str(b) && params_same(p, func))
     });
