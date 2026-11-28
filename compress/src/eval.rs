@@ -19,6 +19,8 @@ pub(crate) enum Lit {
     /// terser `def_eval(AST_BigInt)` `BigInt(this.value)`. A literal or result outside
     /// `i128` is not evaluated.
     BigInt(i128),
+    /// terser `def_eval(AST_RegExp)`: a `RegExp` object (source, flags in `flags` order).
+    RegExp(String, String),
 }
 
 impl Lit {
@@ -26,6 +28,7 @@ impl Lit {
         match self {
             Lit::Num(n) => *n != 0.0 && !n.is_nan(),
             Lit::BigInt(n) => *n != 0,
+            Lit::RegExp(..) => true,
             Lit::Str(s) => !s.is_empty(),
             Lit::Bool(b) => *b,
             Lit::Null | Lit::Undef => false,
@@ -410,6 +413,7 @@ fn lit_text(lit: &Lit) -> String {
         Lit::Null => "null".into(),
         Lit::Undef => "undefined".into(),
         Lit::BigInt(n) => n.to_string(),
+        Lit::RegExp(source, flags) => format!("/{source}/{flags}"),
     }
 }
 
@@ -2916,6 +2920,7 @@ fn normalize_prop_key(lit: Lit) -> PropKey {
         Lit::Null => PropKey::Null,
         Lit::Undef => PropKey::Undef,
         Lit::BigInt(n) => normalize_prop_key(Lit::Str(n.to_string())),
+        Lit::RegExp(source, flags) => normalize_prop_key(Lit::Str(format!("/{source}/{flags}"))),
     }
 }
 
@@ -3515,6 +3520,13 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
 }
 
 fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
+    eval_at(n, table, 1)
+}
+
+/// terser `_eval(compressor, depth)`: `depth` grows through converting operators and
+/// property access; an object value read through an escaped reference deeper than its
+/// `escaped` depth is no value.
+fn eval_at(n: &N, table: Option<&SymTable>, depth: u32) -> Option<Lit> {
     match &n.data {
         Data::Number { value, .. } => Some(Lit::Num(*value)),
         Data::String { value, .. } => Some(Lit::Str(value.clone())),
@@ -3523,8 +3535,11 @@ fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
         Data::Null => Some(Lit::Null),
         Data::Infinity => Some(Lit::Num(f64::INFINITY)),
         Data::BigInt { value } => parse_bigint(value).map(Lit::BigInt),
+        // terser `def_eval(AST_RegExp)`: a `RegExp` when `regexp_is_safe(source)`.
+        Data::RegExp { source, flags } if regexp_is_safe(source) => Some(Lit::RegExp(source.clone(), canonical_flags(flags))),
         Data::Unary { op, expr, prefix: true } => {
-            let inner = eval_in(expr, table)?;
+            // `non_converting_unary`: `!`, `typeof`, `void` keep the depth.
+            let inner = eval_at(expr, table, if matches!(op.as_str(), "!" | "typeof" | "void") { depth } else { depth + 1 })?;
             if let Lit::BigInt(v) = inner {
                 return match op.as_str() {
                     "!" => Some(Lit::Bool(v == 0)),
@@ -3546,57 +3561,59 @@ fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
             }
         }
         Data::Binary { op, left, right } => {
+            // `non_converting_binary`: `&&`, `||`, `??`, `===`, `!==` keep the depth.
+            let depth = if matches!(op.as_str(), "&&" | "||" | "??" | "===" | "!==") { depth } else { depth + 1 };
             if op == "&&" || op == "||" || op == "??" {
-                let l = eval_in(left, table)?;
+                let l = eval_at(left, table, depth)?;
                 return match op.as_str() {
                     "&&" => {
                         if !l.truthy() {
                             Some(l)
                         } else {
-                            eval_in(right, table)
+                            eval_at(right, table, depth)
                         }
                     }
                     "||" => {
                         if l.truthy() {
                             Some(l)
                         } else {
-                            eval_in(right, table)
+                            eval_at(right, table, depth)
                         }
                     }
                     _ => {
                         if matches!(l, Lit::Null | Lit::Undef) {
-                            eval_in(right, table)
+                            eval_at(right, table, depth)
                         } else {
                             Some(l)
                         }
                     }
                 };
             }
-            let l = eval_in(left, table)?;
-            let r = eval_in(right, table)?;
+            let l = eval_at(left, table, depth)?;
+            let r = eval_at(right, table, depth)?;
             eval_bin(op, l, r)
         }
         Data::Cond { cond, cons, alt } => {
-            let c = eval_in(cond, table)?;
-            if c.truthy() { eval_in(cons, table) } else { eval_in(alt, table) }
+            let c = eval_at(cond, table, depth)?;
+            if c.truthy() { eval_at(cons, table, depth) } else { eval_at(alt, table, depth) }
         }
         // terser `evaluate.js` `AST_PropAccess`: `.length` of an evaluated array or string.
         Data::Dot { expr, prop, optional: false, private: false, .. } if prop == "length" => match &expr.data {
             Data::String { value, .. } => Some(Lit::Num(utf16_len(value) as f64)),
             Data::Array { elements } => {
                 for e in elements {
-                    eval_in(e, table)?;
+                    eval_at(e, table, depth + 1)?;
                 }
                 Some(Lit::Num(elements.len() as f64))
             }
             // `this.expression._eval(compressor, depth + 1)`: a reference to a string.
-            Data::Symbol { kind: SymKind::Ref, .. } => match eval_in(expr, table)? {
+            Data::Symbol { kind: SymKind::Ref, .. } => match eval_at(expr, table, depth + 1)? {
                 Lit::Str(s) => Some(Lit::Num(utf16_len(&s) as f64)),
                 _ => None,
             },
             _ => None,
         },
-        Data::Symbol { kind: SymKind::Ref, .. } => eval_ref(n, table?),
+        Data::Symbol { kind: SymKind::Ref, .. } => eval_ref(n, table?, depth),
         _ => None,
     }
 }
@@ -3607,8 +3624,7 @@ thread_local! {
 }
 
 /// terser `evaluate.js` `def_eval(AST_SymbolRef)`: the reference's `fixed_value()`, evaluated.
-/// A value of `typeof "object"` (the `escaped` depth test) cannot come out of `eval_in`.
-fn eval_ref(n: &N, table: &SymTable) -> Option<Lit> {
+fn eval_ref(n: &N, table: &SymTable, depth: u32) -> Option<Lit> {
     let id = table.def_of(n)?;
     let def = table.defs.get(id)?;
     if def.suppress_fixed.get() || table.unfixed_ref(n) {
@@ -3620,9 +3636,32 @@ fn eval_ref(n: &N, table: &SymTable) -> Option<Lit> {
         return None;
     }
     REENTRANT_REF_EVAL.with(|set| set.borrow_mut().push(nid));
-    let value = eval_in(fixed, Some(table));
+    let value = eval_at(fixed, Some(table), depth);
     REENTRANT_REF_EVAL.with(|set| set.borrow_mut().pop());
+    // `value && typeof value == "object"`: `escaped && depth > escaped` is no value.
+    if matches!(value, Some(Lit::RegExp(..))) && def.escaped != 0 && depth > def.escaped {
+        return None;
+    }
     value
+}
+
+/// terser `utils/index.js` `regexp_is_safe`: `/^[\\/|\0\s\w^$.[\]()]*$/`.
+fn regexp_is_safe(source: &str) -> bool {
+    source.chars().all(|c| {
+        matches!(c, '\\' | '/' | '|' | '\0' | '^' | '$' | '.' | '[' | ']' | '(' | ')' | '_')
+            || c.is_ascii_alphanumeric()
+            || is_js_space(c)
+    })
+}
+
+/// JavaScript `\s`: white space and line terminators.
+fn is_js_space(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+}
+
+/// `RegExp.prototype.flags`: the flags in the order `dgimsuvy`.
+fn canonical_flags(flags: &str) -> String {
+    "dgimsuvy".chars().filter(|c| flags.contains(*c)).collect()
 }
 
 /// terser `AST_Node._eval`, with references evaluated through their fixed values
@@ -3657,6 +3696,7 @@ impl Lit {
             Lit::Null => 0.0,
             Lit::Undef => f64::NAN,
             Lit::BigInt(_) => return None,
+            Lit::RegExp(..) => f64::NAN,
             Lit::Str(s) => {
                 let t = s.trim();
                 if t.is_empty() {
@@ -3684,6 +3724,19 @@ fn eval_bin(op: &str, l: Lit, r: Lit) -> Option<Lit> {
         (Lit::BigInt(_), _) | (_, Lit::BigInt(_)) => return None,
         _ => {}
     }
+    // A `RegExp` is an object: two are not compared by reference, `===` with a primitive
+    // is false, and anything else converts it to its string.
+    let identity = matches!(op, "==" | "!=" | "===" | "!==");
+    match (&l, &r) {
+        (Lit::RegExp(..), Lit::RegExp(..)) if identity => return None,
+        (Lit::RegExp(..), _) | (_, Lit::RegExp(..)) if op == "===" || op == "!==" => return Some(Lit::Bool(op == "!==")),
+        _ => {}
+    }
+    let as_prim = |x: Lit| match x {
+        Lit::RegExp(source, flags) => Lit::Str(format!("/{source}/{flags}")),
+        x => x,
+    };
+    let (l, r) = (as_prim(l), as_prim(r));
     if op == "+" {
         if matches!(l, Lit::Str(_)) || matches!(r, Lit::Str(_)) {
             return Some(Lit::Str(format!("{}{}", js_str(&l), js_str(&r))));
@@ -3763,6 +3816,7 @@ fn js_str(lit: &Lit) -> String {
         Lit::Null => "null".into(),
         Lit::Undef => "undefined".into(),
         Lit::BigInt(n) => n.to_string(),
+        Lit::RegExp(source, flags) => format!("/{source}/{flags}"),
     }
 }
 
@@ -3821,6 +3875,8 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
         Lit::Null => atom(orig, Data::Null),
         Lit::Undef => void0(orig),
         Lit::BigInt(n) => atom(orig, Data::BigInt { value: n.to_string() }),
+        // `regexp_source_fix(val.source)`: a literal's source has no raw line terminator.
+        Lit::RegExp(source, flags) => atom(orig, Data::RegExp { source, flags }),
     }
 }
 
@@ -3973,6 +4029,8 @@ fn eval_typeof(expr: &N, cx: &Cx) -> Option<Lit> {
         Lit::Null => "object",
         Lit::Undef => "undefined",
         Lit::BigInt(_) => "bigint",
+        // "typeof <RegExp> returns "object" or "function" on different platforms".
+        Lit::RegExp(..) => return None,
     }.into()))
 }
 
