@@ -912,7 +912,11 @@ fn apply_candidate(
         in_try: env.in_try,
         reads_left: target_reads,
         block_only: env.block_only,
-        inner_shadow: inner_lvalue_names(&cand.value).iter().any(|n| env.declared.contains(n) || env.locals.contains(n)),
+        // terser `lvalues.set(lhs.name, ...)` replaces an inner name equal to
+        // the lhs with the lhs's own definition, so that one never shadows.
+        inner_shadow: inner_lvalue_names(&cand.value)
+            .iter()
+            .any(|n| *n != cand.name && (env.declared.contains(n) || env.locals.contains(n))),
     };
     scan_node(&stmts[index], &mut scan);
     if !scan.abort {
