@@ -154,6 +154,9 @@ struct Use {
     loop_scopes: HashSet<usize>,
     /// terser `sym.eliminated`.
     eliminated: std::cell::RefCell<HashMap<usize, usize>>,
+    /// terser `drop_funcs`: also for a function declaration in a block of this
+    /// scope (sloppy mode binds it in this scope, `scope.js` `AST_SymbolDefun`).
+    drop_funcs: bool,
 }
 
 /// Passes 1–3 of `AST_Scope.drop_unused`.
@@ -175,6 +178,7 @@ fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>
         orig_index: HashMap::new(),
         eliminated: Default::default(),
         loop_scopes: loop_scopes(original, table),
+        drop_funcs,
     };
     {
         let mut by_id: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -321,6 +325,7 @@ fn scan_in_use(nodes: &[N], table: &SymTable) -> HashSet<usize> {
         orig_index: HashMap::new(),
         eliminated: Default::default(),
         loop_scopes: HashSet::new(),
+        drop_funcs: false,
     };
     for n in nodes {
         scan_ref_scoped(n, table, &mut u, true);
@@ -784,7 +789,7 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         Data::Block { body } => {
             let mut stmts = Vec::new();
             for stmt in body {
-                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, u.drop_funcs, &mut stmts);
             }
             Data::Block { body: stmts }
         }
@@ -810,14 +815,14 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         Data::Case { expr, body } => {
             let mut stmts = Vec::new();
             for stmt in body {
-                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, u.drop_funcs, &mut stmts);
             }
             Data::Case { expr: go(expr, false), body: stmts }
         }
         Data::Default { body } => {
             let mut stmts = Vec::new();
             for stmt in body {
-                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, u.drop_funcs, &mut stmts);
             }
             Data::Default { body: stmts }
         }
@@ -851,7 +856,7 @@ fn one(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: boo
         return rewrite_expr(n, table, u, scope_id, drop_vars, true).unwrap_or_else(|| node(n, Data::Empty));
     }
     let mut out = Vec::new();
-    rewrite_stmt(n, table, u, scope_id, drop_vars, false, &mut out);
+    rewrite_stmt(n, table, u, scope_id, drop_vars, u.drop_funcs, &mut out);
     match out.len() {
         0 => node(n, Data::Empty),
         1 => out.pop().unwrap(),
