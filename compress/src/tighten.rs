@@ -1161,7 +1161,7 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
         Data::Return { .. } | Data::Throw { .. } => {
             st.side_effects || may_modify(&st.cand.name, st)
         }
-        Data::Dot { expr, .. } | Data::Sub { expr, .. } => st.side_effects || !safe_receiver(expr),
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } => st.side_effects || !safe_access(expr, st.declared),
         Data::Symbol {
             name,
             kind: SymKind::Ref,
@@ -2372,7 +2372,7 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             if *optional {
                 expr_effects(expr, locals)
             } else {
-                !safe_receiver(expr) || expr_effects(expr, locals)
+                !safe_access(expr, locals) || expr_effects(expr, locals)
             }
         }
         Data::Sub {
@@ -2383,7 +2383,7 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             if *optional {
                 expr_effects(expr, locals) || expr_effects(prop, locals)
             } else {
-                !safe_receiver(expr) || expr_effects(expr, locals) || expr_effects(prop, locals)
+                !safe_access(expr, locals) || expr_effects(expr, locals) || expr_effects(prop, locals)
             }
         }
         Data::Chain { expr } => expr_effects(expr, locals),
@@ -2485,14 +2485,14 @@ fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
                 || expr_may_throw(alt, locals)
         }
         Data::Dot { expr, optional, .. } => {
-            !*optional && !safe_receiver(expr) || expr_may_throw(expr, locals)
+            !*optional && !safe_access(expr, locals) || expr_may_throw(expr, locals)
         }
         Data::Sub {
             expr,
             prop,
             optional,
         } => {
-            !*optional && !safe_receiver(expr)
+            !*optional && !safe_access(expr, locals)
                 || expr_may_throw(expr, locals)
                 || expr_may_throw(prop, locals)
         }
@@ -2518,6 +2518,16 @@ fn side_effects_external(n: &N, locals: &HashSet<String>) -> bool {
             .is_some_and(|v| side_effects_external(v, locals)),
         _ => false,
     }
+}
+
+/// terser `may_throw_on_access` (`_dot_throw`, `pure_getters` "strict") for
+/// the receivers this port knows: `safe_receiver`, and a lambda's own
+/// `arguments` (`this.name === "arguments" && this.scope instanceof
+/// AST_Lambda`). An `arguments` the table resolves to no function (in an
+/// arrow outside any function) is undeclared and has side effects anyway.
+fn safe_access(n: &N, declared: &HashSet<String>) -> bool {
+    safe_receiver(n)
+        || matches!(&n.data, Data::Symbol { kind: SymKind::Ref, name, .. } if name == "arguments" && is_declared(n, name, declared))
 }
 
 fn safe_receiver(n: &N) -> bool {

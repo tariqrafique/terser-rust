@@ -110,6 +110,9 @@ struct Scope {
     parent: Option<usize>,
     fn_scope: usize,
     func: bool,
+    /// A function other than an arrow: terser `AST_Lambda.init_scope_vars`
+    /// defines `arguments` on it.
+    lambda: bool,
     pinned: bool,
     names: HashMap<String, usize>,
 }
@@ -121,6 +124,7 @@ pub fn bind(root: &N) -> SymTable {
         parent: None,
         fn_scope: 0,
         func: true,
+        lambda: false,
         pinned: false,
         names: HashMap::new(),
     }];
@@ -154,6 +158,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
     match &n.data {
         Data::Func { kind, name, args, body, .. } => {
             let id = push_func(scope, scopes);
+            scopes[id].lambda = !matches!(kind, ast::FuncKind::Arrow);
             table.bind_scope(n, id);
             if let Some(name_node) = name {
                 if let Some(sym_name) = sym(name_node) {
@@ -304,7 +309,13 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
         }
         Data::Symbol { name, kind: SymKind::Ref, .. } => {
             table.ref_scope.borrow_mut().insert(n.id(), scope);
-            if resolve(scopes, scope, name).is_none() {
+            if let Some(lambda) = (name == "arguments" && resolve(scopes, scope, name).is_none()).then(|| arguments_scope(scopes, scope)).flatten() {
+                // terser `AST_Lambda.init_scope_vars`: every non-arrow function
+                // defines `arguments` (an `AST_SymbolFunarg`), so a reference in
+                // it, or in an arrow inside it, is declared. Defined here on the
+                // first reference only.
+                define(table, scopes, lambda, name.clone(), n, SymKind::Funarg, None, false);
+            } else if resolve(scopes, scope, name).is_none() {
                 define(table, scopes, 0, name.clone(), n, SymKind::Ref, None, true);
             } else if let Some(id) = resolve(scopes, scope, name) {
                 table.bind_def(n, id);
@@ -508,12 +519,24 @@ fn hoist_node(n: &N, fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTa
     }
 }
 
+/// The function whose `arguments` a reference from `scope` reads: the
+/// nearest enclosing non-arrow function.
+fn arguments_scope(scopes: &[Scope], mut scope: usize) -> Option<usize> {
+    loop {
+        if scopes[scope].lambda {
+            return Some(scope);
+        }
+        scope = scopes[scope].parent?;
+    }
+}
+
 fn push_func(parent: usize, scopes: &mut Vec<Scope>) -> usize {
     let id = scopes.len();
     scopes.push(Scope {
         parent: Some(parent),
         fn_scope: id,
         func: true,
+        lambda: false,
         pinned: false,
         names: HashMap::new(),
     });
@@ -527,6 +550,7 @@ fn push_block(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         parent: Some(parent),
         fn_scope,
         func: false,
+        lambda: false,
         pinned: false,
         names: HashMap::new(),
     });
