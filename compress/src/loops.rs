@@ -952,7 +952,7 @@ fn stable_body(span: &N, stmts: Vec<N>, _cx: &Cx) -> N {
 fn sealed_if(span: &N, cond: N, body: N, alt: Option<N>, cx: &Cx) -> N {
     let iff = eval::atom(span, Data::If { cond, body, alt });
     let out = eval::fold(&iff, cx);
-    cx.seal_optimized(&out);
+    cx.set_optimized(&out);
     out
 }
 

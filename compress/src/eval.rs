@@ -429,7 +429,7 @@ fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
         ) {
             // terser `fixed.optimize(compressor)`: a lambda that was not yet
             // optimized gets its one `tighten_body` now.
-            let optimized = cx.optimized.contains(&value.id());
+            let optimized = cx.is_optimized(&value);
             crate::audit_flags(cx, "fixed_optimized", &value, optimized, false, true);
             if matches!(value.data, Data::Func { .. }) && !optimized {
                 cx.pre_tighten.borrow_mut().insert(value.id());
@@ -682,7 +682,7 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
             // assignment it builds must not run `AST_Assign.optimize` later,
             // or `x = (y, 2)` is lifted to `y, x = 2`.
             if matches!(expr.data, Data::Assign { .. }) {
-                crate::seal(cx, &expr);
+                cx.set_optimized(&expr);
             }
             return Some(simple_opt(n, expr, cx));
         }
@@ -899,7 +899,7 @@ fn exit_conditional(span: &N, cond: &N, left: ExitPair, right: ExitPair, cx: &Cx
     // `.transform(compressor)`: `def_optimize` flags the conditional's result
     // `OPTIMIZED`, so a later descend does not optimize it again (a `!a&&(!b&&c)`
     // stays right-nested).
-    crate::seal(cx, &value);
+    cx.set_optimized(&value);
     match left.kind {
         ExitKind::Return => {
             let value = if is_undefined_like(&value) { None } else { Some(value) };

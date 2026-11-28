@@ -595,9 +595,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         squeezed_ids: ast::IdSet::default(),
         optimized_ids: RefCell::new(ast::IdSet::default()),
         redescend: 0,
-        optimized: ast::IdSet::default(),
-        sealed: RefCell::new(ast::IdSet::default()),
-        seal: RefCell::new(ast::IdSet::default()),
+        optimized: RefCell::new(ast::IdSet::default()),
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
@@ -695,22 +693,17 @@ struct Cx {
     squeezed: ast::IdSet,
     /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` set only where terser sets the
     /// flag, never by the carry-overs onto new nodes (`carry_squeezed`, `carry_optimized`,
-    /// `keep_squeezed`, `seal`). Nothing decides by them.
+    /// `keep_squeezed`). Nothing decides by them.
     squeezed_ids: ast::IdSet,
     optimized_ids: RefCell<ast::IdSet>,
     /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
     redescend: u32,
-    /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
-    optimized: ast::IdSet,
-    /// Nodes `def_optimize` already returned, so a later `before` must not run
-    /// their optimizer again. Terser sets `OPTIMIZED` on that object and then
-    /// mutates its children in place. An assignment built by
-    /// `AST_Conditional` is the case that matters here: `x = (y ? 2 : 2)`
-    /// becomes `x = (y, 2)` and is not lifted to `y, x = 2`.
-    sealed: RefCell<ast::IdSet>,
-    /// Switch-built `if` nodes. Terser sets `OPTIMIZED` on them inside `def_optimize(AST_Switch)`,
-    /// so the second descend does not turn `if (c) s` into `c && s`.
-    seal: RefCell<ast::IdSet>,
+    /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run
+    /// again. Set by `transform` on what `optimize` returned, and by an optimizer on a node
+    /// it made and optimized itself (`make_node(..).optimize(compressor)`, `set_optimized`):
+    /// an assignment built by `AST_Conditional` (`x = (y ? 2 : 2)` becomes `x = (y, 2)` and
+    /// is not lifted to `y, x = 2`), a switch-built `if` (not turned into `c && s` later).
+    optimized: RefCell<ast::IdSet>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
     stack: Vec<N>,
     /// terser `TreeWalker.stack`. Last node is `self()`, the one before it is `parent()`.
@@ -885,10 +878,15 @@ impl Cx {
         !known || self.lookup(value) != Some(ptr)
     }
 
-    /// Mark `n` so a later `transform` does not run `def_optimize` on it again.
-    pub(crate) fn seal_optimized(&self, n: &N) {
+    /// terser `set_flag(opt, OPTIMIZED)`: a later `transform` does not run `def_optimize` on
+    /// `n` again.
+    pub(crate) fn set_optimized(&self, n: &N) {
+        self.optimized.borrow_mut().insert(n.id());
         self.optimized_ids.borrow_mut().insert(n.id());
-        self.seal.borrow_mut().insert(n.id());
+    }
+
+    fn is_optimized(&self, n: &N) -> bool {
+        self.optimized.borrow().contains(&n.id())
     }
 
     /// An audit decision's label: `@redescend` inside the descend after `drop_unused`.
@@ -1137,7 +1135,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     }
     // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
     // part of it. A node made by an optimizer was already optimized there.
-    let already = cx.optimized.contains(&n.id()) || is_sealed(cx, n) || cx.seal.borrow().contains(&n.id());
+    let already = cx.is_optimized(n);
     if audit::on() {
         audit::check(&cx.stage("already"), n, already, cx.optimized_ids.borrow().contains(&n.id()));
     }
@@ -1176,18 +1174,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let twice = if already || pre { twice } else { after_descend(twice, n, cx) };
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
-    let sealed = is_sealed(cx, n);
-    let switch_sealed = cx.seal.borrow().contains(&twice.id()) || cx.seal.borrow().contains(&n.id());
+    let skip = cx.is_optimized(&twice) || cx.is_optimized(n);
     if audit::on() {
-        let skip = sealed || cx.optimized.contains(&twice.id()) || switch_sealed;
         audit::check(&cx.stage("skip_optimize"), &twice, skip, cx.optimized_ids.borrow().contains(&twice.id()));
     }
-    let mut out = if sealed {
-        if !is_sealed(cx, &twice) {
-            seal(cx, &twice);
-        }
-        Rc::clone(&twice)
-    } else if cx.optimized.contains(&twice.id()) || switch_sealed {
+    let mut out = if skip {
         Rc::clone(&twice)
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
@@ -1249,7 +1240,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         // `SQUEEZED` on the same scope object after `drop_unused`.
         mark_squeezed(cx, &out);
     }
-    mark_optimized(cx, &out);
+    cx.set_optimized(&out);
     if same {
         mark_squeezed(cx, &out);
     } else if !cx.squeezed.contains(&out.id()) {
@@ -1330,7 +1321,7 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
     if cx.squeezed.contains(&old.id()) {
         carry_squeezed(cx, new);
     }
-    if cx.optimized.contains(&old.id()) {
+    if cx.is_optimized(old) {
         carry_optimized(cx, new);
     }
     let (left, right) = (child_refs(&old.data), child_refs(&new.data));
@@ -1457,23 +1448,9 @@ fn child_refs(data: &Data) -> Vec<&N> {
     out
 }
 
-fn seal(cx: &Cx, n: &N) {
-    cx.sealed.borrow_mut().insert(n.id());
-    cx.optimized_ids.borrow_mut().insert(n.id());
-}
-
-fn is_sealed(cx: &Cx, n: &N) -> bool {
-    cx.sealed.borrow().contains(&n.id())
-}
-
-fn mark_optimized(cx: &mut Cx, n: &N) {
-    carry_optimized(cx, n);
-    cx.optimized_ids.borrow_mut().insert(n.id());
-}
-
 /// `OPTIMIZED` without the audit's set: a carry-over onto a new node.
 fn carry_optimized(cx: &mut Cx, n: &N) {
-    cx.optimized.insert(n.id());
+    cx.optimized.borrow_mut().insert(n.id());
 }
 
 /// The rebuilt `to` keeps `from`'s `SQUEEZED` flag (its scope follows its id).
@@ -1822,12 +1799,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let body_m = transform(body, cx);
             let (alt, c3) = map_opt(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body) || c3;
-            let out = finish(n, Data::If { cond: cond_m, body: body_m, alt }, c);
-            // Terser mutates the sealed `if` in place, so `OPTIMIZED` survives a child update.
-            if c && cx.seal.borrow().contains(&n.id()) {
-                cx.seal_optimized(&out);
-            }
-            out
+            finish(n, Data::If { cond: cond_m, body: body_m, alt }, c)
         }
         Data::Switch { expr, body } => {
             let expr_m = transform(expr, cx);

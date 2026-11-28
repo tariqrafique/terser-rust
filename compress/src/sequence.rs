@@ -182,7 +182,7 @@ fn trim(span: &N, exprs: Vec<N>, cx: &Cx, preserve: bool) -> N {
 }
 
 fn reopt(n: N, cx: &Cx) -> N {
-    let flagged = cx.optimized.contains(&n.id()) || cx.squeezed.contains(&n.id());
+    let flagged = cx.is_optimized(&n) || cx.squeezed.contains(&n.id());
     crate::audit_flags(cx, "reopt", &n, flagged, true, true);
     if flagged {
         return n;
