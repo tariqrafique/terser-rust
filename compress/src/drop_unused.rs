@@ -158,6 +158,9 @@ struct Use {
     /// terser `drop_funcs`: also for a function declaration in a block of this
     /// scope (sloppy mode binds it in this scope, `scope.js` `AST_SymbolDefun`).
     drop_funcs: bool,
+    /// Depth of nested scopes (lambdas, classes) pass 3 is in. terser's `tt` descends
+    /// into them for `assign_as_unused` only (`if (scope !== self) return;` comes after it).
+    in_nested: std::cell::Cell<u32>,
 }
 
 /// Passes 1–3 of `AST_Scope.drop_unused`.
@@ -180,6 +183,7 @@ fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>
         eliminated: Default::default(),
         loop_scopes: loop_scopes(original, table),
         drop_funcs,
+        in_nested: std::cell::Cell::new(0),
     };
     {
         let mut by_id: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -327,6 +331,7 @@ fn scan_in_use(nodes: &[N], table: &SymTable) -> HashSet<usize> {
         eliminated: Default::default(),
         loop_scopes: HashSet::new(),
         drop_funcs: false,
+        in_nested: std::cell::Cell::new(0),
     };
     for n in nodes {
         scan_ref_scoped(n, table, &mut u, true);
@@ -554,6 +559,31 @@ fn loop_scopes(stmts: &[N], table: &SymTable) -> HashSet<usize> {
 }
 
 fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool, out: &mut Vec<N>) {
+    if u.in_nested.get() > 0 {
+        // In a nested scope only writes to this scope's unused names go; its own
+        // declarations are left as they are (their values are still descended).
+        if let Data::Defs { kind, defs, await_ } = &n.data {
+            let mut changed = false;
+            let defs: Vec<N> = defs.iter().map(|def| match &def.data {
+                Data::VarDef { name, value: Some(v) } => {
+                    let m = rewrite_expr(v, table, u, scope_id, drop_vars, false).unwrap_or_else(|| num0(v));
+                    if Rc::ptr_eq(&m, v) {
+                        Rc::clone(def)
+                    } else {
+                        changed = true;
+                        renode(def, Data::VarDef { name: Rc::clone(name), value: Some(m) })
+                    }
+                }
+                _ => Rc::clone(def),
+            }).collect();
+            out.push(if changed { renode(n, Data::Defs { kind: *kind, defs, await_: *await_ }) } else { Rc::clone(n) });
+            return;
+        }
+        if let Some(stmt) = rewrite_expr(n, table, u, scope_id, drop_vars, true) {
+            out.push(stmt);
+        }
+        return;
+    }
     if let Data::Defs { kind, defs, await_ } = &n.data {
         if matches!(kind, DefKind::Using) {
             out.push(Rc::clone(n));
@@ -830,6 +860,49 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                 rewrite_stmt(stmt, table, u, scope_id, drop_vars, u.drop_funcs, &mut stmts);
             }
             Data::Default { body: stmts }
+        }
+        // A nested scope: terser's `tt` goes on into it for `assign_as_unused`.
+        Data::Func { kind, name, args, body, async_, generator } if drop_vars => {
+            u.in_nested.set(u.in_nested.get() + 1);
+            let mut stmts = Vec::new();
+            for stmt in body {
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+            }
+            u.in_nested.set(u.in_nested.get() - 1);
+            if stmts.len() == body.len() && stmts.iter().zip(body).all(|(a, b)| Rc::ptr_eq(a, b)) {
+                return Some(Rc::clone(n));
+            }
+            Data::Func { kind: *kind, name: name.clone(), args: args.clone(), body: stmts, async_: *async_, generator: *generator }
+        }
+        Data::Class { stmt, name, extends, props } if drop_vars => {
+            u.in_nested.set(u.in_nested.get() + 1);
+            let extends2 = extends.as_ref().map(|e| go(e, false));
+            let props2: Vec<N> = props.iter().map(|p| go(p, false)).collect();
+            u.in_nested.set(u.in_nested.get() - 1);
+            let same = extends.as_ref().zip(extends2.as_ref()).is_none_or(|(a, b)| Rc::ptr_eq(a, b))
+                && props.iter().zip(&props2).all(|(a, b)| Rc::ptr_eq(a, b));
+            if same {
+                return Some(Rc::clone(n));
+            }
+            Data::Class { stmt: *stmt, name: name.clone(), extends: extends2, props: props2 }
+        }
+        Data::Field { key, value, static_, private } => Data::Field {
+            key: match key {
+                Key::Computed(e) => Key::Computed(go(e, false)),
+                other => other.clone(),
+            },
+            value: value.as_ref().map(|v| go(v, false)),
+            static_: *static_,
+            private: *private,
+        },
+        Data::StaticBlock { body } => {
+            u.in_nested.set(u.in_nested.get() + 1);
+            let mut stmts = Vec::new();
+            for stmt in body {
+                rewrite_stmt(stmt, table, u, scope_id, drop_vars, false, &mut stmts);
+            }
+            u.in_nested.set(u.in_nested.get() - 1);
+            Data::StaticBlock { body: stmts }
         }
         Data::Template { segments } => Data::Template {
             segments: segments.iter().map(|seg| match seg {
