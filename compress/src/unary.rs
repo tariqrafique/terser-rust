@@ -739,7 +739,7 @@ fn func_expr_unreferenced(expr: &N, cx: &Cx) -> bool {
     let Some(id) = table.lookup(&crate::syms::ptr(name)) else {
         return false;
     };
-    table.defs.get(id).is_some_and(|d| d.references.is_empty())
+    table.defs.get(id).is_some_and(|d| d.ref_count() == 0)
 }
 
 /// terser `drop_side_effect_free(AST_Dot)` / `AST_Sub`.

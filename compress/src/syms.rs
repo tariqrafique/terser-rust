@@ -54,10 +54,21 @@ pub struct SymbolDef {
     pub direct_access: bool,
     pub recursive_refs: u32,
     pub references: Vec<usize>,
+    /// References a `clone(true, toplevel)` copy added during compress: terser
+    /// `figure_out_scope` on the copy pushes each of its outside references
+    /// onto the definition.
+    pub clone_refs: Cell<u32>,
     pub single_use: SingleUse,
     pub replaced: Cell<u32>,
     /// terser `SymbolDef.orig.length`. A parameter redeclared in the body is more than one.
     pub orig_count: u32,
+}
+
+impl SymbolDef {
+    /// terser `def.references.length`.
+    pub fn ref_count(&self) -> usize {
+        self.references.len() + self.clone_refs.get() as usize
+    }
 }
 
 pub struct SymTable {
@@ -554,6 +565,7 @@ fn define(
         direct_access: false,
         recursive_refs: 0,
         references: Vec::new(),
+        clone_refs: Cell::new(0),
         single_use: SingleUse::No,
         replaced: Cell::new(0),
         orig_count: 1,
@@ -636,6 +648,7 @@ impl SymTable {
                     direct_access: false,
                     recursive_refs: 0,
                     references: Vec::new(),
+                    clone_refs: Cell::new(0),
                     single_use: SingleUse::No,
                     replaced: Cell::new(0),
                     orig_count: 0,
@@ -784,7 +797,7 @@ fn replaced_decl(def: &N, table: &SymTable) -> bool {
     let Data::VarDef { name, value } = &def.data else { return false };
     let Some(&id) = table.node_def.get(&ptr(name)) else { return false };
     let d = &table.defs[id];
-    if d.references.is_empty() || d.replaced.get() < d.references.len() as u32 {
+    if d.ref_count() == 0 || (d.replaced.get() as usize) < d.ref_count() {
         return false;
     }
     if d.assignments > 0 || d.undeclared || d.exported || d.export_listed || (d.global && !DROP_GLOBALS.with(|g| g.get())) {

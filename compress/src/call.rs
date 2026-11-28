@@ -302,7 +302,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     // `exp === fn`, an `@__INLINE__` call, or a single-use fixed lambda.
     let single_ref = !direct
         && cx.opts.unused
-        && def_flag(_expr_of(n), cx, |d| d.references.len() == 1 && d.recursive_refs == 0)
+        && def_flag(_expr_of(n), cx, |d| d.ref_count() == 1 && d.recursive_refs == 0)
         && !inside_own_lambda(_expr_of(n), func, cx)
         && cx.syms.as_ref().is_none_or(|table| {
             let site = cx.parents.iter().rev().find_map(|p| table.scope_lookup(&crate::syms::ptr(p))).or(Some(0));

@@ -78,7 +78,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
             // terser `single_use` is `true` or `"m"`; both are truthy here.
             matches!(def.single_use, SingleUse::Yes | SingleUse::Modified),
             def.assignments,
-            def.references.len() as u32,
+            def.ref_count() as u32,
             // terser `self.size(compressor)`: one character when it will be mangled.
             if crate::eval::mangled_size(n) { 1 } else { def.name.len() },
             exposed(def, at.env),
@@ -123,6 +123,9 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         {
             let copy = ast::deep_clone(&fixed);
             table.alias_copy(&fixed, &copy);
+            if is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope) {
+                count_clone_refs(table, &fixed);
+            }
             let out = expr_value(&copy);
             if let Some(sc) = table.scope_lookup(&syms::ptr(&fixed)) {
                 table.alias_scope.borrow_mut().insert(syms::ptr(&out), (sc, Rc::clone(&out)));
@@ -583,6 +586,7 @@ fn reset_def(tw: &mut Tw, id: usize) {
     let d = &mut tw.table.defs[id];
     d.assignments = 0;
     d.references.clear();
+    d.clone_refs.set(0);
     d.single_use = SingleUse::No;
     d.escaped = 0;
     d.direct_access = false;
@@ -1594,6 +1598,23 @@ fn nested_scopes(func: &N, table: &SymTable) -> std::collections::HashSet<usize>
         }
     });
     nested
+}
+
+/// terser `fixed.clone(true, toplevel)`: `figure_out_scope` on the copy
+/// resolves each reference to a name outside it and pushes it onto that
+/// definition, so the original and the copy both count until the next pass.
+fn count_clone_refs(table: &SymTable, func: &N) {
+    let Some(func_scope) = table.scope_lookup(&syms::ptr(func)) else { return };
+    let nested = nested_scopes(func, table);
+    each_node(func, &mut |node| {
+        let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
+        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
+        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) || injected_var(table, &nested, name) {
+            return;
+        }
+        let def = &table.defs[id];
+        def.clone_refs.set(def.clone_refs.get().saturating_add(1));
+    });
 }
 
 /// terser `this.variables.has(def.name)`: a name `flatten_fn` injected into
