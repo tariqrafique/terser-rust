@@ -558,10 +558,12 @@ fn append_var(decls: &mut Vec<N>, exprs: &mut Vec<N>, declared: &mut HashSet<Str
 }
 
 /// A parameter terser's `drop_unused` would flag `UNUSED`: never read in the body.
+/// terser `has_flag(sym, UNUSED)`: `drop_unused` flags a parameter symbol it
+/// found no use of, never a destructuring pattern.
 fn param_unused(p: &N, body: &[N]) -> bool {
     match &p.data {
         Data::Symbol { name, .. } => !refs_name(body, name),
-        _ => true,
+        _ => false,
     }
 }
 
