@@ -693,15 +693,21 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
                 // terser `index.js` `def_optimize(AST_If)` (UglifyJS2 #979).
                 use_neg = true;
             }
+            // terser `make_node(AST_Binary)` under `SimpleStatement.optimize()`:
+            // the binary itself has no flags, so a later descend optimizes it
+            // (the one after the scope's `drop_unused` when `tighten_body`
+            // transformed this `if`).
             let expr = if use_neg {
                 binary(n, "||", Rc::clone(&negated), expr)
             } else {
                 binary(n, "&&", Rc::clone(&cond), expr)
             };
+            let expr = crate::unary::made_fresh(cx, expr);
             return Some(simple_opt(n, expr, cx));
         }
         (StmtClass::Empty, StmtClass::Expr(expr)) => {
-            return Some(simple_opt(n, binary(n, "||", Rc::clone(&cond), expr), cx));
+            let expr = crate::unary::made_fresh(cx, binary(n, "||", Rc::clone(&cond), expr));
+            return Some(simple_opt(n, expr, cx));
         }
         _ => {}
     }

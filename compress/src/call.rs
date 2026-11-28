@@ -302,7 +302,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     // `exp === fn`, an `@__INLINE__` call, or a single-use fixed lambda.
     let single_ref = !direct
         && cx.opts.unused
-        && def_flag(_expr_of(n), cx, |d| d.references.len() == 1 && d.recursive_refs == 0)
+        && def_flag(_expr_of(n), cx, |d| d.ref_count() == 1 && d.recursive_refs == 0)
         && !inside_own_lambda(_expr_of(n), func, cx)
         && cx.syms.as_ref().is_none_or(|table| {
             let site = cx.parents.iter().rev().find_map(|p| table.scope_of(p)).or(Some(0));
@@ -372,6 +372,11 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     }
     if !declared.is_empty() {
         cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());
+        if inj.key & (1 << 60) != 0 {
+            if let Some(table) = cx.syms.as_ref() {
+                table.injected_vars.borrow_mut().entry(inj.key & !(1 << 60)).or_default().extend(declared.iter().cloned());
+            }
+        }
     }
     if !decls.is_empty() {
         let var = atom(func, Data::Defs { kind: ast::DefKind::Var, defs: decls, await_: false });

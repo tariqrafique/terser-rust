@@ -78,7 +78,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
             // terser `single_use` is `true` or `"m"`; both are truthy here.
             matches!(def.single_use, SingleUse::Yes | SingleUse::Modified),
             def.assignments,
-            def.references.len() as u32,
+            def.ref_count() as u32,
             // terser `self.size(compressor)`: one character when it will be mangled.
             if crate::eval::mangled_size(n) { 1 } else { def.name.len() },
             exposed(def, at.env),
@@ -125,6 +125,9 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         let recursive = matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. }) && def.recursive_refs > 0;
         if (is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope)) || recursive {
             let copy = table.clone_deep(&fixed);
+            if is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope) {
+                count_clone_refs(table, &fixed);
+            }
             let out = expr_value(&copy);
             // `make_node(AST_Function, fixed, fixed)` copies the scope (il 247-250).
             table.copy_binding(&copy, &out);
@@ -590,6 +593,7 @@ fn reset_def(tw: &mut Tw, id: usize) {
     let d = &mut tw.table.defs[id];
     d.assignments = 0;
     d.references.clear();
+    d.clone_refs.set(0);
     d.single_use = SingleUse::No;
     d.escaped = 0;
     d.direct_access = false;
@@ -1590,7 +1594,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.def_of(node) else { return };
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
+        if defined_inside(table, id, func_scope, &nested) || injected_var(table, &nested, name) {
             return;
         }
         if find_var(table, nearest, name).is_some_and(|found| found != id) {
@@ -1612,10 +1616,41 @@ fn nested_scopes(func: &N, table: &SymTable) -> std::collections::HashSet<usize>
     nested
 }
 
-fn defined_inside(table: &SymTable, def_id: usize, func_scope: usize) -> bool {
+/// terser `fixed.clone(true, toplevel)`: `figure_out_scope` on the copy
+/// resolves each reference to a name outside it and pushes it onto that
+/// definition, so the original and the copy both count until the next pass.
+fn count_clone_refs(table: &SymTable, func: &N) {
+    let Some(func_scope) = table.scope_of(func) else { return };
+    let nested = nested_scopes(func, table);
+    each_node(func, &mut |node| {
+        let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
+        let Some(id) = table.def_of(node) else { return };
+        if defined_inside(table, id, func_scope, &nested) || injected_var(table, &nested, name) {
+            return;
+        }
+        let def = &table.defs[id];
+        def.clone_refs.set(def.clone_refs.get().saturating_add(1));
+    });
+}
+
+/// terser `this.variables.has(def.name)`: a name `flatten_fn` injected into
+/// the scope is one of its variables, though its definition is the callee's.
+/// A copy of such a scope inlined into `func` (its `t` refs keep the callee's
+/// definition) counts too: terser's `enclosed` of `func` is the one
+/// `figure_out_scope` computed, which never saw that definition.
+fn injected_var(table: &SymTable, scopes: &std::collections::HashSet<usize>, name: &str) -> bool {
+    let injected = table.injected_vars.borrow();
+    scopes.iter().any(|sc| injected.get(sc).is_some_and(|names| names.contains(name)))
+}
+
+/// The definition is in `func_scope` or below it, or below a scope `nested`
+/// in it by position (an inlined copy keeps its scope ids; a block in it the
+/// optimizer rebuilt has no scope node of its own any more, but its
+/// definitions still chain up to the copy's function).
+fn defined_inside(table: &SymTable, def_id: usize, func_scope: usize, nested: &std::collections::HashSet<usize>) -> bool {
     let mut scope = table.defs[def_id].scope;
     loop {
-        if scope == func_scope {
+        if scope == func_scope || nested.contains(&scope) {
             return true;
         }
         scope = match table.scope_parent.get(scope).copied().flatten() {
@@ -1722,7 +1757,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.def_of(node) else { return };
         // Locals and names defined in a nested function are not free references.
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
+        if defined_inside(table, id, func_scope, &nested) || injected_var(table, &nested, name) {
             return;
         }
         match scope {
