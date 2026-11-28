@@ -132,8 +132,8 @@ fn drop_exit(n: &N, cx: &Cx) -> Option<N> {
         // `parent instanceof AST_Binary && parent.right === node`: `AST_Assign` and
         // `AST_DefaultAssign` are binaries too.
         let cont = match &parent.data {
-            Data::Binary { right: edge, .. } | Data::Assign { right: edge, .. } | Data::DefaultAssign { right: edge, .. } => Rc::ptr_eq(edge, node),
-            Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, node)),
+            Data::Binary { right: edge, .. } | Data::Assign { right: edge, .. } | Data::DefaultAssign { right: edge, .. } => edge.id() == node.id(),
+            Data::Seq { exprs } => exprs.last().is_some_and(|e| e.id() == node.id()),
             _ => false,
         };
         if !cont {

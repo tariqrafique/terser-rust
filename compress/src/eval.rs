@@ -1269,7 +1269,7 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
     }
     // terser `def_optimize(AST_Binary)`: a boolean binary outside another binary
     // becomes `!negate(self)` when that is shorter. The result is no longer a binary.
-    if cx.opts.comparisons && is_boolean_value(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
+    if cx.opts.comparisons && is_boolean(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
         let negated = unary(&cur, "!", crate::unary::negate(&cur, cx, crate::unary::first_in_statement(cx)));
         let best = crate::unary::best_of(cx, &cur, &negated);
         if Rc::ptr_eq(&best, &negated) {
@@ -2293,17 +2293,7 @@ fn same_compare_type(left: &N, right: &N) -> bool {
         || is_boolean(left) && is_boolean(right)
 }
 
-/// terser `inference.js` `is_boolean`, all node types.
-fn is_boolean_value(n: &N) -> bool {
-    match &n.data {
-        Data::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||" | "??") => is_boolean_value(left) && is_boolean_value(right),
-        Data::Cond { cons, alt, .. } => is_boolean_value(cons) && is_boolean_value(alt),
-        Data::Assign { op, logical: false, right, .. } if op == "=" => is_boolean_value(right),
-        Data::Seq { exprs } => exprs.last().is_some_and(is_boolean_value),
-        _ => is_boolean(n),
-    }
-}
-
+/// terser `inference.js` `is_boolean`.
 fn is_boolean(n: &N) -> bool {
     match &n.data {
         Data::True | Data::False => true,
@@ -2312,6 +2302,9 @@ fn is_boolean(n: &N) -> bool {
             matches!(op.as_str(), "in" | "instanceof" | "==" | "!=" | "===" | "!==" | "<" | "<=" | ">" | ">=")
                 || matches!(op.as_str(), "&&" | "||" | "??") && is_boolean(left) && is_boolean(right)
         }
+        Data::Cond { cons, alt, .. } => is_boolean(cons) && is_boolean(alt),
+        Data::Assign { op, logical: false, right, .. } if op == "=" => is_boolean(right),
+        Data::Seq { exprs } => exprs.last().is_some_and(is_boolean),
         _ => false,
     }
 }
@@ -3949,7 +3942,9 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
         Lit::Num(n) if n.is_nan() => nan_node(orig, cx),
         // `make_node(AST_Infinity).optimize(compressor)`: `1/0` unless `keep_infinity`.
         Lit::Num(n) if n.is_infinite() => infinity(orig, n.is_sign_negative()),
-        Lit::Num(n) if n == 0.0 && n.is_sign_negative() => unary(orig, "-", num(orig, 0.0)),
+        // `1 / val < 0`: a negative number is `-` over its absolute value, so `-.7`
+        // prints as `-` then `.7` (a negative `AST_Number` would print `-0.7`).
+        Lit::Num(n) if n.is_sign_negative() => unary(orig, "-", num(orig, -n)),
         Lit::Num(n) => num(orig, n),
         Lit::Str(s) => string(orig, s),
         Lit::Bool(true) => atom(orig, Data::True),
