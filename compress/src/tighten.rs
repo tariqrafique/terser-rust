@@ -798,12 +798,19 @@ fn apply_candidate(
         && (env.locals.contains(&cand.name) || injected_name)
         && !BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
-    if env.block_only && !block_assign && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
-        return None;
-    }
     // terser `get_lhs`: no references, nothing to fold.
     let (reads, writes, hidden) = counts.refs.get(&cand.name).copied().unwrap_or((0, 0, 0));
     let total = reads + writes + hidden;
+    // A `var` in a nested block: the block's counts are the function's when
+    // reduce_vars' reference count for it matches what the block holds.
+    let block_var = env.block_only
+        && cand.kind == Kind::Var
+        && matches!(&cand.node.data, Data::VarDef { name, .. }
+            if REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()) == Some(total))
+        && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
+    if env.block_only && !block_assign && !block_var && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
+        return None;
+    }
     if total == 0 {
         return None;
     }

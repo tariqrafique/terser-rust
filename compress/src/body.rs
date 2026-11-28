@@ -145,7 +145,11 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         // outside it). terser `find_loop_scope_try` gives the loop and try state.
         Data::Block { .. } => {
             let names = crate::tighten::block_lexicals(stmts);
-            if names.is_empty() {
+            // A `var` with a value here can collapse too, when its counts
+            // are all in this block (`tighten.rs` `block_var`).
+            let has_var = stmts.iter().any(|s| matches!(&s.data, Data::Defs { kind: DefKind::Var, defs, .. }
+                if defs.iter().any(|d| matches!(d.data, Data::VarDef { value: Some(_), .. }))));
+            if names.is_empty() && !has_var {
                 return None;
             }
             let (mut in_loop, mut in_try) = (false, false);
@@ -165,7 +169,11 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
             crate::tighten::set_block_candidates(names.clone());
             // `may_modify` measures against the enclosing function.
             let mut locals = names;
+            let mut block_in_fn = true;
             for p in cx.parents[..len.saturating_sub(1)].iter().rev() {
+                if matches!(p.data, Data::Toplevel { .. }) {
+                    block_in_fn = false;
+                }
                 let own = match &p.data {
                     Data::Func { .. } | Data::Toplevel { .. } => cx.cached_names(p, 0, |p| match &p.data {
                         Data::Func { args, body, .. } => crate::tighten::scope_bindings(args, body),
@@ -182,7 +190,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
                 crate::tighten::set_block_lets(lets.iter().cloned().collect());
                 break;
             }
-            (locals, true, Some((in_loop, in_try)))
+            (locals, block_in_fn, Some((in_loop, in_try)))
         }
         _ => return None,
     };
