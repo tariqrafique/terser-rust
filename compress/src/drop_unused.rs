@@ -296,7 +296,6 @@ fn assign_as_unused<'a>(n: &'a N, table: &SymTable) -> Option<&'a N> {
             }
             Some(left)
         }
-        Data::Simple { body } => assign_as_unused(body, table),
         _ => None,
     }
 }
