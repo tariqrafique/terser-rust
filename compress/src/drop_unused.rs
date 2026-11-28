@@ -122,6 +122,20 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 generator: *generator,
             })
         }
+        // terser `AST_ClassStaticBlock.drop_unused`: a scope of its own (`drop_funcs` and
+        // `drop_vars` hold, it is not the toplevel).
+        Data::StaticBlock { body: original } => {
+            let is_root = ROOT.with(|r| r.get()) == ptr(n);
+            if !is_root {
+                NESTED.with(|d| d.set(d.get() + 1));
+            }
+            let body: Vec<N> = original.iter().map(|s| scope(s, table, true, true)).collect();
+            if !is_root {
+                NESTED.with(|d| d.set(d.get() - 1));
+            }
+            let body = if is_root { passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, true, true) } else { body };
+            renode(n, Data::StaticBlock { body })
+        }
         Data::Block { body: original } => {
             let body: Vec<N> = original.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
             let body = if let (Some(&id), false) = (table.scope_of(n).as_ref(), nested()) {

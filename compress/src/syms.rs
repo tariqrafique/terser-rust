@@ -253,7 +253,19 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 walk(prop, id, scopes, table);
             }
         }
-        Data::Block { body } | Data::StaticBlock { body } => {
+        // terser `AST_ClassStaticBlock` is an `AST_Scope` (not a block scope): its `var`s
+        // and functions are its own (`get_defun_scope()` is the static block).
+        Data::StaticBlock { body } => {
+            let id = push_func(scope, scopes);
+            scopes[id].strict = true;
+            table.bind_scope(n, id);
+            hoist(body, id, scopes, table);
+            hoist_lexical(body, id, scopes, table);
+            for stmt in body {
+                walk(stmt, id, scopes, table);
+            }
+        }
+        Data::Block { body } => {
             let id = push_block(scope, scopes);
             table.bind_scope(n, id);
             hoist_lexical(body, id, scopes, table);

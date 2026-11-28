@@ -1439,6 +1439,11 @@ fn optimize(n: &N, ptr: usize, cx: &Cx) -> Option<N> {
     match &n.data {
         Data::Debugger if cx.opts.drop_debugger => Some(empty(n)),
         Data::Directive { value, .. } if cx.opts.directives && cx.drop_directive(value, ptr) => Some(empty(n)),
+        // terser `def_optimize(AST_Class)`: empty static blocks are removed.
+        Data::Class { stmt, name, extends, props } if props.iter().any(|p| matches!(&p.data, Data::StaticBlock { body } if body.is_empty())) => {
+            let props = props.iter().filter(|p| !matches!(&p.data, Data::StaticBlock { body } if body.is_empty())).cloned().collect();
+            Some(n.rebuild(Data::Class { stmt: *stmt, name: name.clone(), extends: extends.clone(), props }))
+        }
         _ => None,
     }
 }
