@@ -894,22 +894,14 @@ fn apply_candidate(
         info.port_skip = Some("hidden_refs");
         return None;
     }
-    // The assignment is the value's only use, and nothing else observes the write.
-    // `return (a = r * r - r) + (b = 7)` is `return r * r - r + 7`.
+    // An assignment is always moved whole (terser returns `candidate`); a
+    // write nothing reads is left to `drop_unused`, as in terser, so later
+    // candidates in this loop still see it.
     // A name `flatten_fn` injected is the parameter's definition in terser:
     // its `references` are the parameter's reads in the inlined body plus the
     // assignment, whatever the tree now holds.
     let injected = INJECTED.with(|i| i.borrow().get(&cand.name).copied());
-    let sink = cand.kind == Kind::Assign
-        && !block_assign
-        && injected.is_none_or(|count| count == 2)
-        && cand.op == "="
-        && reads == 1
-        && writes == 1
-        && hidden == 0
-        && env.in_fn
-        && !escaped.contains(&cand.name);
-    let mode = if cand.kind == Kind::Var && total == 1 && !exposed || sink {
+    let mode = if cand.kind == Kind::Var && total == 1 && !exposed {
         Mode::ValueOne
     } else if mangleable {
         Mode::ValueAll
