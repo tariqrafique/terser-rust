@@ -1,6 +1,6 @@
 # Stable node ids: design
 
-This is the design for PLAN.md's "Stable node ids" step.
+This is the design for PLAN.md's "Stable node ids" step. Steps 1-4 of §4 are done; §6 has what landed, where the design was wrong, and the shadow audit's results.
 - terser edits a single tree in place.
 - The port rebuilds immutable `Rc<Node>`s and keys flags, scopes and definitions by pointer, so every rebuild has to carry them over.
 - Giving each node an id that survives rebuilds removes that whole class of bug.
@@ -261,3 +261,58 @@ When a flip makes cases fail, compare those cases with terser. Fix the misclassi
   - Replace the SipHash `HashSet<usize>` sets with a dense `Vec<u8>` per id or an identity-hashed `IdMap`/`IdSet`. A local `BuildHasherDefault` is enough; rustc-hash is not in `Cargo.lock`.
 - **Memory.** The keep-alives hold every flagged version of every node for the whole pass. Removing them lowers peak memory on large inputs.
 - **Measurement.** Time `python3 tools/rollup-check.py` after steps 1, 4 and 5a.
+
+## 6. Progress
+
+Steps 1-4 are in. The board did not move at any step (2362/2671 and lwc 319/339 before the merge of the triage fixes, 2381/2671 and 332/339 after), and lwc-rollup under 200 KB stayed at its expected failures (2 of 260, then 0 of 260 after the merge). The full lwc-rollup run (779 inputs) failed the same 299 at the same byte before and after step 2, apart from 60 s timeouts under machine load.
+
+**What is where.**
+- `ast`: `NodeId`, `Node::{new, spanned, make, rebuild, id}`, `deep_clone_with`, `check_ids`, `reset_ids` (called first in `terser::minify`), `ids_minted`. `Node` is not `Clone`. `for_each_child` is `ast::transform_children`, which the walker refactor had already added; only four `map_children` walks that threw the result away were left, and they use it now.
+- Debug checks: `rebuild` asserts its data does not hold the node itself; `compress_pass` runs `check_ids` on the tree after `transform` and after `drop_unused`. Debug builds (the fast profile) panic on a report, `TERSER_CHECK_IDS=log` prints in any build, `=off` skips. No site ever reported.
+- Classification: each file's helpers split into a new / keep pair (`eval::atom` / `eval::edit`, `node` / `renode`, `finish` / `edit` in hoist, `for_node` vs `eval::edit` in loops). Each keep site cites terser. Copy sites are marked (`sym_ref` in tighten, the dropped-`var` ref in drop_unused, `same_def`, `new` to call, `while` to `for`).
+- Shadow audit (`compress/src/audit.rs`, `TERSER_ID_AUDIT=1`, `bt:<decision>` for where a mismatch is read): `Cx.squeezed_ids` / `optimized_ids` beside the pointer sets. The harness now names each case's thread after the case, so the audit lines and panics say which case.
+- `SymTable` by id: `node_def`, `node_scope`, `references`, `fixed_of_node`, eval's `MANGLED` / `KNOWN`. `def_of(&N)` / `scope_of(&N)` replace `lookup(&ptr)` / `scope_lookup(&ptr)`. `copy_binding` and `clone_deep` stand for terser's copies. §3 items 2 and 3 are retired: `alias`, `alias_scope`, `alias_copy`, `alias_scope_node`, the hoisted-scope copy, both halves of `transfer_flags`' table work, `keep_squeezed`'s scope alias, the scope half of `retarget_fixed`, `define_hoisted`'s keep-alive. `same_def` is now just `copy_binding`. `inlined_scopes` was already keyed by scope index.
+
+**Corrections to §2.** The inventory was right in most places; these differ:
+- `optimize_if`: the `if` is keep only until the nested-`if` merge (`self = make_node(AST_If, ..)`, index.js 1206); after it the remaining edits apply to a new node.
+- `strip_var_inits` (`remove_initializers`): a definition with a plain name is keep (`def.value = null`, tb 180); a destructuring gives new definitions and the `var` is new.
+- keep sites §2 did not list: the template joins in `plus_strings` (terser returns the edited template), the statement around a negated IIFE, `drop_empty_string`'s third case, the bitwise in-place edits, `fold_compare`'s final rewrite, `changed_sub` (`self.property =`), `if_break_in_loop`'s `for`, the `try` that drops its `finally`, every switch branch (`arm_node`) and the switch itself (`switch_node`, including the re-optimized one after the default is folded), `func_with_params` (drop_unused trims `argnames`, du 269), the conditional's `optimize_sequence`, `bool_tail_to_one`, tighten's `drop_unmentioned` / `sweep_duplicate_vars` (port-only filters), `syms::drop_replaced`.
+- `sequence.rs` `trim`: keep only when it optimizes an existing sequence (`preserve`); from `make_and_optimize` the sequence is new.
+- `lib.rs` `join_vars` used `Rc::make_mut`, which needs `Node: Clone`; it rebuilds now.
+- Copies the design did not name: `same_def` (call.rs) must `copy_binding` or the audit loses the injected `var`s' definitions (it did, 442 lookups in 44 cases, until fixed); the Defun-to-Function `expr_value` copy keeps the clone's scope.
+
+**Spans.** No keep site changed span (each keep site's span argument was the edited node, and the board confirms). Existing differences from terser's spans, flagged for review, not changed: `optimize_if`'s nested-`if` `&&` and dead-code statements (span `n`, terser `self.condition`), `fold_compare`'s new `null` / `void 0` (span `n`, terser the replaced operand), `reassoc_lazy`'s inner binaries (span `n`, terser `self.left`), `and_cond` in `if_break` (`n` vs `self.condition`), `optimize_do`'s statement and block (`n` vs `self.condition` / `self.body`), `remove_candidate`'s `void 0` (`n` vs `node.value`), and `join_object_assignments`' joined value (spanned on the value, terser on the property, and terser clones both operands).
+
+**Shadow audit results** (after the merge; compress + lwc board, and lwc-rollup under 200 KB in brackets). Counts are decisions where the pointer answer and the id answer differ; `@redescend` is the descend after `drop_unused`.
+
+| decision | pointer / id | count | cases | main node types | terser |
+| --- | --- | --- | --- | --- | --- |
+| `same` | not same / same | 2483 [656] | 719 [29] | Binary 1536, SimpleStatement, Sequence, Switch | `opt === node` (index.js 506): an optimizer that edits in place returns `self`, which becomes SQUEEZED; the port's rebuild is a new pointer, so it is not, and the node is walked again |
+| `skip_optimize` | run / skip | 4845 [1133] | 794 [29] | UnaryPrefix 3107, Case 509, Binary, Function | `def_optimize` skips an OPTIMIZED node; a rebuild (same id) of a node already optimized loses the pointer flag, so its optimizer runs again |
+| `entry`, `already` | not flagged / flagged | 859 / 818 [224 / 223] | ~170 [6] | Case 509, Function, Return, VarDef | mostly the switch: its branches were SQUEEZED, the optimizer edits their bodies (keep), the switch is walked again (see `same`) and the branches are new pointers |
+| `entry@redescend` | squeezed / not | 4438 [12251] | 1756 [175] | SimpleStatement 4074, Return | `mark_tree_squeezed` squeezes everything before `drop_unused`; terser's statements made by `tighten_body` (`sequencesize`, `make_node(AST_SimpleStatement)`) carry no flag and get `before` again in the descend after `drop_unused` |
+| `*@redescend` | not flagged / flagged | ~170 | 35 [1] | Call, Binary, Dot | nodes `drop_unused` rebuilt by a shape the pairing in `transfer_flags` did not match |
+| `callee_processed` | not / processed | 12 [1] | 12 | Function | call.rs `trim_unused`'s "the callee was already optimized" (UNUSED flags) |
+
+The flag audit is the input for step 5: 5e (`same` by id) and 5a (OPTIMIZED by id) account for the `same` / `skip_optimize` / `entry` rows, 5f for `entry@redescend`.
+
+Before step 4, the audit also compared definition and scope lookups; it found pointer-alias bugs that step 4 removed:
+- a `Block`'s scope given to the node that replaced it (the scope half of `retarget_fixed`, for any `out` of a scope's `transform`): `SimpleStatement`, `If`, `Return`, `Throw`, `Var` nodes "had" a scope;
+- rebuilt functions whose pointer alias was missed (`Function` scope found by id only, 57 cases);
+- in `bundles/lodash`, a `Defun` whose pointer lookup found a different scope than its id: `node_scope` held pointers of freed nodes, so a new node at a reused address inherited a stale scope.
+None of these changed the board when step 4 removed them.
+
+**Not done (step 5 on).** Flags are still pointer-keyed with the keep-alives (`flag_keep`, `seal_keep`, `late_squeezed`, `fresh`, `pre_tighten`); `is_sealed` is still a linear scan; `injected` still uses the `| 1 << 60` key; drop_unused's own `bind` table is id-keyed now (it shares `SymTable`), its `Use` maps stay pointer-keyed.
+
+**Timing.** User CPU of the release `try` over the 478 lwc-rollup inputs up to 400 KB, two interleaved rounds each, on a machine shared with other agents (so about ±5%):
+
+| build | first run | second run |
+| --- | --- | --- |
+| before the ids (2ec202c) | 150.1 s | |
+| step 2 (ids minted, nothing reads them) | 148.7 s | |
+| upstream after the triage fixes (64620ca) | | 198.0 s |
+| merge + step 3 (audit off) | 177.5 s | 200.9 s |
+| step 4 (SymTable by id, SipHash) | 184.2 s | 186.5 s |
+| step 4 with the identity-hashed `IdMap` / `IdSet` | | 189.8 s |
+
+The ids cost nothing measurable, and neither does keying the table by id. The jump between the first two rows and the rest is the merged triage fixes, not the ids (the second run had a load average near 25 on 4 cores, hence the higher absolute numbers). The big expected gains (§5) come with step 5: `is_sealed`'s linear scan and the keep-alives.
