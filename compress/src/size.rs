@@ -527,8 +527,12 @@ mod tests {
     }
 
     /// terser's lists from `tools/size.mjs`, live when the oracle is installed (and then the
-    /// committed `compress/tests/size.json` must match), else the committed copy.
+    /// committed `compress/tests/size.json` must match), else the committed copy; or the file
+    /// `SIZE_JSON` names (`node tools/size.mjs --files ...`).
     fn fixture() -> serde_json::Value {
+        if let Ok(path) = std::env::var("SIZE_JSON") {
+            return serde_json::from_str(&std::fs::read_to_string(path).expect("SIZE_JSON")).unwrap();
+        }
         let committed = std::fs::read_to_string(root().join("compress/tests/size.json")).expect("size.json");
         let live = if root().join("oracle/node_modules/terser/lib/size.js").exists() {
             std::process::Command::new("node")

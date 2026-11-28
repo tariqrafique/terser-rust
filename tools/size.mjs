@@ -6,6 +6,8 @@
 // non-computed property keys, are left out). `compress/src/size.rs` compares these with
 // `size::size`. Writes JSON to stdout, or to out.json.
 // node tools/size.mjs --code '<js>' : the size of every expression statement in <js>.
+// node tools/size.mjs --files a.js ... > out.json : the same lists for files; check them with
+// `SIZE_JSON=out.json cargo test -p compress --lib size`.
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -103,6 +105,9 @@ if (process.argv[2] === "--code") {
         if (st instanceof AST_SimpleStatement) console.log(st.body.size(), st.body.print_to_string());
         else console.log(st.size(), st.print_to_string());
     }
+} else if (process.argv[2] === "--files") {
+    const srcs = process.argv.slice(3).map(f => fs.readFileSync(f, "utf8"));
+    process.stdout.write(JSON.stringify(srcs.map(sizes)) + "\n");
 } else {
     const out = JSON.stringify(SNIPPETS.map(sizes)) + "\n";
     if (process.argv[2]) fs.writeFileSync(process.argv[2], out);
