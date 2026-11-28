@@ -1877,7 +1877,9 @@ fn const_expr(n: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         | Data::True
         | Data::False
         | Data::Null
-        | Data::Infinity => CExpr::Yes,
+        | Data::Infinity
+        // `AST_Hole` is an `AST_Atom`, so an `AST_Constant`.
+        | Data::Hole => CExpr::Yes,
         Data::Unary { expr, .. } => const_expr(expr, table, None),
         Data::Binary { left, right, .. } => join_expr(const_expr(left, table, None), const_expr(right, table, None)),
         // inference.js: arrays, objects and their properties do not pass
