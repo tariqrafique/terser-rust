@@ -1188,6 +1188,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.stack.pop();
     cx.leave(entered);
     cx.parents.pop();
+    // terser optimizes a scope in place: the rebuilt function is the same scope.
+    if matches!(n.data, Data::Func { .. }) && matches!(out.data, Data::Func { .. }) {
+        if let Some(table) = cx.syms.as_ref() {
+            if table.scope_lookup(&(Rc::as_ptr(&out) as usize)).is_none() {
+                alias_scope_node(cx, n, &out);
+            }
+        }
+    }
     retarget(cx, orig_ptr, &out);
     out
 }
