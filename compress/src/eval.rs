@@ -16,12 +16,19 @@ pub(crate) enum Lit {
     Bool(bool),
     Null,
     Undef,
+    /// terser `def_eval(AST_BigInt)` `BigInt(this.value)`. A literal or result outside
+    /// `i128` is not evaluated.
+    BigInt(i128),
+    /// terser `def_eval(AST_RegExp)`: a `RegExp` object (source, flags in `flags` order).
+    RegExp(String, String),
 }
 
 impl Lit {
     pub(crate) fn truthy(&self) -> bool {
         match self {
             Lit::Num(n) => *n != 0.0 && !n.is_nan(),
+            Lit::BigInt(n) => *n != 0,
+            Lit::RegExp(..) => true,
             Lit::Str(s) => !s.is_empty(),
             Lit::Bool(b) => *b,
             Lit::Null | Lit::Undef => false,
@@ -34,10 +41,66 @@ impl Lit {
             (Lit::Num(a), Lit::Num(b)) => a == b,
             (Lit::Str(a), Lit::Str(b)) => a == b,
             (Lit::Bool(a), Lit::Bool(b)) => a == b,
+            (Lit::BigInt(a), Lit::BigInt(b)) => a == b,
             (Lit::Null, Lit::Null) | (Lit::Undef, Lit::Undef) => true,
             _ => false,
         }
     }
+}
+
+/// `BigInt(value)` of a literal's source digits (`10`, `0x1f`, `0o7`, `0b1`).
+fn parse_bigint(value: &str) -> Option<i128> {
+    let lower = value.to_ascii_lowercase();
+    let (digits, radix) = if let Some(d) = lower.strip_prefix("0x") {
+        (d, 16)
+    } else if let Some(d) = lower.strip_prefix("0o") {
+        (d, 8)
+    } else if let Some(d) = lower.strip_prefix("0b") {
+        (d, 2)
+    } else {
+        (lower.as_str(), 10)
+    };
+    if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+        return None;
+    }
+    i128::from_str_radix(digits, radix).ok()
+}
+
+/// terser `def_eval(AST_Binary)` on two bigints: `>>>`, `**`, and `/` or `%` by `0n`
+/// are not evaluated.
+fn eval_bigint_bin(op: &str, a: i128, b: i128) -> Option<Lit> {
+    Some(match op {
+        "+" => Lit::BigInt(a.checked_add(b)?),
+        "-" => Lit::BigInt(a.checked_sub(b)?),
+        "*" => Lit::BigInt(a.checked_mul(b)?),
+        "/" if b != 0 => Lit::BigInt(a.checked_div(b)?),
+        "%" if b != 0 => Lit::BigInt(a.checked_rem(b)?),
+        "|" => Lit::BigInt(a | b),
+        "&" => Lit::BigInt(a & b),
+        "^" => Lit::BigInt(a ^ b),
+        "<<" | ">>" => {
+            let left = (op == "<<") == (b >= 0);
+            let by = u32::try_from(b.unsigned_abs()).ok()?;
+            if left {
+                if a == 0 {
+                    Lit::BigInt(0)
+                } else if by >= 127 || (a << by) >> by != a {
+                    return None;
+                } else {
+                    Lit::BigInt(a << by)
+                }
+            } else {
+                Lit::BigInt(a >> by.min(127))
+            }
+        }
+        "==" | "===" => Lit::Bool(a == b),
+        "!=" | "!==" => Lit::Bool(a != b),
+        "<" => Lit::Bool(a < b),
+        "<=" => Lit::Bool(a <= b),
+        ">" => Lit::Bool(a > b),
+        ">=" => Lit::Bool(a >= b),
+        _ => return None,
+    })
 }
 
 /// terser `def_optimize` table. One arm per node type. A type that does not
@@ -169,7 +232,7 @@ fn optimize_chain(n: &N, cx: &Cx) -> Option<N> {
     let Data::Chain { expr } = &n.data else {
         return None;
     };
-    if is_nullish_node(expr, cx) {
+    if is_nullish(expr, cx) {
         if cx.parent().is_some_and(|p| matches!(&p.data, Data::Unary { op, .. } if op == "delete")) {
             return Some(num(n, 0.0));
         }
@@ -364,6 +427,8 @@ fn lit_text(lit: &Lit) -> String {
         Lit::Bool(false) => "false".into(),
         Lit::Null => "null".into(),
         Lit::Undef => "undefined".into(),
+        Lit::BigInt(n) => n.to_string(),
+        Lit::RegExp(source, flags) => format!("/{source}/{flags}"),
     }
 }
 
@@ -460,6 +525,17 @@ fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
         return Some(Rc::clone(value));
     }
     None
+}
+
+/// terser `def_optimize(AST_SymbolRef)` on an assignment target: an undeclared
+/// `undefined`, `NaN` or `Infinity` outside `with` becomes the atom (`AST_Undefined`,
+/// `AST_NaN`, `AST_Infinity`, kept as is there by `is_atomic`), an `AST_Constant`. The
+/// port keeps the reference; this says it stands for that atom.
+pub(crate) fn global_atom_ref(n: &N, cx: &Cx) -> bool {
+    let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &n.data else {
+        return false;
+    };
+    matches!(name.as_str(), "undefined" | "NaN" | "Infinity") && !cx.opts.ie8 && is_undeclared_ref(n, name, cx) && !inside_with(cx)
 }
 
 /// terser `inference.js` `is_undeclared_ref`.
@@ -678,6 +754,7 @@ pub(crate) fn known_truth(n: &N, cx: &Cx) -> Option<bool> {
             Data::Cond { cond, cons, alt } => pure(cond, cx) && pure(cons, cx) && pure(alt, cx),
             Data::Seq { exprs } => exprs.iter().all(|e| pure(e, cx)),
             Data::Array { elements } => elements.iter().all(|e| pure(e, cx)),
+            Data::BigInt { .. } => true,
             _ => is_pure(n),
         }
     }
@@ -1173,6 +1250,23 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             cur = next;
         }
     }
+    // terser `def_optimize(AST_Binary)`: `"x" + y` and `y + "x"` are truthy in a
+    // boolean context (`make_sequence(self, [y, true]).optimize(compressor)`).
+    if let Data::Binary { op, left, right } = &cur.data {
+        if op == "+" && in_boolean_context(cx) {
+            let nonempty = |x: &N| matches!(eval(x, cx), Some(Lit::Str(s)) if !s.is_empty());
+            let kept = if nonempty(left) {
+                Some(right)
+            } else if nonempty(right) {
+                Some(left)
+            } else {
+                None
+            };
+            if let Some(kept) = kept {
+                return Some(tighten_seq(&cur, vec![Rc::clone(kept), num(&cur, 1.0)], cx));
+            }
+        }
+    }
     // terser `def_optimize(AST_Binary)`: a boolean binary outside another binary
     // becomes `!negate(self)` when that is shorter. The result is no longer a binary.
     if cx.opts.comparisons && is_boolean_value(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
@@ -1199,6 +1293,9 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             return Some(next);
         }
         if let Some(next) = numeric_swap(&cur, cx) {
+            cur = next;
+        }
+        if let Some(next) = reassociate(&cur, cx) {
             cur = next;
         }
         match bitwise_ops(&cur, cx) {
@@ -1426,8 +1523,9 @@ fn eval_logical(n: &N, cx: &Cx) -> Option<N> {
 }
 
 fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
-    if let Some(ll) = eval(left, cx) {
-        if !ll.truthy() {
+    // `has_flag(self.left, TRUTHY) ? true : has_flag(self.left, FALSY) ? false : evaluate`.
+    if let Some(ll) = cx.truth_flag(left).or_else(|| eval(left, cx).map(|l| l.truthy())) {
+        if !ll {
             return Some(maintain_this(cx, Rc::clone(left)));
         }
         return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
@@ -1437,6 +1535,7 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
             if in_boolean_context(cx) {
                 return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 0.0)], cx));
             }
+            cx.set_truth_flag(span, false);
         } else if left_of(cx, "&&") || in_boolean_context(cx) {
             return Some(maintain_this(cx, Rc::clone(left)));
         }
@@ -1463,8 +1562,8 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
 }
 
 fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
-    if let Some(ll) = eval(left, cx) {
-        if !ll.truthy() {
+    if let Some(ll) = cx.truth_flag(left).or_else(|| eval(left, cx).map(|l| l.truthy())) {
+        if !ll {
             return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
         }
         return Some(maintain_this(cx, Rc::clone(left)));
@@ -1476,6 +1575,8 @@ fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
             }
         } else if in_boolean_context(cx) {
             return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 1.0)], cx));
+        } else {
+            cx.set_truth_flag(span, true);
         }
     }
     // `(x && true) || y` => `x ? true : y`
@@ -1683,6 +1784,63 @@ fn numeric_swap(n: &N, cx: &Cx) -> Option<N> {
         crate::size::best_of(first, n, &reversed)
     };
     if Rc::ptr_eq(&pick, n) { None } else { Some(pick) }
+}
+
+/// terser `def_optimize(AST_Binary)` `associative`: `+` and `*` with `unsafe_math`,
+/// `&`, `|` and `^` always, when the whole is a number. The new inner binaries are
+/// not optimized here; the second descend folds their constants.
+fn reassociate(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { op, .. } = &n.data else {
+        return None;
+    };
+    let associative = match op.as_str() {
+        "+" | "*" => cx.opts.unsafe_math,
+        "&" | "|" | "^" => true,
+        _ => return None,
+    };
+    if !associative || !is_number_or_bigint(n) {
+        return None;
+    }
+    // `instanceof AST_Constant` (atoms included).
+    let constant = |x: &N| is_constant_node(x) || matches!(x.data, Data::Infinity | Data::Hole);
+    let same_op = |x: &N| matches!(&x.data, Data::Binary { op: o, .. } if o == op);
+    let parts = |x: &N| match &x.data {
+        Data::Binary { left, right, .. } => (Rc::clone(left), Rc::clone(right)),
+        _ => unreachable!(),
+    };
+    let mut cur = Rc::clone(n);
+    // a + (b + c) => (a + b) + c
+    {
+        let (left, right) = parts(&cur);
+        if same_op(&right) {
+            let (rl, rr) = parts(&right);
+            cur = binary(&cur, op, binary(&left, op, left.clone(), rl), rr);
+        }
+    }
+    // (n + 2) + 3 => 5 + n, (2 * n) * 3 => 6 * n
+    {
+        let (left, right) = parts(&cur);
+        if constant(&right) && same_op(&left) {
+            let (ll, lr) = parts(&left);
+            if constant(&ll) {
+                cur = binary(&cur, op, binary(&left, op, ll, right), lr);
+            } else if constant(&lr) {
+                cur = binary(&cur, op, binary(&left, op, lr, right), ll);
+            }
+        }
+    }
+    // (a | 1) | (2 | d) => (3 | a) | b
+    {
+        let (left, right) = parts(&cur);
+        if same_op(&left) && same_op(&right) {
+            let (ll, lr) = parts(&left);
+            let (rl, rr) = parts(&right);
+            if constant(&lr) && constant(&rl) {
+                cur = binary(&cur, op, binary(&left, op, binary(&ll, op, lr, rl), ll.clone()), rr);
+            }
+        }
+    }
+    if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
 }
 
 /// terser `def_optimize(AST_Binary)` `unsafe_comps` reversal of `<` / `<=`.
@@ -2019,7 +2177,7 @@ fn fold_nullish(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
     let Data::Binary { op: right_op, left: right_l, right: right_r } = &right.data else {
         return None;
     };
-    if left_op != want || right_op != want || !read_is_pure(left_r, cx) || !equivalent(left_r, right_r) {
+    if left_op != want || right_op != want || crate::conditional::has_side_effects(left_r, cx) || !equivalent(left_r, right_r) {
         return None;
     }
     let paired = is_undefined_value(left_l, cx) && matches!(right_l.data, Data::Null)
@@ -2094,7 +2252,8 @@ pub(crate) fn is_constant(n: &N) -> bool {
         | Data::BigInt { .. }
         | Data::True
         | Data::False
-        | Data::Null => true,
+        | Data::Null
+        | Data::Infinity => true,
         Data::Unary { op, expr, prefix: true } => {
             matches!(op.as_str(), "!" | "~" | "-" | "+" | "void") && is_constant(expr)
         }
@@ -2222,29 +2381,123 @@ fn is_string(n: &N) -> bool {
 }
 
 fn equivalent(a: &N, b: &N) -> bool {
-    match (&a.data, &b.data) {
-        (Data::Symbol { name: n1, kind: k1, .. }, Data::Symbol { name: n2, kind: k2, .. }) => n1 == n2 && k1 == k2,
-        (
-            Data::Dot { expr: e1, prop: p1, optional: o1, private: v1, .. },
-            Data::Dot { expr: e2, prop: p2, optional: o2, private: v2, .. },
-        ) => p1 == p2 && o1 == o2 && v1 == v2 && equivalent(e1, e2),
-        (Data::Sub { expr: e1, prop: p1, optional: o1 }, Data::Sub { expr: e2, prop: p2, optional: o2 }) => {
-            o1 == o2 && equivalent(e1, e2) && equivalent(p1, p2)
+    equivalent_to(a, b)
+}
+
+/// terser `lib/equivalent-to.js` `equivalent_to`: both trees walked in
+/// `_children_backwards` order, each pair of nodes compared by `shallow_cmp`.
+pub(crate) fn equivalent_to(a: &N, b: &N) -> bool {
+    let mut s1: Vec<N> = vec![Rc::clone(a)];
+    let mut s2: Vec<N> = vec![Rc::clone(b)];
+    while let (Some(n1), Some(n2)) = (s1.pop(), s2.pop()) {
+        if !shallow_cmp(&n1, &n2) {
+            return false;
         }
-        (Data::Unary { op: o1, expr: e1, prefix: p1 }, Data::Unary { op: o2, expr: e2, prefix: p2 }) => {
-            o1 == o2 && p1 == p2 && equivalent(e1, e2)
+        ast::children_backwards(&n1, &mut |c| s1.push(Rc::clone(c)));
+        ast::children_backwards(&n2, &mut |c| s2.push(Rc::clone(c)));
+        if s1.len() != s2.len() {
+            return false;
         }
-        (Data::Binary { op: o1, left: l1, right: r1 }, Data::Binary { op: o2, left: l2, right: r2 }) => {
-            o1 == o2 && equivalent(l1, l2) && equivalent(r1, r2)
-        }
-        (Data::Call { expr: e1, args: a1, optional: o1, is_new: n1 }, Data::Call { expr: e2, args: a2, optional: o2, is_new: n2 }) => {
-            o1 == o2 && n1 == n2 && equivalent(e1, e2) && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| equivalent(x, y))
-        }
-        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1.to_bits() == v2.to_bits(),
-        (Data::String { value: s1, .. }, Data::String { value: s2, .. }) => s1 == s2,
-        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
-        (Data::True, Data::True) | (Data::False, Data::False) | (Data::Null, Data::Null) | (Data::This, Data::This) => true,
+    }
+    s1.is_empty() && s2.is_empty()
+}
+
+/// terser `equivalent-to.js` `shallow_cmp`: the same `TYPE`, then the node's own fields.
+/// A field holding a node (`AST_If.alternative`, `AST_VarDef.value`, ...) compares by
+/// identity there.
+fn shallow_cmp(a: &N, b: &N) -> bool {
+    if ast::terser_type(a) != ast::terser_type(b) {
+        return false;
+    }
+    let same = |x: &Option<N>, y: &Option<N>| match (x, y) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.id() == y.id(),
         _ => false,
+    };
+    let same_list = |x: &Option<Vec<N>>, y: &Option<Vec<N>>| match (x, y) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.len() == y.len() && x.iter().zip(y).all(|(x, y)| x.id() == y.id()),
+        _ => false,
+    };
+    match (&a.data, &b.data) {
+        (Data::Directive { value: v1, .. }, Data::Directive { value: v2, .. }) => v1 == v2,
+        (Data::Labeled { label: l1, .. }, Data::Labeled { label: l2, .. }) => sym_name(l1) == sym_name(l2),
+        (Data::For { init: i1, cond: c1, step: t1, .. }, Data::For { init: i2, cond: c2, step: t2, .. }) => {
+            same(i1, i2) && same(c1, c2) && same(t1, t2)
+        }
+        (Data::Func { async_: a1, generator: g1, .. }, Data::Func { async_: a2, generator: g2, .. }) => a1 == a2 && g1 == g2,
+        (Data::Destructuring { array: a1, .. }, Data::Destructuring { array: a2, .. }) => a1 == a2,
+        // `AST_TemplateSegment` is `Seg::Cooked` data here: its `value` is compared in place.
+        (Data::Template { segments: s1 }, Data::Template { segments: s2 }) => {
+            s1.len() == s2.len()
+                && s1.iter().zip(s2).all(|pair| match pair {
+                    (Seg::Cooked { value: v1, .. }, Seg::Cooked { value: v2, .. }) => v1 == v2,
+                    (Seg::Expr(_), Seg::Expr(_)) => true,
+                    _ => false,
+                })
+        }
+        (Data::Yield { star: s1, .. }, Data::Yield { star: s2, .. }) => s1 == s2,
+        (Data::If { alt: a1, .. }, Data::If { alt: a2, .. }) => same(a1, a2),
+        (Data::Try { body: b1, catch: c1, finally: f1 }, Data::Try { body: b2, catch: c2, finally: f2 }) => {
+            b1.id() == b2.id() && same(c1, c2) && same(f1, f2)
+        }
+        (Data::Catch { arg: a1, .. }, Data::Catch { arg: a2, .. }) => same(a1, a2),
+        (Data::VarDef { value: v1, .. }, Data::VarDef { value: v2, .. }) => same(v1, v2),
+        (
+            Data::Import { phase: p1, imported_name: n1, imported_names: l1, attributes: t1, .. },
+            Data::Import { phase: p2, imported_name: n2, imported_names: l2, attributes: t2, .. },
+        ) => p1 == p2 && same(n1, n2) && same_list(l1, l2) && same(t1, t2),
+        (Data::DynImport { phase: p1, args: a1 }, Data::DynImport { phase: p2, args: a2 }) => p1 == p2 && a1.len() == a2.len(),
+        (
+            Data::Export { is_default: d1, names: n1, value: v1, definition: f1, module_name: m1, attributes: t1 },
+            Data::Export { is_default: d2, names: n2, value: v2, definition: f2, module_name: m2, attributes: t2 },
+        ) => d1 == d2 && same_list(n1, n2) && same(v1, v2) && same(f1, f2) && same(m1, m2) && same(t1, t2),
+        (Data::Dot { prop: p1, quote: q1, private: false, .. }, Data::Dot { prop: p2, quote: q2, private: false, .. }) => {
+            p1 == p2 && q1.is_some() == q2.is_some()
+        }
+        (Data::Dot { prop: p1, .. }, Data::Dot { prop: p2, .. }) => p1 == p2,
+        (Data::Unary { op: o1, .. }, Data::Unary { op: o2, .. })
+        | (Data::Binary { op: o1, .. }, Data::Binary { op: o2, .. })
+        | (Data::Assign { op: o1, .. }, Data::Assign { op: o2, .. }) => o1 == o2,
+        (Data::Prop { method: None, key: k1, .. }, Data::Prop { method: None, key: k2, .. }) => match (k1, k2) {
+            // `this.key === other.key && this.quote === other.quote`: a computed key is a node.
+            (Key::Static { name: n1, quote: q1 }, Key::Static { name: n2, quote: q2 }) => n1 == n2 && q1 == q2,
+            (Key::Computed(x), Key::Computed(y)) => x.id() == y.id(),
+            (Key::Private(n1), Key::Private(n2)) => n1 == n2,
+            _ => false,
+        },
+        // Getter, setter, concise and private methods: `static`; the `AST_SymbolMethod` key
+        // is a child in terser and `Key::Static` data here.
+        (Data::Prop { key: k1, static_: s1, .. }, Data::Prop { key: k2, static_: s2, .. }) => {
+            s1 == s2
+                && match (k1, k2) {
+                    (Key::Static { name: n1, .. }, Key::Static { name: n2, .. }) | (Key::Private(n1), Key::Private(n2)) => n1 == n2,
+                    (Key::Computed(_), Key::Computed(_)) => true,
+                    _ => false,
+                }
+        }
+        (Data::Class { name: n1, extends: e1, .. }, Data::Class { name: n2, extends: e2, .. }) => same(n1, n2) && same(e1, e2),
+        (Data::Field { key: k1, static_: s1, .. }, Data::Field { key: k2, static_: s2, .. }) => {
+            s1 == s2
+                && match (k1, k2) {
+                    (Key::Static { name: n1, .. }, Key::Static { name: n2, .. }) => n1 == n2,
+                    _ => true,
+                }
+        }
+        (Data::Symbol { name: n1, .. }, Data::Symbol { name: n2, .. }) => n1 == n2,
+        (Data::String { value: v1, .. }, Data::String { value: v2, .. }) => v1 == v2,
+        // `AST_NaN` is an atom (always equal); a folded `NaN` is a `Number` here.
+        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1 == v2 || v1.is_nan() && v2.is_nan(),
+        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
+        (Data::RegExp { source: s1, flags: f1 }, Data::RegExp { source: s2, flags: f2 }) => s1 == s2 && f1 == f2,
+        _ => true,
+    }
+}
+
+fn sym_name(n: &N) -> Option<&str> {
+    match &n.data {
+        Data::Symbol { name, .. } => Some(name),
+        _ => None,
     }
 }
 
@@ -2270,10 +2523,16 @@ fn fold_sub(n: &N, cx: &Cx, depth: u8) -> Option<N> {
     let mut property = String::new();
     if cx.opts.properties && cx.opts.evaluate {
         if let Some(lit) = eval(prop, cx) {
-            let key = normalize_prop_key(lit);
-            let constant = lit_node(prop, prop_key_lit(&key), cx);
+            // Only a string key goes through `parseFloat`; a bigint or a `RegExp` stays that
+            // value (`make_node_from_constant(key, prop)`), its string is `"" + key`.
+            let (constant, key_string) = if matches!(lit, Lit::BigInt(_) | Lit::RegExp(..)) {
+                (lit_node(prop, lit.clone(), cx), lit_text(&lit))
+            } else {
+                let key = normalize_prop_key(lit);
+                (lit_node(prop, prop_key_lit(&key), cx), prop_key_string(&key))
+            };
             prop_node = crate::size::best_of_expression(prop, &constant);
-            property = prop_key_string(&key);
+            property = key_string;
             evaluated = true;
             if is_basic_ident(&property) && property.len() <= crate::size::size(&prop_node) + 1 {
                 let quote = match &prop_node.data {
@@ -2578,48 +2837,59 @@ fn any_child(n: &N, mut f: impl FnMut(&N) -> bool) -> bool {
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Sub)` array-index arm.
+/// terser `def_optimize(AST_Sub)` `FLATTEN`: `[a, b, c][1]`. The elements after the index
+/// keep their side effects; when none has any the result is the sequence of the earlier
+/// side effects and the element, else an array of what is left indexed again.
 fn extract_array(span: &N, expr: &N, prop: &N, cx: &Cx) -> Option<N> {
+    use crate::conditional::has_side_effects;
+    use crate::unary::drop_side_effect_free;
     if !(cx.opts.properties && cx.opts.side_effects) {
         return None;
     }
     let Data::Number { value, .. } = &prop.data else {
         return None;
     };
-    let index = array_index(*value)?;
     let Data::Array { elements } = &expr.data else {
         return None;
     };
-    if index >= elements.len() {
-        return None;
-    }
+    let index = array_index(*value).filter(|i| *i < elements.len())?;
     let ret_value = &elements[index];
-    if matches!(ret_value.data, Data::Spread { .. }) || !safe_to_flatten(ret_value, cx) {
+    if !safe_to_flatten(ret_value, cx) {
         return None;
     }
-    for (i, el) in elements.iter().enumerate() {
-        if i == index {
-            continue;
-        }
-        if matches!(el.data, Data::Spread { .. } | Data::Hole) {
-            return None;
-        }
-        if i > index && expr_has_side_effects(el, cx) {
-            return None;
-        }
-    }
-    let ret_node = if matches!(ret_value.data, Data::Hole) {
-        void0(ret_value)
-    } else {
-        Rc::clone(ret_value)
-    };
-    let mut values = Vec::new();
-    for el in elements.iter().take(index) {
-        if expr_has_side_effects(el, cx) {
-            values.push(Rc::clone(el));
+    let mut flatten = true;
+    let mut values: std::collections::VecDeque<N> = std::collections::VecDeque::new();
+    for el in elements[index + 1..].iter().rev() {
+        if let Some(value) = drop_side_effect_free(el, cx, false) {
+            if flatten && has_side_effects(&value, cx) {
+                flatten = false;
+            }
+            values.push_front(value);
         }
     }
-    values.push(ret_node);
-    Some(make_seq(span, values))
+    if matches!(ret_value.data, Data::Spread { .. }) {
+        return None;
+    }
+    let ret_value = if matches!(ret_value.data, Data::Hole) { void0(ret_value) } else { Rc::clone(ret_value) };
+    if !flatten {
+        values.push_front(Rc::clone(&ret_value));
+    }
+    let mut new_index = index;
+    for el in elements[..index].iter().rev() {
+        if matches!(el.data, Data::Spread { .. }) {
+            return None;
+        }
+        match drop_side_effect_free(el, cx, false) {
+            Some(value) => values.push_front(value),
+            None => new_index -= 1,
+        }
+    }
+    if flatten {
+        values.push_back(ret_value);
+        return Some(crate::sequence::make_and_optimize(span, values.into_iter().collect(), cx));
+    }
+    let array = atom(expr, Data::Array { elements: values.into_iter().collect() });
+    Some(atom(span, Data::Sub { expr: array, prop: num(prop, new_index as f64), optional: false }))
 }
 
 fn array_index(n: f64) -> Option<usize> {
@@ -2714,6 +2984,8 @@ fn normalize_prop_key(lit: Lit) -> PropKey {
         Lit::Bool(b) => PropKey::Bool(b),
         Lit::Null => PropKey::Null,
         Lit::Undef => PropKey::Undef,
+        Lit::BigInt(n) => normalize_prop_key(Lit::Str(n.to_string())),
+        Lit::RegExp(source, flags) => normalize_prop_key(Lit::Str(format!("/{source}/{flags}"))),
     }
 }
 
@@ -3313,6 +3585,13 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
 }
 
 fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
+    eval_at(n, table, 1)
+}
+
+/// terser `_eval(compressor, depth)`: `depth` grows through converting operators and
+/// property access; an object value read through an escaped reference deeper than its
+/// `escaped` depth is no value.
+fn eval_at(n: &N, table: Option<&SymTable>, depth: u32) -> Option<Lit> {
     match &n.data {
         Data::Number { value, .. } => Some(Lit::Num(*value)),
         // A string with lone surrogates has no `String` value (`value` is
@@ -3323,8 +3602,21 @@ fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
         Data::False => Some(Lit::Bool(false)),
         Data::Null => Some(Lit::Null),
         Data::Infinity => Some(Lit::Num(f64::INFINITY)),
+        Data::BigInt { value } => parse_bigint(value).map(Lit::BigInt),
+        // terser `def_eval(AST_RegExp)`: a `RegExp` when `regexp_is_safe(source)`.
+        Data::RegExp { source, flags } if regexp_is_safe(source) => Some(Lit::RegExp(source.clone(), canonical_flags(flags))),
         Data::Unary { op, expr, prefix: true } => {
-            let inner = eval_in(expr, table)?;
+            // `non_converting_unary`: `!`, `typeof`, `void` keep the depth.
+            let inner = eval_at(expr, table, if matches!(op.as_str(), "!" | "typeof" | "void") { depth } else { depth + 1 })?;
+            if let Lit::BigInt(v) = inner {
+                return match op.as_str() {
+                    "!" => Some(Lit::Bool(v == 0)),
+                    "void" => Some(Lit::Undef),
+                    "~" => Some(Lit::BigInt(!v)),
+                    "-" => v.checked_neg().map(Lit::BigInt),
+                    _ => None,
+                };
+            }
             match op.as_str() {
                 "!" => Some(Lit::Bool(!inner.truthy())),
                 "void" => Some(Lit::Undef),
@@ -3337,57 +3629,64 @@ fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
             }
         }
         Data::Binary { op, left, right } => {
+            // `non_converting_binary`: `&&`, `||`, `??`, `===`, `!==` keep the depth.
+            let depth = if matches!(op.as_str(), "&&" | "||" | "??" | "===" | "!==") { depth } else { depth + 1 };
             if op == "&&" || op == "||" || op == "??" {
-                let l = eval_in(left, table)?;
+                let l = eval_at(left, table, depth)?;
                 return match op.as_str() {
                     "&&" => {
                         if !l.truthy() {
                             Some(l)
                         } else {
-                            eval_in(right, table)
+                            eval_at(right, table, depth)
                         }
                     }
                     "||" => {
                         if l.truthy() {
                             Some(l)
                         } else {
-                            eval_in(right, table)
+                            eval_at(right, table, depth)
                         }
                     }
                     _ => {
                         if matches!(l, Lit::Null | Lit::Undef) {
-                            eval_in(right, table)
+                            eval_at(right, table, depth)
                         } else {
                             Some(l)
                         }
                     }
                 };
             }
-            let l = eval_in(left, table)?;
-            let r = eval_in(right, table)?;
-            eval_bin(op, l, r)
+            let l = eval_at(left, table, depth)?;
+            let r = eval_at(right, table, depth)?;
+            let result = eval_bin(op, l, r)?;
+            // "leave original expression as is": a `NaN` result inside `with`.
+            if matches!(result, Lit::Num(v) if v.is_nan()) && EVAL_IN_WITH.with(|w| w.get()) {
+                return None;
+            }
+            Some(result)
         }
         Data::Cond { cond, cons, alt } => {
-            let c = eval_in(cond, table)?;
-            if c.truthy() { eval_in(cons, table) } else { eval_in(alt, table) }
+            let c = eval_at(cond, table, depth)?;
+            if c.truthy() { eval_at(cons, table, depth) } else { eval_at(alt, table, depth) }
         }
         // terser `evaluate.js` `AST_PropAccess`: `.length` of an evaluated array or string.
         Data::Dot { expr, prop, optional: false, private: false, .. } if prop == "length" => match &expr.data {
             Data::String { value, .. } => Some(Lit::Num(utf16_len(value) as f64)),
             Data::Array { elements } => {
                 for e in elements {
-                    eval_in(e, table)?;
+                    eval_at(e, table, depth + 1)?;
                 }
                 Some(Lit::Num(elements.len() as f64))
             }
             // `this.expression._eval(compressor, depth + 1)`: a reference to a string.
-            Data::Symbol { kind: SymKind::Ref, .. } => match eval_in(expr, table)? {
+            Data::Symbol { kind: SymKind::Ref, .. } => match eval_at(expr, table, depth + 1)? {
                 Lit::Str(s) => Some(Lit::Num(utf16_len(&s) as f64)),
                 _ => None,
             },
             _ => None,
         },
-        Data::Symbol { kind: SymKind::Ref, .. } => eval_ref(n, table?),
+        Data::Symbol { kind: SymKind::Ref, .. } => eval_ref(n, table?, depth),
         _ => None,
     }
 }
@@ -3398,8 +3697,7 @@ thread_local! {
 }
 
 /// terser `evaluate.js` `def_eval(AST_SymbolRef)`: the reference's `fixed_value()`, evaluated.
-/// A value of `typeof "object"` (the `escaped` depth test) cannot come out of `eval_in`.
-fn eval_ref(n: &N, table: &SymTable) -> Option<Lit> {
+fn eval_ref(n: &N, table: &SymTable, depth: u32) -> Option<Lit> {
     let id = table.def_of(n)?;
     let def = table.defs.get(id)?;
     if def.suppress_fixed.get() || table.unfixed_ref(n) {
@@ -3411,15 +3709,52 @@ fn eval_ref(n: &N, table: &SymTable) -> Option<Lit> {
         return None;
     }
     REENTRANT_REF_EVAL.with(|set| set.borrow_mut().push(nid));
-    let value = eval_in(fixed, Some(table));
+    let value = eval_at(fixed, Some(table), depth);
     REENTRANT_REF_EVAL.with(|set| set.borrow_mut().pop());
+    // `value && typeof value == "object"`: `escaped && depth > escaped` is no value.
+    if matches!(value, Some(Lit::RegExp(..))) && def.escaped != 0 && depth > def.escaped {
+        return None;
+    }
     value
+}
+
+/// terser `utils/index.js` `regexp_is_safe`: `/^[\\/|\0\s\w^$.[\]()]*$/`.
+fn regexp_is_safe(source: &str) -> bool {
+    source.chars().all(|c| {
+        matches!(c, '\\' | '/' | '|' | '\0' | '^' | '$' | '.' | '[' | ']' | '(' | ')' | '_')
+            || c.is_ascii_alphanumeric()
+            || is_js_space(c)
+    })
+}
+
+/// JavaScript `\s`: white space and line terminators.
+fn is_js_space(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+}
+
+/// `RegExp.prototype.flags`: the flags in the order `dgimsuvy`.
+fn canonical_flags(flags: &str) -> String {
+    "dgimsuvy".chars().filter(|c| flags.contains(*c)).collect()
 }
 
 /// terser `AST_Node._eval`, with references evaluated through their fixed values
 /// (`reduce_vars`).
 fn eval_raw(n: &N, cx: &Cx) -> Option<Lit> {
-    eval_in(n, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars))
+    with_eval_stack(&cx.parents, || eval_in(n, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars)))
+}
+
+thread_local! {
+    /// `compressor.find_parent(AST_With)` for the evaluation running now.
+    static EVAL_IN_WITH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs an evaluation under the compressor stack `stack` (`find_parent(AST_With)`).
+fn with_eval_stack<T>(stack: &[N], f: impl FnOnce() -> T) -> T {
+    let inside = stack.iter().any(|p| matches!(p.data, Data::With { .. }));
+    let saved = EVAL_IN_WITH.with(|w| w.replace(inside));
+    let out = f();
+    EVAL_IN_WITH.with(|w| w.set(saved));
+    out
 }
 
 /// terser `AST_Node.evaluate(compressor)`: `_eval`, except that a string longer than
@@ -3430,7 +3765,7 @@ fn eval(n: &N, cx: &Cx) -> Option<Lit> {
 
 /// terser `AST_Node.evaluate(compressor)` with the compressor's stack `stack`.
 pub(crate) fn eval_lit(n: &N, table: Option<&SymTable>, stack: &[N]) -> Option<Lit> {
-    let lit = eval_in(n, table)?;
+    let lit = with_eval_stack(stack, || eval_in(n, table))?;
     // `if (!val ...) return val` comes first: `""` skips the size check.
     if let Lit::Str(s) = &lit {
         if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
@@ -3448,6 +3783,8 @@ impl Lit {
             Lit::Bool(false) => 0.0,
             Lit::Null => 0.0,
             Lit::Undef => f64::NAN,
+            Lit::BigInt(_) => return None,
+            Lit::RegExp(..) => f64::NAN,
             Lit::Str(s) => {
                 let t = s.trim();
                 if t.is_empty() {
@@ -3469,6 +3806,25 @@ fn neg(n: f64) -> Lit {
 }
 
 fn eval_bin(op: &str, l: Lit, r: Lit) -> Option<Lit> {
+    // "Do not mix BigInt and Number".
+    match (&l, &r) {
+        (Lit::BigInt(a), Lit::BigInt(b)) => return eval_bigint_bin(op, *a, *b),
+        (Lit::BigInt(_), _) | (_, Lit::BigInt(_)) => return None,
+        _ => {}
+    }
+    // A `RegExp` is an object: two are not compared by reference, `===` with a primitive
+    // is false, and anything else converts it to its string.
+    let identity = matches!(op, "==" | "!=" | "===" | "!==");
+    match (&l, &r) {
+        (Lit::RegExp(..), Lit::RegExp(..)) if identity => return None,
+        (Lit::RegExp(..), _) | (_, Lit::RegExp(..)) if op == "===" || op == "!==" => return Some(Lit::Bool(op == "!==")),
+        _ => {}
+    }
+    let as_prim = |x: Lit| match x {
+        Lit::RegExp(source, flags) => Lit::Str(format!("/{source}/{flags}")),
+        x => x,
+    };
+    let (l, r) = (as_prim(l), as_prim(r));
     if op == "+" {
         if matches!(l, Lit::Str(_)) || matches!(r, Lit::Str(_)) {
             return Some(Lit::Str(format!("{}{}", js_str(&l), js_str(&r))));
@@ -3547,6 +3903,8 @@ fn js_str(lit: &Lit) -> String {
         Lit::Bool(false) => "false".into(),
         Lit::Null => "null".into(),
         Lit::Undef => "undefined".into(),
+        Lit::BigInt(n) => n.to_string(),
+        Lit::RegExp(source, flags) => format!("/{source}/{flags}"),
     }
 }
 
@@ -3589,14 +3947,8 @@ fn prefer(orig: &N, folded: N, cx: &Cx) -> N {
 pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
     match lit {
         Lit::Num(n) if n.is_nan() => nan_node(orig, cx),
-        Lit::Num(n) if n.is_infinite() => {
-            if cx.shadowed("Infinity") {
-                let node = atom(orig, Data::Infinity);
-                if n.is_sign_negative() { unary(orig, "-", node) } else { node }
-            } else {
-                infinity(orig, n.is_sign_negative())
-            }
-        }
+        // `make_node(AST_Infinity).optimize(compressor)`: `1/0` unless `keep_infinity`.
+        Lit::Num(n) if n.is_infinite() => infinity(orig, n.is_sign_negative()),
         Lit::Num(n) if n == 0.0 && n.is_sign_negative() => unary(orig, "-", num(orig, 0.0)),
         Lit::Num(n) => num(orig, n),
         Lit::Str(s) => string(orig, s),
@@ -3604,6 +3956,9 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
         Lit::Bool(false) => atom(orig, Data::False),
         Lit::Null => atom(orig, Data::Null),
         Lit::Undef => void0(orig),
+        Lit::BigInt(n) => atom(orig, Data::BigInt { value: n.to_string() }),
+        // `regexp_source_fix(val.source)`: a literal's source has no raw line terminator.
+        Lit::RegExp(source, flags) => atom(orig, Data::RegExp { source, flags }),
     }
 }
 
@@ -3718,6 +4073,15 @@ fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
 }
 
 fn apply_unary(op: &str, inner: Lit) -> Option<Lit> {
+    if let Lit::BigInt(v) = inner {
+        return Some(match op {
+            "!" => Lit::Bool(v == 0),
+            "void" => Lit::Undef,
+            "~" => Lit::BigInt(!v),
+            "-" => Lit::BigInt(v.checked_neg()?),
+            _ => return None,
+        });
+    }
     Some(match op {
         "!" => Lit::Bool(!inner.truthy()),
         "void" => Lit::Undef,
@@ -3746,6 +4110,9 @@ fn eval_typeof(expr: &N, cx: &Cx) -> Option<Lit> {
         Lit::Bool(_) => "boolean",
         Lit::Null => "object",
         Lit::Undef => "undefined",
+        Lit::BigInt(_) => "bigint",
+        // "typeof <RegExp> returns "object" or "function" on different platforms".
+        Lit::RegExp(..) => return None,
     }.into()))
 }
 
