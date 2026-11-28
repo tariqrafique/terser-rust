@@ -973,7 +973,7 @@ fn apply_candidate(
     // declaration `drop_unused` eliminated is gone from the tree.
     let tree_declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
     let declared = match &cand.node.data {
-        Data::VarDef { name, .. } if cand.kind == Kind::Var => ORIG.with(|o| o.borrow().get(&ptr(name)).copied()).map_or(tree_declared, |o| o.max(tree_declared)),
+        Data::VarDef { name, .. } if cand.kind == Kind::Var => ORIG.with(|o| o.borrow().get(&ptr(name)).copied()).unwrap_or(tree_declared),
         _ => tree_declared,
     };
     // A `var` in a nested block: the block's counts are the function's when
@@ -1012,7 +1012,10 @@ fn apply_candidate(
             }
         }
     }
-    let exposed = cand.kind == Kind::Var && !env.in_fn && !env.toplevel_vars;
+    // terser `compressor.exposed(def)`: a global without `toplevel`. A nested block's
+    // own `let` / `const` is defined on the block scope, never global.
+    let block_lexical = env.block_only && matches!(sym_kind(&cand.node), Some(SymKind::Let | SymKind::Const));
+    let exposed = cand.kind == Kind::Var && !env.in_fn && !env.toplevel_vars && !block_lexical;
     // An IIFE parameter: terser `get_lhs` on a `var` whose name is a funarg
     // (`declared > 1` does not apply), with the parameter's `referenced`.
     let arg_referenced = cand.arg.as_ref().map(|a| IIFE.with(|i| i.borrow().as_ref().and_then(|i| i.referenced[a.param])).unwrap_or(total));
