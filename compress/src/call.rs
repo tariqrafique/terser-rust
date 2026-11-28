@@ -368,7 +368,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     for name in &declared {
         let reads = count_reads(body, name);
         let writes = exprs.iter().filter(|e| matches!(&e.data, Data::Assign { left, .. } if sym_str(left) == Some(name.as_str()))).count();
-        cx.injected_refs.borrow_mut().insert(name.clone(), reads + writes);
+        cx.injected_refs.borrow_mut().insert((inj.key, name.clone()), reads + writes);
     }
     if !declared.is_empty() {
         cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());

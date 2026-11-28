@@ -713,9 +713,10 @@ struct Cx {
     foreign_lambda: Option<ast::NodeId>,
     /// Names `flatten_fn` has added to a scope's `variables`, by scope.
     injected: RefCell<HashMap<ScopeKey, HashSet<String>>>,
-    /// terser `def.references.length` of an injected name: the parameter's
-    /// reads in the inlined body plus the injected assignment.
-    injected_refs: RefCell<HashMap<String, usize>>,
+    /// terser `def.references.length` of an injected name, by the scope it
+    /// was appended to: the parameter's reads in the inlined body plus the
+    /// injected assignment.
+    injected_refs: RefCell<HashMap<(ScopeKey, String), usize>>,
 }
 
 impl Cx {

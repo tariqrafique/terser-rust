@@ -40,7 +40,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         }
         if cx.opts.collapse_vars {
             if let Some(scope) = collapse_scope(&stmts, cx) {
-                crate::tighten::set_injected(cx.injected_refs.borrow().clone());
+                crate::tighten::set_injected(visible_injected(cx));
                 // Function-statement names visible here, innermost declaration wins.
                 {
                     let mut defuns: std::collections::HashSet<String> = Default::default();
@@ -261,6 +261,41 @@ fn visible_names(cx: &Cx, skip_self: bool) -> Option<std::collections::HashSet<S
         }
     }
     Some(out)
+}
+
+/// The vars `flatten_fn` injected that a name reaches from here, with their
+/// reference counts (`Cx.injected_refs`): terser appends each to one scope's
+/// `variables`, so a name resolves to it only through that scope, and only
+/// when no nearer scope defines the name.
+fn visible_injected(cx: &Cx) -> std::collections::HashMap<String, usize> {
+    let refs = cx.injected_refs.borrow();
+    let mut out = std::collections::HashMap::new();
+    if refs.is_empty() {
+        return out;
+    }
+    let mut shadowed: std::collections::HashSet<String> = Default::default();
+    for p in cx.parents.iter().rev() {
+        let index = cx.syms.as_ref().and_then(|t| t.scope_of(p));
+        let key = match index {
+            Some(i) => crate::ScopeKey::Index(i),
+            None if matches!(p.data, Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. }) => crate::ScopeKey::Node(p.id()),
+            None => continue,
+        };
+        for ((k, name), &count) in refs.iter() {
+            if *k == key && !shadowed.contains(name) {
+                out.entry(name.clone()).or_insert(count);
+            }
+        }
+        if let (Some(i), Some(table)) = (index, cx.syms.as_ref()) {
+            if let Some(defs) = table.scope_defs.get(&i) {
+                shadowed.extend(defs.iter().filter(|&&d| !table.defs[d].undeclared).map(|&d| table.defs[d].name.clone()));
+            }
+        }
+        if let Some(names) = cx.injected.borrow().get(&key) {
+            shadowed.extend(names.iter().cloned());
+        }
+    }
+    out
 }
 
 /// This body is a lambda's `pre_tighten` (`Cx.foreign_lambda`).
