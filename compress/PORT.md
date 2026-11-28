@@ -149,3 +149,6 @@ Inlining board (C1, C5, C6, C10, C11):
 - Collapse `may_modify`: a reference from a nested function counts only when that function does not bind the name itself. A write of the candidate's name (`is_lhs`) is passed over before the `stop_after` tests (C11).
 
 Open: in the first `tighten_body` of a forward-inlined copy terser collapses some `const`s but not others (`const a=M(value),u=...;return fl(value>0?"x":"y",a,u)`, the port also moves `u`); the cause is not found yet.
+
+Round 2 triage (R3, R7, R10, R12, R13, R14):
+- R3: `eval.rs` `dot_throw` is terser `_dot_throw` (`inference.js`), and `may_throw_on_access` is `!pure_getters || _dot_throw`. A reference answers with its fixed value (`!fixed || fixed._dot_throw()`), so `u.S` on `const u={S:1}` neither throws nor has side effects; an object throws only for a getter or a spread of something that does. `unary.rs` `may_side_effect` and `conditional.rs` `has_side_effects` / `may_throw` follow `AST_Dot` / `AST_Sub` (with the `is_nullish` short-circuit) instead of treating every read as an effect. The switch then drops `case u.Y:` before `default:`, and `(al.h,R)` drops the read.

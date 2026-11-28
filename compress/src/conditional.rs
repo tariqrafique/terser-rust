@@ -484,6 +484,7 @@ fn may_throw(n: &N, cx: &Cx) -> bool {
         }
         Data::Cond { cond, cons, alt } => may_throw(cond, cx) || may_throw(cons, cx) || may_throw(alt, cx),
         Data::Seq { exprs } => exprs.iter().any(|e| may_throw(e, cx)),
+        Data::Dot { .. } | Data::Sub { .. } if crate::eval::is_nullish(n, cx) => false,
         Data::Dot { expr, optional, .. } => {
             (!*optional && may_throw_on_access(expr, cx)) || may_throw(expr, cx)
         }
@@ -562,21 +563,19 @@ pub(crate) fn has_side_effects(n: &N, cx: &Cx) -> bool {
         }
         Data::Seq { exprs } => exprs.iter().any(|e| has_side_effects(e, cx)),
         Data::Symbol { name, kind: SymKind::Ref, .. } => symbol_side(n, name, cx),
-        // terser `may_throw_on_access` is true when `pure_getters` is off (the default),
-        // so a non-optional `.` / `[]` read counts as a side effect.
+        // `AST_Dot` / `AST_Sub`: a nullish short-circuit only runs the receiver;
+        // otherwise a read that may throw on access is an effect.
         Data::Dot { expr, optional, .. } => {
-            if *optional {
-                has_side_effects(expr, cx)
-            } else {
-                true
+            if crate::eval::is_nullish(n, cx) {
+                return has_side_effects(expr, cx);
             }
+            (!*optional && may_throw_on_access(expr, cx)) || has_side_effects(expr, cx)
         }
         Data::Sub { expr, prop, optional } => {
-            if *optional {
-                has_side_effects(expr, cx) || has_side_effects(prop, cx)
-            } else {
-                true
+            if crate::eval::is_nullish(n, cx) {
+                return has_side_effects(expr, cx);
             }
+            (!*optional && may_throw_on_access(expr, cx)) || has_side_effects(prop, cx) || has_side_effects(expr, cx)
         }
         Data::Array { elements } => elements.iter().any(|e| has_side_effects(e, cx)),
         Data::Object { props } => props.iter().any(|p| prop_side(p, cx)),
@@ -623,19 +622,7 @@ fn symbol_side(n: &N, name: &str, cx: &Cx) -> bool {
 }
 
 fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
-    let strict = cx.lookup("use strict").is_some();
-    match &n.data {
-        Data::Symbol { name, .. } => {
-            if name == "arguments" || !strict {
-                return false;
-            }
-            true
-        }
-        Data::Dot { .. } => strict,
-        Data::This | Data::Func { .. } | Data::Class { .. } => false,
-        Data::Unary { op, .. } if op == "void" => true,
-        _ => true,
-    }
+    crate::eval::may_throw_on_access(n, cx)
 }
 
 fn expr_pure(n: &N, cx: &Cx) -> bool {

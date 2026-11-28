@@ -528,6 +528,20 @@ pub(crate) fn may_side_effect(n: &N, cx: &Cx) -> bool {
         Data::Symbol { .. } => !symbol_read_is_pure(n, cx),
         Data::Object { props } => props.iter().any(|p| prop_may_effect(p, cx)),
         Data::Spread { expr } | Data::Chain { expr } => may_side_effect(expr, cx),
+        // `AST_Dot` / `AST_Sub`: a nullish short-circuit only runs the receiver;
+        // otherwise a read that may throw on access is an effect.
+        Data::Dot { expr, optional, .. } => {
+            if crate::eval::is_nullish(n, cx) {
+                return may_side_effect(expr, cx);
+            }
+            (!*optional && crate::eval::may_throw_on_access(expr, cx)) || may_side_effect(expr, cx)
+        }
+        Data::Sub { expr, prop, optional } => {
+            if crate::eval::is_nullish(n, cx) {
+                return may_side_effect(expr, cx);
+            }
+            (!*optional && crate::eval::may_throw_on_access(expr, cx)) || may_side_effect(prop, cx) || may_side_effect(expr, cx)
+        }
         _ => true,
     }
 }
