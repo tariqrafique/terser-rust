@@ -145,7 +145,7 @@ Merge risk: T2 and T3 both edit `drop_unused.rs`, and T4 and T5 both edit `eval.
 
 ## The `fixture` board (next)
 
-`--set fixture` runs each case with its own options through `Compressor` directly (`harness/lib/compress-runner.mjs`). It is 1949/2671 (722 failing). Not triaged here. Failure rate by option the case sets (failing / cases with it):
+`--set fixture` runs each case with its own options through `Compressor` directly (`harness/lib/compress-runner.mjs`). It is 1949/2671 (722 failing). Not triaged here; `FIXTURE.md` triages it at 2109/2671. Failure rate by option the case sets (failing / cases with it):
 
 | Option | Failing | Option | Failing |
 | --- | --- | --- | --- |
