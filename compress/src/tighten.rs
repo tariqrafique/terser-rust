@@ -2387,6 +2387,8 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             }
         }
         Data::Chain { expr } => expr_effects(expr, locals),
+        // terser `AST_TemplateString.has_side_effects`: its segments only.
+        Data::Template { segments } => segments.iter().any(|s| matches!(s, ast::Seg::Expr(e) if expr_effects(e, locals))),
         // terser `AST_Class.has_side_effects`: `extends`, computed keys,
         // static field values and static blocks.
         Data::Class { extends, props, .. } => {
@@ -2494,7 +2496,8 @@ fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
                 || expr_may_throw(expr, locals)
                 || expr_may_throw(prop, locals)
         }
-        Data::Call { .. } => true,
+        // terser has no `may_throw` for `AST_TemplateString`: `AST_Node`'s `true`.
+        Data::Call { .. } | Data::Template { .. } => true,
         _ => false,
     }
 }
