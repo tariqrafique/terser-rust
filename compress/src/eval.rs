@@ -85,7 +85,7 @@ fn opt_table(n: &N, cx: &Cx) -> Option<N> {
         Data::Cond { .. } if cx.opts.conditionals => fold_cond(n, cx),
         // terser `def_optimize(AST_If)`.
         Data::If { .. } => optimize_if(n, cx),
-        // terser `def_optimize(AST_Binary)`. `fold_not_binary` only matches `!`.
+        // terser `def_optimize(AST_Binary)`.
         Data::Binary { .. } => fold_binary(n, cx),
         // terser `def_optimize(AST_Assign)`.
         Data::Assign { .. } => crate::assign::optimize(n, cx),
@@ -1688,63 +1688,6 @@ fn reassoc_lazy(n: &N) -> Option<N> {
     // keep: `self.left = make_node(..); self.right = ..; return self.transform(..)`
     // (index.js 2925-2931). terser spans the new left on `self.left`, the port on `n`.
     Some(edit(n, Data::Binary { op: op.clone(), left: cur_left, right: cur_right }))
-}
-
-/// terser `inference.js` `AST_Binary.negate`, used from `AST_UnaryPrefix` `!`.
-fn fold_not_binary(n: &N, cx: &Cx) -> Option<N> {
-    let Data::Unary { op, expr, prefix: true } = &n.data else {
-        return None;
-    };
-    if op != "!" || !matches!(expr.data, Data::Binary { .. }) || !in_boolean_context(cx) {
-        return None;
-    }
-    let neg = negate_binary(expr, cx);
-    if print_len(n) > print_len(&neg) {
-        Some(neg)
-    } else {
-        None
-    }
-}
-
-fn negate_binary(n: &N, cx: &Cx) -> N {
-    let Data::Binary { op, left, right } = &n.data else {
-        return unary(n, "!", Rc::clone(n));
-    };
-    if cx.opts.unsafe_comps {
-        let flipped = match op.as_str() {
-            "<=" => Some(">"),
-            "<" => Some(">="),
-            ">=" => Some("<"),
-            ">" => Some("<="),
-            _ => None,
-        };
-        if let Some(nop) = flipped {
-            return binary(n, nop, Rc::clone(left), Rc::clone(right));
-        }
-    }
-    match op.as_str() {
-        "==" => binary(n, "!=", Rc::clone(left), Rc::clone(right)),
-        "!=" => binary(n, "==", Rc::clone(left), Rc::clone(right)),
-        "===" => binary(n, "!==", Rc::clone(left), Rc::clone(right)),
-        "!==" => binary(n, "===", Rc::clone(left), Rc::clone(right)),
-        "&&" | "||" => {
-            let nop = if op == "&&" { "||" } else { "&&" };
-            let nl = negate_node(left, cx);
-            let nr = negate_node(right, cx);
-            let alt = binary(n, nop, nl, nr);
-            let wrapped = unary(n, "!", Rc::clone(n));
-            if print_len(&wrapped) > print_len(&alt) { alt } else { wrapped }
-        }
-        _ => unary(n, "!", Rc::clone(n)),
-    }
-}
-
-fn negate_node(n: &N, cx: &Cx) -> N {
-    match &n.data {
-        Data::Unary { op, expr, prefix: true } if op == "!" => Rc::clone(expr),
-        Data::Binary { .. } => negate_binary(n, cx),
-        _ => unary(n, "!", Rc::clone(n)),
-    }
 }
 
 fn is_boolean_node(n: &N) -> bool {
@@ -3485,10 +3428,6 @@ fn is_assign(op: &str) -> bool {
 /// `best_of(compressor, ev, self)`.
 fn prefer(orig: &N, folded: N, cx: &Cx) -> N {
     crate::size::best_of(crate::unary::first_in_statement(cx), &folded, orig)
-}
-
-pub(crate) fn print_len(n: &N) -> usize {
-    codegen::print(n).len()
 }
 
 pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
