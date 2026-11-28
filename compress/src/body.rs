@@ -115,8 +115,20 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                         collect_spread_refs(st, table, &mut spread, &mut targets);
                     }
                     crate::tighten::set_spread_refs(spread, targets);
+                    let mut safe = std::collections::HashSet::new();
+                    for st in &stmts {
+                        collect_safe_receivers(st, cx, &mut safe);
+                    }
+                    crate::tighten::set_safe_receivers(safe);
+                    let mut writable = std::collections::HashSet::new();
+                    for st in &stmts {
+                        collect_prop_writable(st, table, &mut writable);
+                    }
+                    crate::tighten::set_prop_writable(writable);
                 } else {
                     crate::tighten::set_spread_refs(Default::default(), Default::default());
+                    crate::tighten::set_safe_receivers(Default::default());
+                    crate::tighten::set_prop_writable(Default::default());
                     crate::tighten::set_table_escaped(Default::default());
                     crate::tighten::set_lexical_targets(Default::default());
                     crate::tighten::set_declared_refs(Default::default());
@@ -1242,6 +1254,70 @@ fn collect_spread_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::coll
         }
     }
     ast::walk_children(n, &mut |c| collect_spread_refs(c, table, out, targets));
+}
+
+/// The property access targets of assignments and `++` / `--` here that
+/// terser's collapse `is_lhs_read_only` lets through.
+fn collect_prop_writable(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashSet<usize>) {
+    let target = match &n.data {
+        Data::Assign { left, .. } => Some(left),
+        Data::Unary { op, expr, .. } if op == "++" || op == "--" => Some(expr),
+        _ => None,
+    };
+    if let Some(t) = target.filter(|t| matches!(t.data, Data::Dot { .. } | Data::Sub { .. })) {
+        if !lhs_read_only(t, table) {
+            out.insert(crate::syms::ptr(t));
+        }
+    }
+    ast::walk_children(n, &mut |c| collect_prop_writable(c, table, out));
+}
+
+/// terser tighten-body.js `is_lhs_read_only`.
+fn lhs_read_only(n: &N, table: &crate::syms::SymTable) -> bool {
+    // `AST_SymbolRef.is_immutable` / `orig[0] instanceof AST_SymbolLambda`: a
+    // function expression's own name.
+    let lambda_name = |sym: &N| -> bool {
+        let Some(id) = table.def_of(sym) else { return false };
+        let def = &table.defs[id];
+        def.orig_count == 1 && matches!(def.init.as_ref().map(|i| &i.data), Some(Data::Func { kind: FuncKind::Expr, name: Some(name), .. }) if table.def_of(name) == Some(id))
+    };
+    match &n.data {
+        Data::This => true,
+        Data::Symbol { kind: ast::SymKind::Ref, .. } => lambda_name(n),
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } => {
+            let value = if matches!(expr.data, Data::Symbol { kind: ast::SymKind::Ref, .. }) {
+                if lambda_name(expr) {
+                    return false;
+                }
+                // `lhs.fixed_value()`
+                match table.def_of(expr) {
+                    Some(id) if !table.unfixed_ref(expr) && !table.defs[id].suppress_fixed.get() => table.defs[id].fixed.clone(),
+                    _ => None,
+                }
+            } else {
+                Some(Rc::clone(expr))
+            };
+            match value.as_ref().map(|v| &v.data) {
+                None => true,
+                Some(Data::RegExp { .. }) => false,
+                Some(Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::True | Data::False | Data::Null | Data::Infinity) => true,
+                Some(_) => lhs_read_only(value.as_ref().unwrap(), table),
+            }
+        }
+        _ => false,
+    }
+}
+
+/// The symbols read as the object of a property access (`x.p`, `x[k]`) that
+/// terser's `may_throw_on_access` clears: `pure_getters` and a value that is
+/// not null, undefined or an object with a getter (`_dot_throw`).
+fn collect_safe_receivers(n: &N, cx: &Cx, out: &mut std::collections::HashSet<usize>) {
+    if let Data::Dot { expr, optional: false, .. } | Data::Sub { expr, optional: false, .. } = &n.data {
+        if matches!(expr.data, Data::Symbol { kind: ast::SymKind::Ref, .. }) && !eval::may_throw_on_access(expr, cx) {
+            out.insert(crate::syms::ptr(expr));
+        }
+    }
+    ast::walk_children(n, &mut |c| collect_safe_receivers(c, cx, out));
 }
 
 /// terser `is_declared` of every reference here the symbol table knows.

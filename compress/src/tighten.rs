@@ -251,6 +251,10 @@ thread_local! {
     static SPREAD_REFS: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// See `set_spread_refs`.
     static TARGET_REFS: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// See `set_prop_writable`.
+    static PROP_WRITABLE: std::cell::RefCell<HashSet<usize>> = Default::default();
+    /// See `set_safe_receivers`.
+    static SAFE_RECEIVERS: std::cell::RefCell<HashSet<usize>> = Default::default();
     /// See `set_table_escaped`.
     static TABLE_ESCAPED: std::cell::RefCell<HashSet<String>> = Default::default();
     /// See `set_visible`.
@@ -403,6 +407,18 @@ pub(crate) fn set_spread_refs(map: HashMap<usize, usize>, targets: HashMap<usize
     TARGET_REFS.with(|s| *s.borrow_mut() = targets);
 }
 
+/// Property access targets of an assignment or `++` / `--` that terser's
+/// `is_lhs_read_only` lets through, by node.
+pub(crate) fn set_prop_writable(set: HashSet<usize>) {
+    PROP_WRITABLE.with(|s| *s.borrow_mut() = set);
+}
+
+/// Symbols read as a property access's object that terser's
+/// `may_throw_on_access` clears (a value known not to be nullish), by node.
+pub(crate) fn set_safe_receivers(set: HashSet<usize>) {
+    SAFE_RECEIVERS.with(|s| *s.borrow_mut() = set);
+}
+
 /// Names of the defun scope with a reference bound in another defun scope
 /// (terser `may_modify`'s `def.references.some(...)`), from the symbol table:
 /// a reference an optimizer moved out of an inner function still counts.
@@ -549,6 +565,8 @@ struct Cand {
     op: String,
     /// An IIFE parameter (terser `extract_args`).
     arg: Option<ArgCand>,
+    /// A property access lhs (`o.p = v`, `++o[k]`): `name` is its root symbol.
+    prop: Option<N>,
 }
 
 /// terser `extract_args` candidate: `var <param> = <argument>` made up for an
@@ -661,6 +679,7 @@ fn extract_args() -> Vec<Cand> {
                     node: def,
                     op: "=".into(),
                     arg: Some(ArgCand { slot, param: i, scan: args.get(from..).map(<[N]>::to_vec).unwrap_or_default() }),
+                    prop: None,
                 }
             })
             .collect()
@@ -731,7 +750,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                 logical,
                 op,
             } => {
-                if !*logical && !lhs_bad(left) && !matches!(right.data, Data::Chain { .. }) {
+                if !*logical && !matches!(right.data, Data::Chain { .. }) {
                     if let Some(name) = ref_name(left) {
                         // terser `get_lhs`: `let` / `const` / `using` are not collapsed.
                         // A free or global target is left for `may_modify`.
@@ -749,8 +768,20 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                                 node: Rc::clone(n),
                                 op: op.clone(),
                                 arg: None,
+                                prop: None,
                             });
                         }
+                    } else if let Some(root) = prop_lhs(left, env.declared) {
+                        out.push(Cand {
+                            path: path.clone(),
+                            kind: Kind::Assign,
+                            name: root.to_string(),
+                            value: Rc::clone(right),
+                            node: Rc::clone(n),
+                            op: op.clone(),
+                            arg: None,
+                            prop: Some(Rc::clone(left)),
+                        });
                     }
                 }
                 rec(right, path, out, env, block_names);
@@ -779,6 +810,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                                 node: Rc::clone(n),
                                 op: "=".into(),
                                 arg: None,
+                                prop: None,
                             });
                         }
                     }
@@ -879,8 +911,20 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                             node: Rc::clone(n),
                             op: op.clone(),
                             arg: None,
+                            prop: None,
                         });
                     }
+                } else if let Some(root) = prop_lhs(expr, env.declared) {
+                    out.push(Cand {
+                        path: path.clone(),
+                        kind: if *prefix { Kind::Pre } else { Kind::Post },
+                        name: root.to_string(),
+                        value: Rc::clone(expr),
+                        node: Rc::clone(n),
+                        op: op.clone(),
+                        arg: None,
+                        prop: Some(Rc::clone(expr)),
+                    });
                 }
             }
             // terser `extract_candidates` does not enter property access,
@@ -893,11 +937,62 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
     out
 }
 
+/// terser `get_lhs` for a property access target: an lhs unless it has side
+/// effects or `is_lhs_read_only` (its object's value is unknown, `this`, or a
+/// constant; `PROP_WRITABLE`). The root symbol's name, for `is_lhs_local`.
+fn prop_lhs<'a>(n: &'a N, declared: &HashSet<String>) -> Option<&'a str> {
+    if !matches!(n.data, Data::Dot { optional: false, .. } | Data::Sub { optional: false, .. }) {
+        return None;
+    }
+    if expr_effects(n, declared) || !PROP_WRITABLE.with(|w| w.borrow().contains(&ptr(n))) {
+        return None;
+    }
+    let mut root = n;
+    while let Data::Dot { expr, .. } | Data::Sub { expr, .. } = &root.data {
+        root = expr;
+    }
+    ref_name(root)
+}
+
 fn lhs_bad(n: &N) -> bool {
     match &n.data {
         Data::Dot { expr, .. } | Data::Sub { expr, .. } | Data::Chain { expr } => {
             expr_effects(n, &HashSet::new()) || lhs_bad(expr)
         }
+        _ => false,
+    }
+}
+
+/// terser `lhs.equivalent_to(node)` for the candidate's lhs.
+fn lhs_equivalent(cand: &Cand, n: &N) -> bool {
+    match &cand.prop {
+        Some(prop) => equivalent(prop, n),
+        None => ref_name(n) == Some(cand.name.as_str()),
+    }
+}
+
+/// terser `equivalent-to.js` `equivalent_to` for the nodes a property access
+/// lhs is made of (symbols, property accesses and constants).
+fn equivalent(a: &N, b: &N) -> bool {
+    match (&a.data, &b.data) {
+        (Data::Symbol { name: n1, kind: k1, .. }, Data::Symbol { name: n2, kind: k2, .. }) => n1 == n2 && k1 == k2,
+        (
+            Data::Dot { expr: e1, prop: p1, optional: o1, private: v1, .. },
+            Data::Dot { expr: e2, prop: p2, optional: o2, private: v2, .. },
+        ) => p1 == p2 && o1 == o2 && v1 == v2 && equivalent(e1, e2),
+        (Data::Sub { expr: e1, prop: p1, optional: o1 }, Data::Sub { expr: e2, prop: p2, optional: o2 }) => {
+            o1 == o2 && equivalent(e1, e2) && equivalent(p1, p2)
+        }
+        (Data::Unary { op: o1, expr: e1, prefix: p1 }, Data::Unary { op: o2, expr: e2, prefix: p2 }) => {
+            o1 == o2 && p1 == p2 && equivalent(e1, e2)
+        }
+        (Data::Binary { op: o1, left: l1, right: r1 }, Data::Binary { op: o2, left: l2, right: r2 }) => {
+            o1 == o2 && equivalent(l1, l2) && equivalent(r1, r2)
+        }
+        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1.to_bits() == v2.to_bits(),
+        (Data::String { value: s1, .. }, Data::String { value: s2, .. }) => s1 == s2,
+        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
+        (Data::True, Data::True) | (Data::False, Data::False) | (Data::Null, Data::Null) | (Data::This, Data::This) => true,
         _ => false,
     }
 }
@@ -962,7 +1057,7 @@ fn apply_candidate(
     let injected_name = env.block_only && INJECTED.with(|i| i.borrow().contains_key(&cand.name));
     let block_assign = env.block_only
         && matches!(cand.kind, Kind::Assign | Kind::Pre | Kind::Post)
-        && (env.locals.contains(&cand.name) || injected_name || is_declared(cand_target(cand), &cand.name, env.declared))
+        && (cand.prop.is_some() || env.locals.contains(&cand.name) || injected_name || is_declared(cand_target(cand), &cand.name, env.declared))
         && !BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
     // terser `get_lhs`: no references, nothing to fold.
@@ -989,7 +1084,8 @@ fn apply_candidate(
         info.port_skip = Some("block");
         return None;
     }
-    if total == 0 {
+    // A property access lhs has no reference count (terser `get_lhs` returns it).
+    if total == 0 && cand.prop.is_none() {
         info.skip = Some("no_lhs");
         return None;
     }
@@ -1084,7 +1180,7 @@ fn apply_candidate(
         && injected.is_none_or(|count| count == 2)
         && (mangleable
             || (matches!(cand.kind, Kind::Var | Kind::Arg) && single)
-            || (matches!(cand.kind, Kind::Assign | Kind::Post | Kind::Pre) && target_refs.map_or(total == 2 && hidden == 0, |r| r == 2)));
+            || (matches!(cand.kind, Kind::Assign | Kind::Post | Kind::Pre) && cand.prop.is_none() && target_refs.map_or(total == 2 && hidden == 0, |r| r == 2)));
     let mut lvalues = if matches!(cand.kind, Kind::Post | Kind::Pre) {
         HashMap::new()
     } else {
@@ -1100,8 +1196,13 @@ fn apply_candidate(
         && !(env.in_loop
             && (value_reads_lhs || matches!(cand.kind, Kind::Post | Kind::Pre) || compound));
     // The lhs itself is an lvalue that later writes must not cross.
-    lvalues.entry(cand.name.clone()).or_insert(false);
-    let may_throw = expr_may_throw(&cand.value, env.declared);
+    // (terser `lvalues.set(lhs.name, ...)` for a symbol lhs only.)
+    if cand.prop.is_none() {
+        lvalues.entry(cand.name.clone()).or_insert(false);
+    }
+    // terser `AST_Assign.may_throw`: the right-hand side, then a property target.
+    let may_throw = expr_may_throw(&cand.value, env.declared)
+        || cand.kind == Kind::Assign && cand.prop.as_ref().is_some_and(|p| expr_may_throw(p, env.declared));
     let target_reads = if mode == Mode::ValueAll { reads } else { 1 };
     let mut scan = Scan {
         cand,
@@ -1133,7 +1234,7 @@ fn apply_candidate(
         inner_shadow: VISIBLE.with(|v| {
             let v = v.borrow();
             inner_lvalue_names(&cand.value).iter().any(|n| {
-                *n != cand.name
+                (cand.prop.is_some() || *n != cand.name)
                     && match v.as_ref() {
                         Some(visible) => visible.contains(n),
                         None => env.declared.contains(n) || env.locals.contains(n),
@@ -1319,7 +1420,11 @@ fn pre_scan(n: &N, st: &mut Scan<'_>) -> bool {
         }
     }
     if st.can_replace
-        && ref_name(n) == Some(st.cand.name.as_str())
+        && match &st.cand.prop {
+            // terser `lhs.equivalent_to(node)`.
+            Some(prop) => equivalent(prop, n),
+            None => ref_name(n) == Some(st.cand.name.as_str()),
+        }
         && !shadows(&st.parents, &st.cand.path, st.lvalues)
         && !st.inner_shadow
     {
@@ -1363,7 +1468,9 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
     (match &n.data {
         Data::Assign {
             op, left, logical, ..
-        } if *logical || (*op != "=" && ref_name(left) == Some(st.cand.name.as_str())) => true,
+        } if *logical || (*op != "=" && lhs_equivalent(st.cand, left)) => true,
+        // terser `node instanceof AST_Call && lhs instanceof AST_PropAccess && lhs.equivalent_to(node.expression)`.
+        Data::Call { expr, .. } if st.cand.prop.as_ref().is_some_and(|p| equivalent(p, expr)) => true,
         Data::Await { .. }
         | Data::Debugger
         | Data::Destructuring { .. }
@@ -1413,7 +1520,7 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
     let own = match &n.data {
         Data::Call { .. } => true,
         Data::Return { .. } | Data::Throw { .. } => {
-            st.side_effects || may_modify(&st.cand.name, st)
+            st.side_effects || st.cand.prop.is_some() || may_modify(&st.cand.name, st)
         }
         Data::Dot { expr, .. } | Data::Sub { expr, .. } => st.side_effects || !safe_access(expr, st.declared),
         Data::Symbol {
@@ -2682,6 +2789,7 @@ fn side_effects_external(n: &N, locals: &HashSet<String>) -> bool {
 /// arrow outside any function) is undeclared and has side effects anyway.
 fn safe_access(n: &N, declared: &HashSet<String>) -> bool {
     safe_receiver(n)
+        || matches!(n.data, Data::Symbol { kind: SymKind::Ref, .. }) && SAFE_RECEIVERS.with(|s| s.borrow().contains(&ptr(n)))
         || matches!(&n.data, Data::Symbol { kind: SymKind::Ref, name, .. } if name == "arguments" && is_declared(n, name, declared))
 }
 
