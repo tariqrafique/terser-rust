@@ -118,3 +118,5 @@ Export and collapse board: `export { x }` is a reference (`AST_SymbolExport` ext
 Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStatement`), not only one with a `let` / `const` or a `var` with a value, so an assignment to a function `var` collapses into a `for…in` object there. `find_stop`'s stop test ORs all clauses: an assignment that is not an lvalue of the candidate still stops the scan when the candidate may throw inside `try` (`collapse_vars/issue_2891_1`).
 
 A lambda flagged `INLINED` (another lambda was inlined into it across scopes) is not `is_constant_expression`, so `flatten_fn` does not take it as a single-use fixed callee (`call.rs` `fn_inlined`): `_createClass` stays a function once `_defineProperties` is inlined into it.
+
+A lambda in `pre_tighten` (`Cx.foreign_lambda`) is tightened as terser does from the reference that inlined it: `defun_scope` is the enclosing scope, so its names are not local, `shadows` sees an enclosing binding of a name it rebinds (`FOREIGN_SHADOW`), and `handle_if_return` has `in_lambda` false.

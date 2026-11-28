@@ -188,7 +188,13 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         }
         _ => return None,
     };
+    // A lambda tightened from where it was inlined: terser's `defun_scope`
+    // is the enclosing scope, so none of the lambda's own names are local,
+    // and `shadows` looks them up from the enclosing scope.
+    let foreign = matches!(me.data, Data::Func { .. }) && foreign(cx);
+    let (locals, own) = if foreign { (Default::default(), locals) } else { (locals, Default::default()) };
     let mut declared = locals.clone();
+    let mut outer: std::collections::HashSet<String> = Default::default();
     let len = cx.parents.len();
     for p in &cx.parents[..len.saturating_sub(1)] {
         let names = match &p.data {
@@ -200,8 +206,26 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
             _ => continue,
         };
         declared.extend(names.iter().cloned());
+        if foreign {
+            outer.extend(names.iter().cloned());
+        }
     }
+    let shadowed = if foreign {
+        let mut bound = Default::default();
+        crate::tighten::bindings_deep(&me, &mut bound);
+        bound.retain(|n: &String| outer.contains(n));
+        declared.extend(own);
+        bound
+    } else {
+        Default::default()
+    };
+    crate::tighten::set_foreign_shadow(shadowed);
     Some((locals, declared, in_fn, block))
+}
+
+/// This body is a lambda's `pre_tighten` (`Cx.foreign_lambda`).
+fn foreign(cx: &Cx) -> bool {
+    cx.foreign_lambda != 0 && self_node(cx).is_some_and(|s| Rc::as_ptr(&s) as usize == cx.foreign_lambda)
 }
 
 fn self_node(cx: &Cx) -> Option<N> {
@@ -368,7 +392,7 @@ fn if_parts(n: &N) -> Option<(&N, &N, Option<&N>)> {
 
 fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
     let self_n = self_node(cx);
-    let in_lambda = self_n.as_ref().is_some_and(|s| matches!(s.data, Data::Func { .. }));
+    let in_lambda = self_n.as_ref().is_some_and(|s| matches!(s.data, Data::Func { .. })) && !foreign(cx);
     let multiple_if_returns = {
         let mut n = 0;
         stmts

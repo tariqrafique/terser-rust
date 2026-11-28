@@ -233,6 +233,8 @@ thread_local! {
     static INJECTED: std::cell::RefCell<HashMap<String, usize>> = Default::default();
     /// A nested block's own `let` / `const`: its only collapse candidates.
     static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// See `set_foreign_shadow`.
+    static FOREIGN_SHADOW: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Function-expression names visible here (terser `is_lhs_read_only`).
     static LAMBDAS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
@@ -274,6 +276,28 @@ pub(crate) fn lexical_names_deep(body: &[N]) -> HashSet<String> {
         rec(s, &mut out);
     }
     out
+}
+
+/// Names the lambda being tightened binds that its enclosing scopes also
+/// declare (`Cx.foreign_lambda`): terser's `shadows` looks them up from the
+/// enclosing scope and finds another definition.
+pub(crate) fn set_foreign_shadow(set: HashSet<String>) {
+    FOREIGN_SHADOW.with(|d| *d.borrow_mut() = set);
+}
+
+/// Every name bound in `n`: parameters, declarations and function names, in
+/// nested functions too.
+pub(crate) fn bindings_deep(n: &N, out: &mut HashSet<String>) {
+    if let Data::Func { name, args, body, .. } = &n.data {
+        if let Some(nm) = name.as_ref().and_then(sym_name) {
+            out.insert(nm.to_string());
+        }
+        out.extend(scope_bindings(args, body));
+    }
+    if let Data::Catch { arg: Some(arg), .. } = &n.data {
+        out.extend(scope_bindings(std::slice::from_ref(arg), &[]));
+    }
+    ast::walk_children(n, &mut |c| bindings_deep(c, out));
 }
 
 pub(crate) fn set_block_candidates(set: HashSet<String>) {
@@ -1521,6 +1545,9 @@ fn find_stop(
 fn shadows(parents: &[N], cand_path: &[usize], lvalues: &HashMap<String, bool>) -> bool {
     if lvalues.is_empty() {
         return false;
+    }
+    if FOREIGN_SHADOW.with(|f| lvalues.keys().any(|k| f.borrow().contains(k))) {
+        return true;
     }
     for parent in parents {
         if cand_path.contains(&ptr(parent)) {

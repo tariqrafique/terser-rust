@@ -601,6 +601,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
+        foreign_lambda: 0,
         fresh: RefCell::new(HashMap::new()),
         late_squeezed: RefCell::new(HashMap::new()),
         injected: RefCell::new(HashMap::new()),
@@ -695,6 +696,11 @@ struct Cx {
     /// copy): `tighten_body` runs on them before their children are descended,
     /// and never again (`OPTIMIZED`).
     pre_tighten: RefCell<HashMap<usize, N>>,
+    /// The lambda whose `pre_tighten` is running. terser calls its
+    /// `.optimize()` from the reference or call it replaces, so the lambda is
+    /// not on the stack: `find_scope()` is the enclosing scope and
+    /// `compressor.self()` is not a lambda.
+    foreign_lambda: usize,
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<HashMap<usize, N>>,
@@ -1089,7 +1095,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
     let pre_node;
     let n = if pre {
+        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(n.data, Data::Func { .. }) { orig_ptr } else { 0 });
         pre_node = after_descend(Rc::clone(n), n, cx);
+        cx.foreign_lambda = saved;
         set_parent(cx, &pre_node);
         &pre_node
     } else {
@@ -1145,7 +1153,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.pre_tighten.borrow_mut().remove(&(Rc::as_ptr(&out) as usize)).is_some() {
         cx.parents.push(Rc::clone(&out));
         let entered = cx.enter(&out);
+        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(out.data, Data::Func { .. }) { Rc::as_ptr(&out) as usize } else { 0 });
         let tightened = after_descend(Rc::clone(&out), &out, cx);
+        cx.foreign_lambda = saved;
         cx.leave(entered);
         cx.parents.pop();
         if !Rc::ptr_eq(&tightened, &out) {
