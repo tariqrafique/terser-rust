@@ -83,7 +83,8 @@ fn finish_call(n: &N, expr: &N, args: &[N], trimmed: bool, spread: bool) -> Opti
     if !trimmed && !spread {
         return None;
     }
-    Some(atom(
+    // keep: `self.args.length = pos` and `inline_array_like_spread(self.args)` edit the call (index.js 1696, 1741).
+    Some(edit(
         n,
         Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false },
     ))
@@ -806,6 +807,7 @@ fn optimize_new(n: &N, cx: &Cx) -> Option<N> {
     if *optional || !undeclared(expr, cx, &["Object", "RegExp", "Function", "Error", "Array"]) {
         return None;
     }
+    // new: `make_node(AST_Call, self, self)`, a copy of the `new` (index.js 2046).
     let call = atom(
         n,
         Data::Call { expr: Rc::clone(expr), args: args.clone(), optional: false, is_new: false },
@@ -978,7 +980,8 @@ fn func_with_params(func: &N, params: Vec<N>) -> N {
     let Data::Func { kind, name, body, async_, generator, .. } = &func.data else {
         return Rc::clone(func);
     };
-    atom(
+    // keep: drop_unused trims `node.argnames` in place (du 269).
+    edit(
         func,
         Data::Func {
             kind: *kind,
@@ -1421,8 +1424,14 @@ fn polish(n: N, cx: &Cx) -> N {
     })
 }
 
+/// new: terser `make_node(X, orig, ..)`.
 fn atom(orig: &N, data: Data) -> N {
     Node::make(orig, data)
+}
+
+/// keep: an in-place edit of `orig`.
+fn edit(orig: &N, data: Data) -> N {
+    orig.rebuild(data)
 }
 
 fn num(orig: &N, value: f64) -> N {
