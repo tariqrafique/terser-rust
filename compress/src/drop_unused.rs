@@ -15,8 +15,9 @@ use crate::syms::{self, SymTable};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-pub fn drop_unused(root: &N, toplevel_vars: bool, toplevel_funcs: bool) -> N {
-    let table = syms::bind(root);
+/// `strict`: the root is in strict code (`module`, or an enclosing `"use strict"`).
+pub fn drop_unused(root: &N, toplevel_vars: bool, toplevel_funcs: bool, strict: bool) -> N {
+    let table = syms::bind_strict(root, strict);
     let saved = NESTED.with(|d| d.replace(0));
     let saved_root = ROOT.with(|r| r.replace(ptr(root)));
     let out = scope(root, &table, toplevel_vars, toplevel_funcs);
@@ -34,7 +35,7 @@ thread_local! {
 /// `drop_side_effect_free(compressor)`'d as in drop-unused.js.
 pub(crate) fn drop_unused_cx(root: &N, toplevel_vars: bool, toplevel_funcs: bool, cx: &crate::Cx) -> N {
     let prev = KEPT.with(|k| k.replace(Some(Vec::new())));
-    let out = drop_unused(root, toplevel_vars, toplevel_funcs);
+    let out = drop_unused(root, toplevel_vars, toplevel_funcs, cx.lookup("use strict").is_some());
     let kept = KEPT.with(|k| k.replace(prev)).unwrap_or_default();
     if kept.is_empty() {
         return out;

@@ -609,7 +609,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     }
     // terser `size.js`: a mangleable symbol is one character when mangle options exist.
     if let Some(mangle_toplevel) = mangle {
-        let table = syms::bind(root);
+        let table = syms::bind_strict(root, module);
         let mut set = ast::IdSet::default();
         for (nid, id) in table.node_def.borrow().iter() {
             let d = &table.defs[*id];
@@ -625,7 +625,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         eval::set_known_symbols(ast::IdSet::default(), false);
     }
     if reduce_vars_on {
-        let mut table = syms::bind(root);
+        let mut table = syms::bind_strict(root, module);
         reduce_vars::analyze(
             &mut table,
             root,
@@ -641,7 +641,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     };
     let _ = collapse_vars;
     check_ids("transform", &out);
-    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs) } else { out };
+    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs, module) } else { out };
     check_ids("drop_unused", &out);
     out
 }

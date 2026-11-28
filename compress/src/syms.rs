@@ -128,18 +128,30 @@ struct Scope {
     /// defines `arguments` on it.
     lambda: bool,
     pinned: bool,
+    /// terser `tw.directives["use strict"]` inside this scope: a `"use strict"` directive,
+    /// a class, or `module`. A function declaration in a block is then bound in the block
+    /// (scope.js `AST_SymbolDefun`), not in the function scope.
+    strict: bool,
     names: HashMap<String, usize>,
 }
 
 /// terser `lib/scope.js` `AST_Scope.figure_out_scope` / `def_variable`,
 /// reduced to the fields the compressor reads.
 pub fn bind(root: &N) -> SymTable {
+    bind_strict(root, false)
+}
+
+/// `bind` with the strictness of the root's context: `module`, or a `"use strict"`
+/// around (or at the start of) the root. A class root is strict anyway.
+pub fn bind_strict(root: &N, strict: bool) -> SymTable {
+    let strict = strict || matches!(&root.data, Data::Toplevel { body } if has_use_strict(body));
     let mut scopes = vec![Scope {
         parent: None,
         fn_scope: 0,
         func: true,
         lambda: false,
         pinned: false,
+        strict,
         names: HashMap::new(),
     }];
     let mut table = SymTable {
@@ -176,6 +188,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
         Data::Func { kind, name, args, body, .. } => {
             let id = push_func(scope, scopes);
             scopes[id].lambda = !matches!(kind, ast::FuncKind::Arrow);
+            scopes[id].strict |= has_use_strict(body);
             table.bind_scope(n, id);
             if let Some(name_node) = name {
                 if let Some(sym_name) = sym(name_node) {
@@ -217,6 +230,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 walk(extends, scope, scopes, table);
             }
             let id = push_block(scope, scopes);
+            scopes[id].strict = true;
             table.bind_scope(n, id);
             table.class_scopes.insert(id);
             if let Some(name) = name {
@@ -239,6 +253,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             let id = push_block(scope, scopes);
             table.bind_scope(n, id);
             hoist_lexical(body, id, scopes, table);
+            hoist_block_defuns(body, id, scopes, table);
             for stmt in body {
                 walk(stmt, id, scopes, table);
             }
@@ -259,6 +274,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             for arm in body {
                 if let Data::Case { body, .. } | Data::Default { body } = &arm.data {
                     hoist_lexical(body, id, scopes, table);
+                    hoist_block_defuns(body, id, scopes, table);
                 }
             }
             for arm in body {
@@ -401,8 +417,15 @@ fn binding_names(n: &N, out: &mut Vec<String>) {
 }
 
 fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
+    hoist_in(stmts, fn_scope, scopes, table, false);
+}
+
+/// `nested`: `stmts` is in a block of the function scope. In strict mode a function
+/// declaration there belongs to the block (`hoist_block_defuns`).
+fn hoist_in(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable, nested: bool) {
     for stmt in stmts {
         match &stmt.data {
+            Data::Func { .. } if nested && scopes[fn_scope].strict => {}
             Data::Func { .. } => {
                 if let Data::Func { kind: ast::FuncKind::Decl, name: Some(name), .. } = &stmt.data {
                     if let Some(sym_name) = sym(name) {
@@ -421,7 +444,7 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
                     define(table, scopes, fn_scope, sym_name, name, SymKind::Var, value.clone(), false);
                 }
             }
-            Data::Block { body } | Data::StaticBlock { body } => hoist(body, fn_scope, scopes, table),
+            Data::Block { body } | Data::StaticBlock { body } => hoist_in(body, fn_scope, scopes, table, true),
             Data::If { body, alt, .. } => {
                 hoist_node(body, fn_scope, scopes, table);
                 if let Some(alt) = alt {
@@ -446,7 +469,7 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
                     hoist_node(arm, fn_scope, scopes, table);
                 }
             }
-            Data::Case { body, .. } | Data::Default { body } => hoist(body, fn_scope, scopes, table),
+            Data::Case { body, .. } | Data::Default { body } => hoist_in(body, fn_scope, scopes, table, true),
             Data::Try { body, catch, finally } => {
                 hoist_node(body, fn_scope, scopes, table);
                 if let Some(catch) = catch {
@@ -457,7 +480,7 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
                 }
             }
             Data::Catch { body, .. } | Data::Finally { body } => hoist_node(body, fn_scope, scopes, table),
-            Data::Export { definition: Some(def), .. } => hoist(std::slice::from_ref(def), fn_scope, scopes, table),
+            Data::Export { definition: Some(def), .. } => hoist_in(std::slice::from_ref(def), fn_scope, scopes, table, nested),
             // terser `scope.def_variable(node)` for an `AST_SymbolImport`: the
             // local name of every import is a module binding.
             Data::Import { imported_name, imported_names, .. } => {
@@ -531,9 +554,31 @@ pub fn pattern_symbols(n: &N, out: &mut Vec<N>) {
 
 fn hoist_node(n: &N, fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
     match &n.data {
-        Data::Block { body } | Data::StaticBlock { body } => hoist(body, fn_scope, scopes, table),
-        _ => hoist(std::slice::from_ref(n), fn_scope, scopes, table),
+        Data::Block { body } | Data::StaticBlock { body } => hoist_in(body, fn_scope, scopes, table, true),
+        _ => hoist_in(std::slice::from_ref(n), fn_scope, scopes, table, true),
     }
+}
+
+/// terser `scope.js` `AST_SymbolDefun` under `"use strict"`: a function declaration
+/// directly in a block (or a `switch` case) is defined on that block scope.
+fn hoist_block_defuns(stmts: &[N], scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
+    if !scopes[scope].strict {
+        return;
+    }
+    for stmt in stmts {
+        if let Data::Func { kind: ast::FuncKind::Decl, name: Some(name), .. } = &stmt.data {
+            if let Some(sym_name) = sym(name) {
+                define(table, scopes, scope, sym_name, name, SymKind::Defun, Some(Rc::clone(stmt)), false);
+            }
+        }
+    }
+}
+
+/// A `"use strict"` directive in a directive prologue.
+fn has_use_strict(body: &[N]) -> bool {
+    body.iter()
+        .take_while(|s| matches!(s.data, Data::Directive { .. }))
+        .any(|s| matches!(&s.data, Data::Directive { value, .. } if value == "use strict"))
 }
 
 /// The function whose `arguments` a reference from `scope` reads: the
@@ -555,6 +600,7 @@ fn push_func(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         func: true,
         lambda: false,
         pinned: false,
+        strict: scopes[parent].strict,
         names: HashMap::new(),
     });
     id
@@ -569,6 +615,7 @@ fn push_block(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         func: false,
         lambda: false,
         pinned: false,
+        strict: scopes[parent].strict,
         names: HashMap::new(),
     });
     id
