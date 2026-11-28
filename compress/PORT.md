@@ -114,3 +114,5 @@ Export and collapse board: `export { x }` is a reference (`AST_SymbolExport` ext
 - `functions/issue_2657`: terser never re-collapses the body after the flatten; here an injected var is only treated as a local inside a nested block.
 
 Block-scope reads: terser gives every loop (`AST_IterationStatement`) and a switch body its own block scope, so a read in a `for…of` object or a `case` has a different `scope` than a toplevel `const` and is not `single_use` (`d.scope === this.scope`). The binder has no scope for these; `reduce_vars` `in_unbound_block_scope` adds the check, and a `let` / `const` in the same `for` head is in that loop's scope.
+
+Boolean binary negation: `def_optimize(AST_Binary)` with `comparisons` turns a boolean binary whose parent is not a binary into `!negate(self)` when `best_of` prefers it (`!s(a)&&(!c(a)||!c(b))` → `!(s(a)||c(a)&&c(b))`). `unary.rs` `negate` is `inference.js` `negate`, now with the `unsafe_comps` flips.
