@@ -175,6 +175,7 @@ pub fn bind_strict(root: &N, strict: bool) -> SymTable {
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
         hoist(body, 0, &mut scopes, &mut table);
+        hoist_lexical(body, 0, &mut scopes, &mut table);
     }
     walk(root, 0, &mut scopes, &mut table);
     table.scope_parent = scopes.iter().map(|s| s.parent).collect();
@@ -241,8 +242,11 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                         (id, SymKind::Class)
                     };
                     // terser `def_function(node, defun)`: a class declaration's `init` is the class.
+                    // A declaration was defined ahead by `hoist_lexical`.
                     let init = if *stmt { Some(Rc::clone(n)) } else { None };
-                    define(table, scopes, dest, sym_name, name, kind, init, false);
+                    if !(*stmt && table.def_of(name).is_some()) {
+                        define(table, scopes, dest, sym_name, name, kind, init, false);
+                    }
                 }
             }
             for prop in props {
@@ -508,6 +512,14 @@ fn hoist_lexical(stmts: &[N], scope: usize, scopes: &mut Vec<Scope>, table: &mut
             Data::Export { definition: Some(def), .. } => def,
             _ => stmt,
         };
+        // A class declaration is bound before any reference is resolved too (terser
+        // resolves references after every definition, scope.js pass 2).
+        if let Data::Class { stmt: true, name: Some(name), .. } = &stmt.data {
+            if let Some(sym_name) = sym(name) {
+                define(table, scopes, scope, sym_name, name, SymKind::DefClass, Some(Rc::clone(stmt)), false);
+            }
+            continue;
+        }
         let Data::Defs { kind, defs, .. } = &stmt.data else { continue };
         if matches!(kind, DefKind::Var) {
             continue;
