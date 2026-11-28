@@ -430,6 +430,7 @@ fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
                 reduce_funcs: cx.opts.reduce_funcs,
                 in_computed_key: cx.in_computed_key(),
                 top_retain: cx.opts.top_retain.as_deref(),
+                copy_flags: &|old, new| cx.copy_flags(old, new),
             },
         ) {
             // terser `fixed.optimize(compressor)`: a lambda that was not yet

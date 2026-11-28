@@ -861,6 +861,16 @@ impl Cx {
 
     /// terser `set_flag(opt, OPTIMIZED)`: a later `transform` does not run `def_optimize` on
     /// `n` again.
+    /// `new` stands for `old` (a copy of terser's shared object): it gets `old`'s
+    /// `SQUEEZED` and `OPTIMIZED`, and a pending `.optimize()`.
+    pub(crate) fn copy_flags(&self, old: &N, new: &N) {
+        for set in [&self.squeezed, &self.optimized, &self.pre_tighten] {
+            if set.borrow().contains(&old.id()) {
+                set.borrow_mut().insert(new.id());
+            }
+        }
+    }
+
     pub(crate) fn set_optimized(&self, n: &N) {
         self.optimized.borrow_mut().insert(n.id());
     }

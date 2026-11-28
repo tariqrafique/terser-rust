@@ -59,6 +59,9 @@ pub struct At<'a> {
     pub reduce_funcs: bool,
     pub in_computed_key: bool,
     pub top_retain: Option<&'a str>,
+    /// Gives a copied node the optimizer flags of the node it copies (terser's
+    /// copy shares that object, flags and all).
+    pub copy_flags: &'a dyn Fn(&N, &N),
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref`.
@@ -118,17 +121,33 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         def.replaced.set(def.replaced.get().saturating_add(1));
         // terser `fixed.clone(true)` when the lambda moves to another scope
         // (`fixed.parent_scope !== nearest_scope`): fresh nodes (no optimizer
-        // flags) that keep their definitions. A self-recursive declaration is
-        // copied whole as well: terser moves its inner references to the lambda's
-        // name (il 251-267), which the port does by copying.
-        let recursive = matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. }) && def.recursive_refs > 0;
-        if (is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope)) || recursive {
+        // flags) that keep their definitions.
+        let cross_scope = is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope);
+        if cross_scope {
             let copy = table.clone_deep(&fixed);
-            if is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope) {
-                count_clone_refs(table, &fixed);
-            }
+            count_clone_refs(table, &fixed);
             let out = expr_value(&copy);
             // `make_node(AST_Function, fixed, fixed)` copies the scope (il 247-250).
+            table.copy_binding(&copy, &out);
+            return Some(out);
+        }
+        // A self-recursive declaration: terser copies the top node
+        // (`make_node(AST_Function, fixed, fixed)`) and moves the inner references
+        // to the lambda's name (il 247-267); the body is the declaration's, flags
+        // and all. The port copies the body too, so that its references can bind
+        // to the function expression's name (the declaration's body stays in the
+        // tree until `drop_unused` drops it), and gives each copied node the
+        // flags of its original. The top node is new, without flags.
+        let recursive = matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. }) && def.recursive_refs > 0;
+        if recursive {
+            let top = fixed.id();
+            let copy = ast::deep_clone_with(&fixed, &mut |old, new| {
+                table.copy_binding(old, new);
+                if old.id() != top {
+                    (at.copy_flags)(old, new);
+                }
+            });
+            let out = expr_value(&copy);
             table.copy_binding(&copy, &out);
             return Some(out);
         }
