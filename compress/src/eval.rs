@@ -2016,7 +2016,9 @@ pub(crate) fn has_side(n: &N, cx: &Cx) -> bool {
         Data::Class { extends, props, .. } => {
             extends.as_ref().is_some_and(|e| has_side(e, cx)) || props.iter().any(|p| prop_side(p, cx))
         }
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => !cx.shadowed(name),
+        // inference.js `AST_SymbolRef.has_side_effects`: `!is_declared() &&
+        // !pure_prop_access_globals.has(name)`.
+        Data::Symbol { kind: ast::SymKind::Ref, .. } => !read_is_pure(n, cx),
         Data::Unary { op, expr, prefix: true } => {
             matches!(op.as_str(), "delete" | "++" | "--") || has_side(expr, cx)
         }

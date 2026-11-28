@@ -315,7 +315,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         match pname {
             Some(pn) if !inj.conflicts(&pn) => {
                 let value = value.or_else(|| inj.in_loop.then(|| void0(n)));
-                append_var(&mut decls, &mut exprs, &mut declared, &inj, p, &pn, value, n);
+                append_var(&mut decls, &mut exprs, &mut declared, &inj, p, &pn, value, n, cx);
             }
             _ => {
                 if let Some(v) = value {
@@ -333,9 +333,10 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         for d in defs {
             let Data::VarDef { name: vn, value } = &d.data else { continue };
             let Some(vname) = sym_str(vn).map(str::to_string) else { continue };
-            append_var(&mut decls, &mut exprs, &mut declared, &inj, vn, &vname, value.clone(), n);
+            append_var(&mut decls, &mut exprs, &mut declared, &inj, vn, &vname, value.clone(), n, cx);
             if inj.in_loop && params.iter().all(|a| sym_str(a) != Some(vname.as_str())) {
                 let sym = ref_sym(vn, &vname);
+                same_def(vn, &sym, cx);
                 exprs.insert(pos, atom(d, Data::Assign { op: "=".into(), left: sym, right: void0(vn), logical: false }));
                 pos += 1;
             }
@@ -466,17 +467,30 @@ fn ref_sym(span: &N, name: &str) -> N {
     atom(span, Data::Symbol { name: name.to_string(), kind: SymKind::Ref, quote: None })
 }
 
+/// terser `make_node(AST_SymbolRef, name, name)`: the new symbol keeps the
+/// parameter's (or var's) definition.
+fn same_def(from: &N, to: &N, cx: &Cx) {
+    if let Some(table) = cx.syms.as_ref() {
+        if let Some(id) = table.lookup(&(Rc::as_ptr(from) as usize)) {
+            table.alias.borrow_mut().insert(Rc::as_ptr(to) as usize, (id, Rc::clone(to)));
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn append_var(decls: &mut Vec<N>, exprs: &mut Vec<N>, declared: &mut HashSet<String>, inj: &Inject, span: &N, name: &str, value: Option<N>, call: &N) {
+fn append_var(decls: &mut Vec<N>, exprs: &mut Vec<N>, declared: &mut HashSet<String>, inj: &Inject, span: &N, name: &str, value: Option<N>, call: &N, cx: &Cx) {
     // terser `already_appended`: the scope already has the name (a parameter
     // and a `var` with the same name).
     if !declared.contains(name) && !inj.scope_vars.contains(name) {
         declared.insert(name.to_string());
         let sym = atom(span, Data::Symbol { name: name.to_string(), kind: SymKind::Var, quote: None });
+        same_def(span, &sym, cx);
         decls.push(atom(span, Data::VarDef { name: sym, value: None }));
     }
     if let Some(v) = value {
-        exprs.push(atom(call, Data::Assign { op: "=".into(), left: ref_sym(span, name), right: v, logical: false }));
+        let left = ref_sym(span, name);
+        same_def(span, &left, cx);
+        exprs.push(atom(call, Data::Assign { op: "=".into(), left, right: v, logical: false }));
     }
 }
 
