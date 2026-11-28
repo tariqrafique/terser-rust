@@ -233,6 +233,8 @@ thread_local! {
     static INJECTED: std::cell::RefCell<HashMap<String, usize>> = Default::default();
     /// A nested block's own `let` / `const`: its only collapse candidates.
     static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// Function-expression names visible here (terser `is_lhs_read_only`).
+    static LAMBDAS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
@@ -279,6 +281,10 @@ pub(crate) fn lexical_names_deep(body: &[N]) -> HashSet<String> {
 
 pub(crate) fn set_block_candidates(set: HashSet<String>) {
     BLOCK_CANDS.with(|d| *d.borrow_mut() = set);
+}
+
+pub(crate) fn set_lambdas(set: HashSet<String>) {
+    LAMBDAS.with(|d| *d.borrow_mut() = set);
 }
 
 pub(crate) fn set_defuns(set: HashSet<String>) {
@@ -613,7 +619,10 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // A free or global target is left for `may_modify`.
                         // A `var` `flatten_fn` injected is a local too (still pending here).
                         let injected = env.block_only && INJECTED.with(|i| i.borrow().contains_key(name));
-                        if !block_names.contains(name) && (env.locals.contains(name) || injected) {
+                        // terser `get_lhs` takes any declared symbol (a free one has
+                        // side effects and is skipped).
+                        let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
+                        if !block_names.contains(name) && !read_only && (env.locals.contains(name) || env.declared.contains(name) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -749,16 +758,8 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                     }
                 }
             }
-            Data::Dot { expr, .. }
-            | Data::Await { expr }
-            | Data::Spread { expr }
-            | Data::Chain { expr } => {
-                rec(expr, path, out, env, block_names);
-            }
-            Data::Sub { expr, prop, .. } => {
-                rec(expr, path, out, env, block_names);
-                rec(prop, path, out, env, block_names);
-            }
+            // terser `extract_candidates` does not enter property access,
+            // `await`, spread or optional chains.
             _ => {}
         }
         path.pop();

@@ -70,6 +70,25 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     defuns.retain(|n| !bound.contains(n));
                     defuns.extend(d.into_iter().filter(|n| !shadow.contains(n)));
                     crate::tighten::set_defuns(defuns);
+                    // terser `is_lhs_read_only`: a function expression's own name
+                    // (`AST_SymbolLambda`), unless a binding inside shadows it.
+                    let mut lambdas: std::collections::HashSet<String> = Default::default();
+                    let mut chain: Vec<N> = parents.clone();
+                    if let Some(me) = self_node(cx) {
+                        chain.push(me);
+                    }
+                    for p in &chain {
+                        let Data::Func { kind, name, args, body, .. } = &p.data else { continue };
+                        if !matches!(kind, ast::FuncKind::Decl) {
+                            if let Some(Data::Symbol { name, .. }) = name.as_ref().map(|n| &n.data) {
+                                lambdas.insert(name.clone());
+                            }
+                        }
+                        let body: &[N] = if Rc::ptr_eq(p, chain.last().unwrap()) { &stmts } else { body };
+                        let bound = crate::tighten::scope_bindings(args, body);
+                        lambdas.retain(|n| !bound.contains(n));
+                    }
+                    crate::tighten::set_lambdas(lambdas);
                 }
                 if let Some(table) = cx.syms.as_ref() {
                     let mut map = std::collections::HashMap::new();
