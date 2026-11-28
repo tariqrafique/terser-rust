@@ -233,16 +233,29 @@ thread_local! {
     static INJECTED: std::cell::RefCell<HashMap<String, usize>> = Default::default();
     /// A nested block's own `let` / `const`: its only collapse candidates.
     static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// See `set_foreign_shadow`.
+    static FOREIGN_SHADOW: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Function-expression names visible here (terser `is_lhs_read_only`).
     static LAMBDAS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// Assignment and `++` / `--` targets (by node) that resolve to a `let` / `const`
+    /// in any enclosing scope: terser `get_lhs` `is_ref_of` gives no lhs for them.
+    static LEXICAL_TARGETS: std::cell::RefCell<HashSet<usize>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
 }
 
 pub(crate) fn set_injected(map: HashMap<String, usize>) {
     INJECTED.with(|d| *d.borrow_mut() = map);
+}
+
+pub(crate) fn set_lexical_targets(set: HashSet<usize>) {
+    LEXICAL_TARGETS.with(|d| *d.borrow_mut() = set);
+}
+
+fn lexical_target(n: &N) -> bool {
+    LEXICAL_TARGETS.with(|d| d.borrow().contains(&ptr(n)))
 }
 
 pub(crate) fn set_block_lets(set: HashSet<String>) {
@@ -274,6 +287,28 @@ pub(crate) fn lexical_names_deep(body: &[N]) -> HashSet<String> {
         rec(s, &mut out);
     }
     out
+}
+
+/// Names the lambda being tightened binds that its enclosing scopes also
+/// declare (`Cx.foreign_lambda`): terser's `shadows` looks them up from the
+/// enclosing scope and finds another definition.
+pub(crate) fn set_foreign_shadow(set: HashSet<String>) {
+    FOREIGN_SHADOW.with(|d| *d.borrow_mut() = set);
+}
+
+/// Every name bound in `n`: parameters, declarations and function names, in
+/// nested functions too.
+pub(crate) fn bindings_deep(n: &N, out: &mut HashSet<String>) {
+    if let Data::Func { name, args, body, .. } = &n.data {
+        if let Some(nm) = name.as_ref().and_then(sym_name) {
+            out.insert(nm.to_string());
+        }
+        out.extend(scope_bindings(args, body));
+    }
+    if let Data::Catch { arg: Some(arg), .. } = &n.data {
+        out.extend(scope_bindings(std::slice::from_ref(arg), &[]));
+    }
+    ast::walk_children(n, &mut |c| bindings_deep(c, out));
 }
 
 pub(crate) fn set_block_candidates(set: HashSet<String>) {
@@ -334,16 +369,14 @@ pub(crate) fn scope_bindings(params: &[N], body: &[N]) -> HashSet<String> {
     locals
 }
 
-/// `let` / `const` / class names declared directly in a block.
+/// `let` / `const` / class names declared directly in a block, destructured ones included.
 pub(crate) fn block_lexicals(stmts: &[N]) -> HashSet<String> {
     let mut out = HashSet::new();
     for s in stmts {
         if let Data::Defs { kind: DefKind::Let | DefKind::Const, defs, .. } = &s.data {
             for d in defs {
                 if let Data::VarDef { name, .. } = &d.data {
-                    if let Some(nm) = sym_name(name) {
-                        out.insert(nm.to_string());
-                    }
+                    out.extend(scope_bindings(std::slice::from_ref(name), &[]));
                 }
             }
         }
@@ -514,7 +547,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // terser `get_lhs` takes any declared symbol (a free one has
                         // side effects and is skipped).
                         let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
-                        if !block_names.contains(name) && !read_only && (env.locals.contains(name) || env.declared.contains(name) || injected) {
+                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || env.declared.contains(name) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -638,7 +671,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
             }
             Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
                 if let Some(name) = ref_name(expr) {
-                    if !block_names.contains(name) && env.locals.contains(name) {
+                    if !block_names.contains(name) && !lexical_target(expr) && env.locals.contains(name) {
                         out.push(Cand {
                             path: path.clone(),
                             kind: if *prefix { Kind::Pre } else { Kind::Post },
@@ -1406,6 +1439,9 @@ fn find_stop(
 fn shadows(parents: &[N], cand_path: &[usize], lvalues: &HashMap<String, bool>) -> bool {
     if lvalues.is_empty() {
         return false;
+    }
+    if FOREIGN_SHADOW.with(|f| lvalues.keys().any(|k| f.borrow().contains(k))) {
+        return true;
     }
     for parent in parents {
         if cand_path.contains(&ptr(parent)) {
@@ -2531,9 +2567,7 @@ fn block_scoped_names(stmts: &[N]) -> HashSet<String> {
             } => {
                 for d in defs {
                     if let Data::VarDef { name, .. } = &d.data {
-                        if let Some(sym) = sym_name(name) {
-                            names.insert(sym.to_string());
-                        }
+                        names.extend(scope_bindings(std::slice::from_ref(name), &[]));
                     }
                 }
             }

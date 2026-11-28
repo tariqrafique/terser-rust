@@ -23,7 +23,7 @@ mod unary;
 
 use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -601,7 +601,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
-        optimize_self_off: Cell::new(None),
+        foreign_lambda: 0,
         fresh: RefCell::new(HashMap::new()),
         late_squeezed: RefCell::new(HashMap::new()),
         injected: RefCell::new(HashMap::new()),
@@ -696,9 +696,11 @@ struct Cx {
     /// copy): `tighten_body` runs on them before their children are descended,
     /// and never again (`OPTIMIZED`).
     pre_tighten: RefCell<HashMap<usize, N>>,
-    /// The lambda whose `tighten_body` runs from inside another node's
-    /// `optimize` (an inlined copy): terser's `compressor.self()` is not it.
-    optimize_self_off: Cell<Option<usize>>,
+    /// The lambda whose `pre_tighten` is running. terser calls its
+    /// `.optimize()` from the reference or call it replaces, so the lambda is
+    /// not on the stack: `find_scope()` is the enclosing scope and
+    /// `compressor.self()` is not a lambda.
+    foreign_lambda: usize,
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<HashMap<usize, N>>,
@@ -726,6 +728,18 @@ impl Cx {
 
     fn shadowed(&self, name: &str) -> bool {
         self.locals.iter().any(|set| set.contains(name))
+    }
+
+    /// terser `AST_SymbolRef.is_declared` (without `unsafe`): the reference's
+    /// definition when the symbol table has it, else a binding of the name
+    /// in scope.
+    fn declared_ref(&self, n: &N, name: &str) -> bool {
+        if let Some(table) = &self.syms {
+            if let Some(id) = table.lookup(&syms::ptr(n)) {
+                return !table.defs[id].undeclared;
+            }
+        }
+        self.shadowed(name)
     }
 
     fn const_value(&self, name: &str) -> Option<&N> {
@@ -1093,7 +1107,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
     let pre_node;
     let n = if pre {
+        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(n.data, Data::Func { .. }) { orig_ptr } else { 0 });
         pre_node = after_descend(Rc::clone(n), n, cx);
+        cx.foreign_lambda = saved;
         set_parent(cx, &pre_node);
         &pre_node
     } else {
@@ -1149,11 +1165,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.pre_tighten.borrow_mut().remove(&(Rc::as_ptr(&out) as usize)).is_some() {
         cx.parents.push(Rc::clone(&out));
         let entered = cx.enter(&out);
-        // `compressor.self()` is still the node being optimized, so this
-        // lambda's `tighten_body` is not `in_lambda` (`handle_if_return`).
-        let outer = cx.optimize_self_off.replace(Some(Rc::as_ptr(&out) as usize));
+        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(out.data, Data::Func { .. }) { Rc::as_ptr(&out) as usize } else { 0 });
         let tightened = after_descend(Rc::clone(&out), &out, cx);
-        cx.optimize_self_off.set(outer);
+        cx.foreign_lambda = saved;
         cx.leave(entered);
         cx.parents.pop();
         if !Rc::ptr_eq(&tightened, &out) {

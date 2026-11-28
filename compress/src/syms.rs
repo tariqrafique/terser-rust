@@ -30,6 +30,9 @@ pub struct SymbolDef {
     /// Scope that defined this name. Function scopes hold `var` and params.
     pub scope: usize,
     pub block_scoped: bool,
+    /// An `AST_SymbolLet` / `AST_SymbolConst` / `AST_SymbolUsing` declaration (not a catch
+    /// parameter): terser `get_lhs` never takes an assignment to it (`is_ref_of`).
+    pub lexical: bool,
     pub init: Option<N>,
     /// `None` means `fixed === false`. A node means that node is the fixed value.
     pub fixed: Option<N>,
@@ -140,6 +143,8 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             for arg in args {
                 if let Some(sym_name) = sym(arg) {
                     define(table, scopes, id, sym_name, arg, SymKind::Funarg, None, false);
+                } else {
+                    define_pattern(table, scopes, id, arg, SymKind::Funarg);
                 }
             }
             // Default values and computed keys in the parameters are uses.
@@ -190,6 +195,28 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 walk(stmt, id, scopes, table);
             }
         }
+        // terser `AST_IterationStatement.is_block_scope`: a `let` / `const`
+        // in the head belongs to the loop, not to the enclosing scope.
+        Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } => {
+            let id = push_block(scope, scopes);
+            table.node_scope.insert(ptr(n), id);
+            ast::walk_children(n, &mut |c| walk(c, id, scopes, table));
+        }
+        // `AST_Switch` is a block scope for its cases; the discriminant is
+        // in the enclosing scope.
+        Data::Switch { expr, body } => {
+            walk(expr, scope, scopes, table);
+            let id = push_block(scope, scopes);
+            table.node_scope.insert(ptr(n), id);
+            for arm in body {
+                if let Data::Case { body, .. } | Data::Default { body } = &arm.data {
+                    hoist_lexical(body, id, scopes, table);
+                }
+            }
+            for arm in body {
+                walk(arm, id, scopes, table);
+            }
+        }
         Data::Catch { arg, body } => {
             let id = push_block(scope, scopes);
             table.node_scope.insert(ptr(n), id);
@@ -198,6 +225,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     define(table, scopes, id, sym_name, arg, SymKind::Catch, None, false);
                 } else {
                     // A destructuring parameter: its defaults and computed keys are uses.
+                    define_pattern(table, scopes, id, arg, SymKind::Catch);
                     walk(arg, id, scopes, table);
                 }
             }
@@ -208,18 +236,21 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             let dest = if matches!(kind, DefKind::Var) { fn_scope } else { scope };
             for def in defs {
                 let Data::VarDef { name, value } = &def.data else { continue };
+                let sk = match kind {
+                    DefKind::Const => SymKind::Const,
+                    DefKind::Let => SymKind::Let,
+                    _ => SymKind::Var,
+                };
                 let Some(sym_name) = sym(name) else {
-                    // Destructuring pattern: the initializer is still a use.
+                    // Destructuring pattern: its names are declared (terser
+                    // `AST_SymbolDeclaration` inside `AST_Destructuring`), and
+                    // its defaults, computed keys and the initializer are uses.
+                    define_pattern(table, scopes, dest, name, sk);
                     walk(name, scope, scopes, table);
                     if let Some(value) = value {
                         walk(value, scope, scopes, table);
                     }
                     continue;
-                };
-                let sk = match kind {
-                    DefKind::Const => SymKind::Const,
-                    DefKind::Let => SymKind::Let,
-                    _ => SymKind::Var,
                 };
                 define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
                 if let Some(value) = value {
@@ -325,7 +356,10 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
             Data::Defs { kind: DefKind::Var, defs, .. } => {
                 for def in defs {
                     let Data::VarDef { name, value } = &def.data else { continue };
-                    let Some(sym_name) = sym(name) else { continue };
+                    let Some(sym_name) = sym(name) else {
+                        define_pattern(table, scopes, fn_scope, name, SymKind::Var);
+                        continue;
+                    };
                     define(table, scopes, fn_scope, sym_name, name, SymKind::Var, value.clone(), false);
                 }
             }
@@ -366,6 +400,21 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
             }
             Data::Catch { body, .. } | Data::Finally { body } => hoist_node(body, fn_scope, scopes, table),
             Data::Export { definition: Some(def), .. } => hoist(std::slice::from_ref(def), fn_scope, scopes, table),
+            // terser `scope.def_variable(node)` for an `AST_SymbolImport`: the
+            // local name of every import is a module binding.
+            Data::Import { imported_name, imported_names, .. } => {
+                let mut locals: Vec<N> = imported_name.iter().cloned().collect();
+                for m in imported_names.iter().flatten() {
+                    if let Data::NameMap { name, .. } = &m.data {
+                        locals.push(Rc::clone(name));
+                    }
+                }
+                for local in locals {
+                    if let Data::Symbol { name, kind: SymKind::Import, .. } = &local.data {
+                        define(table, scopes, fn_scope, name.clone(), &local, SymKind::Import, None, false);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -384,14 +433,41 @@ fn hoist_lexical(stmts: &[N], scope: usize, scopes: &mut Vec<Scope>, table: &mut
         }
         for def in defs {
             let Data::VarDef { name, value } = &def.data else { continue };
-            let Some(sym_name) = sym(name) else { continue };
             let sk = match kind {
                 DefKind::Const => SymKind::Const,
                 DefKind::Let => SymKind::Let,
                 _ => SymKind::Var,
             };
+            let Some(sym_name) = sym(name) else {
+                define_pattern(table, scopes, scope, name, sk);
+                continue;
+            };
             define(table, scopes, scope, sym_name, name, sk, value.clone(), false);
         }
+    }
+}
+
+/// The names a binding pattern declares: terser `AST_SymbolDeclaration`s
+/// inside an `AST_Destructuring` or a parameter default. Their `init` is
+/// null, as `def_variable(node, null)` gives a pattern name.
+fn define_pattern(table: &mut SymTable, scopes: &mut [Scope], scope: usize, pat: &N, kind: SymKind) {
+    let mut names = Vec::new();
+    pattern_symbols(pat, &mut names);
+    for name_node in names {
+        if let Some(sym_name) = sym(&name_node) {
+            define(table, scopes, scope, sym_name, &name_node, kind, None, false);
+        }
+    }
+}
+
+/// Declaration symbols of a pattern, left to right, without defaults or computed keys.
+pub fn pattern_symbols(n: &N, out: &mut Vec<N>) {
+    match &n.data {
+        Data::Symbol { kind, .. } if *kind != SymKind::Ref => out.push(Rc::clone(n)),
+        Data::Destructuring { names, .. } => names.iter().for_each(|x| pattern_symbols(x, out)),
+        Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => pattern_symbols(left, out),
+        Data::Prop { value, .. } => pattern_symbols(value, out),
+        _ => {}
     }
 }
 
@@ -441,6 +517,7 @@ fn define(
     if let Some(&id) = scopes[scope].names.get(&name) {
         table.node_def.insert(key, id);
         table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
+        table.defs[id].lexical |= matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using);
         if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
@@ -460,6 +537,7 @@ fn define(
         fn_scope,
         scope,
         block_scoped: matches!(kind, SymKind::Let | SymKind::Const | SymKind::Catch),
+        lexical: matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using),
         init,
         fixed: None,
         fixed_null: false,
@@ -541,6 +619,7 @@ impl SymTable {
                     fn_scope: o.fn_scope,
                     scope: o.scope,
                     block_scoped: o.block_scoped,
+                    lexical: o.lexical,
                     init: None,
                     fixed: None,
                     fixed_null: false,
