@@ -1273,6 +1273,15 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             cur = next;
         }
     }
+    // terser `def_optimize(AST_Binary)`: a boolean binary outside another binary
+    // becomes `!negate(self)` when that is shorter. The result is no longer a binary.
+    if cx.opts.comparisons && is_boolean_value(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
+        let negated = unary(&cur, "!", crate::unary::negate(&cur, cx, crate::unary::first_in_statement(cx)));
+        let best = crate::unary::best_of(cx, &cur, &negated);
+        if Rc::ptr_eq(&best, &negated) {
+            return Some(negated);
+        }
+    }
     if let Some(next) = unsafe_comp_reverse(&cur, cx) {
         cur = next;
     }
@@ -1326,31 +1335,24 @@ fn drop_empty_string(n: &N) -> Option<N> {
     None
 }
 
-/// `"a" + "b"` as terser's `binary.optimize` would fold it, or `None`.
-fn concat_constants(a: &N, b: &N) -> Option<N> {
-    let (Some(la), Some(lb)) = (eval(a), eval(b)) else { return None };
-    match eval_bin("+", la, lb)? {
-        Lit::Str(v) => Some(atom(a, Data::String { value: v, quote: '"', units: None })),
-        _ => None,
-    }
-}
-
 fn is_constant_node(n: &N) -> bool {
     matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::True | Data::False | Data::Null | Data::RegExp { .. })
 }
 
 /// terser `def_optimize(AST_Binary)` `case "+"`: string and template joins.
 fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
-    let _ = cx;
     let Data::Binary { op, left, right } = &n.data else { return None };
     if op != "+" {
         return None;
     }
+    // terser `binary.optimize(compressor)` on the two middle operands: a constant
+    // pair evaluates, a template takes the constant (`` `a${b}c` + 1 ``).
+    let join = |a: &N, b: &N| opt_table(&binary(n, "+", Rc::clone(a), Rc::clone(b)), cx);
     // (x + "foo") + "bar" => x + "foobar"
     if is_constant_node(right) {
         if let Data::Binary { op: lop, left: ll, right: lr } = &left.data {
             if lop == "+" && is_string(left) {
-                if let Some(m) = concat_constants(lr, right) {
+                if let Some(m) = join(lr, right) {
                     return Some(binary(n, "+", Rc::clone(ll), m));
                 }
             }
@@ -1359,7 +1361,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
     // (x + "foo") + ("bar" + y) => (x + "foobar") + y
     if let (Data::Binary { op: lop, left: ll, right: lr }, Data::Binary { op: rop, left: rl, right: rr }) = (&left.data, &right.data) {
         if lop == "+" && rop == "+" && is_string(left) && is_string(right) {
-            if let Some(m) = concat_constants(lr, rl) {
+            if let Some(m) = join(lr, rl) {
                 return Some(binary(n, "+", binary(left, "+", Rc::clone(ll), m), Rc::clone(rr)));
             }
         }
@@ -2266,6 +2268,17 @@ fn same_compare_type(left: &N, right: &N) -> bool {
         || is_boolean(left) && is_boolean(right)
 }
 
+/// terser `inference.js` `is_boolean`, all node types.
+fn is_boolean_value(n: &N) -> bool {
+    match &n.data {
+        Data::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||" | "??") => is_boolean_value(left) && is_boolean_value(right),
+        Data::Cond { cons, alt, .. } => is_boolean_value(cons) && is_boolean_value(alt),
+        Data::Assign { op, logical: false, right, .. } if op == "=" => is_boolean_value(right),
+        Data::Seq { exprs } => exprs.last().is_some_and(is_boolean_value),
+        _ => is_boolean(n),
+    }
+}
+
 fn is_boolean(n: &N) -> bool {
     match &n.data {
         Data::True | Data::False => true,
@@ -3085,6 +3098,8 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         | Data::Array { .. }
         | Data::Func { .. }
         | Data::Class { .. } => false,
+        // `AST_SymbolRef`: `arguments` whose scope is a function.
+        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" && scope_is_lambda(cx) => false,
         Data::Unary { op, .. } if op == "void" => true,
         Data::Unary { .. } => false,
         Data::Null => true,
@@ -3092,6 +3107,20 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         Data::Seq { exprs } => exprs.last().is_some_and(|e| may_throw_on_access(e, cx)),
         _ => true,
     }
+}
+
+/// terser `symbol.scope instanceof AST_Lambda` for a symbol in an expression under
+/// `cx.parents` that does not name a block declaration: its scope is the defun scope
+/// (`scope.js` `get_defun_scope`), so blocks and loops are skipped.
+fn scope_is_lambda(cx: &Cx) -> bool {
+    for p in cx.parents.iter().rev() {
+        match &p.data {
+            Data::Func { .. } => return true,
+            Data::Toplevel { .. } | Data::Class { .. } => return false,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn is_basic_ident(value: &str) -> bool {

@@ -749,6 +749,10 @@ fn has_side_effects(n: &N) -> bool {
         Data::Unary { op, expr, .. } if matches!(op.as_str(), "!" | "~" | "+" | "-" | "void" | "typeof") => has_side_effects(expr),
         Data::Binary { left, right, .. } => has_side_effects(left) || has_side_effects(right),
         Data::Func { .. } => false,
+        // terser `may_throw_on_access`: `arguments` in a function does not throw on a
+        // property read (a declaration this pass drops is in a function or the toplevel).
+        Data::Dot { expr, optional: false, .. } if is_arguments(expr) => false,
+        Data::Sub { expr, prop, optional: false } if is_arguments(expr) => has_side_effects(prop),
         // An array or object literal runs its elements and property values.
         Data::Array { elements } => elements.iter().any(|e| !matches!(e.data, Data::Hole) && has_side_effects(e)),
         Data::Object { props } => props.iter().any(|p| match &p.data {
@@ -759,6 +763,10 @@ fn has_side_effects(n: &N) -> bool {
         }),
         _ => true,
     }
+}
+
+fn is_arguments(n: &N) -> bool {
+    matches!(&n.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments")
 }
 
 fn def_id(table: &SymTable, n: &N) -> Option<usize> {

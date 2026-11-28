@@ -407,7 +407,7 @@ pub(crate) fn first_in_statement(cx: &Cx) -> bool {
     false
 }
 
-fn best_of(cx: &Cx, a: &N, b: &N) -> N {
+pub(crate) fn best_of(cx: &Cx, a: &N, b: &N) -> N {
     let (la, lb) = if first_in_statement(cx) {
         (print_len(&simple(a, Rc::clone(a))), print_len(&simple(b, Rc::clone(b))))
     } else {
@@ -416,7 +416,8 @@ fn best_of(cx: &Cx, a: &N, b: &N) -> N {
     if la > lb { Rc::clone(b) } else { Rc::clone(a) }
 }
 
-fn negate(n: &N, cx: &Cx, first: bool) -> N {
+/// terser `inference.js` `negate`.
+pub(crate) fn negate(n: &N, cx: &Cx, first: bool) -> N {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "!" => Rc::clone(expr),
         Data::Seq { exprs } if !exprs.is_empty() => {
@@ -439,6 +440,18 @@ fn negate(n: &N, cx: &Cx, first: bool) -> N {
 }
 
 fn negate_binary(n: &N, op: &str, left: &N, right: &N, cx: &Cx, first: bool) -> N {
+    if cx.opts.unsafe_comps {
+        let flipped = match op {
+            "<=" => Some(">"),
+            "<" => Some(">="),
+            ">=" => Some("<"),
+            ">" => Some("<="),
+            _ => None,
+        };
+        if let Some(flipped) = flipped {
+            return binary(n, flipped, Rc::clone(left), Rc::clone(right));
+        }
+    }
     let flipped = match op {
         "==" => "!=",
         "!=" => "==",
@@ -541,6 +554,11 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
         return true;
     }
     if matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise") {
+        return true;
+    }
+    // terser `AST_Lambda.init_scope_vars` defines `arguments` in every function but an
+    // arrow, so a read inside one is declared. The binder does not define it.
+    if name == "arguments" && cx.parents.iter().any(|p| matches!(p.data, Data::Func { kind: FuncKind::Decl | FuncKind::Expr | FuncKind::Accessor, .. })) {
         return true;
     }
     if let Some(table) = &cx.syms {

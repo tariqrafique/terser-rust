@@ -96,6 +96,13 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                         collect_vardef_refs(st, table, &mut map);
                     }
                     crate::tighten::set_referenced(map);
+                    let mut lexical = std::collections::HashSet::new();
+                    for st in &stmts {
+                        collect_lexical_targets(st, table, &mut lexical);
+                    }
+                    crate::tighten::set_lexical_targets(lexical);
+                } else {
+                    crate::tighten::set_lexical_targets(Default::default());
                 }
                 let (next, changed) = crate::tighten::collapse_step(
                     stmts,
@@ -1072,6 +1079,25 @@ fn append_defs(n: &N, more: &[N]) -> N {
     let mut defs = defs.clone();
     defs.extend(more.iter().cloned());
     eval::atom(n, Data::Defs { kind: *kind, defs, await_: *await_ })
+}
+
+/// Assignment and `++` / `--` targets that resolve to a `let` / `const` definition.
+fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashSet<usize>) {
+    let target = match &n.data {
+        Data::Func { .. } => return,
+        Data::Assign { left, .. } => Some(left),
+        Data::Unary { op, expr, .. } if op == "++" || op == "--" => Some(expr),
+        _ => None,
+    };
+    if let Some(t) = target {
+        if matches!(t.data, Data::Symbol { .. }) && table.lookup(&crate::syms::ptr(t)).is_some_and(|id| table.defs[id].lexical) {
+            out.insert(crate::syms::ptr(t));
+        }
+    }
+    let _ = ast::map_children(n, &mut |c| {
+        collect_lexical_targets(c, table, out);
+        Rc::clone(c)
+    });
 }
 
 fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {

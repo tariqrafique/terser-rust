@@ -126,3 +126,17 @@ Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStateme
 A lambda in `pre_tighten` (`Cx.foreign_lambda`) is tightened as terser does from the reference that inlined it: `defun_scope` is the enclosing scope, so its names are not local, `shadows` sees an enclosing binding of a name it rebinds (`FOREIGN_SHADOW`), and `handle_if_return` has `in_lambda` false.
 
 A switch branch is collapsed like a block. `x.length` evaluates through the fixed value of `x` (`reduce_vars.rs` `fixed_eval`, terser `AST_SymbolRef._eval`).
+
+Block-scope reads: terser gives every loop (`AST_IterationStatement`) and a switch body its own block scope, so a read in a `for…of` object or a `case` has a different `scope` than a toplevel `const` and is not `single_use` (`d.scope === this.scope`). The binder has no scope for these; `reduce_vars` `in_unbound_block_scope` adds the check, and a `let` / `const` in the same `for` head is in that loop's scope. Only a read of a block declaration (`let` / `const` / catch) keeps the block scope: `figure_out_scope` moves any other read to the defun scope, so a toplevel `var` read in a `for…of` head is still single-use.
+
+Boolean binary negation: `def_optimize(AST_Binary)` with `comparisons` turns a boolean binary whose parent is not a binary into `!negate(self)` when `best_of` prefers it (`!s(a)&&(!c(a)||!c(b))` → `!(s(a)||c(a)&&c(b))`). `unary.rs` `negate` is `inference.js` `negate`, now with the `unsafe_comps` flips.
+
+String joins: `(x + "foo") + "bar"` and `(x + "foo") + ("bar" + y)` optimize the middle pair as a binary (terser `binary.optimize`), so a template takes the constant: ``a+`u ${p}. `+"See"`` → ``a+`u ${p}. See` ``.
+
+Switch default pruning: `def_optimize(AST_Switch)` "Prune side-effect free branches that fall into default" is `loops.rs` `prune_into_default`. When the default (or exact) body is the last body, side-effect free cases that only fall into it are spliced away (not `eliminate_branch`ed). Case tests use `has_side_effects` (`unary::may_side_effect`), so an undeclared `case qux` stays.
+
+Single-use constants: `reduce_vars` `has_side_effects` / `may_throw` treat every `AST_Constant` (regexp, bigint, `Infinity`) as free of effects, so a single-use `const w=/a/` is substituted. A multiply-read regexp is still not evaluated (`unsafe_regexp`).
+
+Lexical collapse targets: terser `get_lhs` gives no lhs for an assignment or `++` / `--` whose target is a `let` / `const` in any scope (`is_ref_of`). `SymbolDef.lexical` records it; `body.rs` `collect_lexical_targets` marks those target nodes by definition before each collapse step (`tighten.rs` `LEXICAL_TARGETS`), which covers an outer `let` that the name sets miss.
+
+`arguments`: terser `AST_SymbolRef` `may_throw_on_access` is false for `arguments` whose scope is a function (`eval.rs` `scope_is_lambda`: the nearest function, class or toplevel, since a read of a non-block declaration has the defun scope), and `AST_Lambda.init_scope_vars` declares `arguments` in every non-arrow function, so the read itself drops (`unary.rs` `symbol_read_is_pure`). The binder still does not define it. `drop_unused`'s pre-check treats `arguments.x` / `arguments[k]` the same way. An unused `var w = c ? x : y` whose value drops entirely still leaves `0;` (pre-existing: `value_effects` decides before the context-aware drop).

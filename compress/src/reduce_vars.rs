@@ -747,7 +747,10 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
             // Leave `single_use` alone. An earlier read in this walk may already be the one use.
             tw.table.defs[id].recursive_refs = tw.table.defs[id].recursive_refs.saturating_add(1);
         } else if tw.env.unused && !exposed(&tw.table.defs[id], tw.env) && ref_once(tw, id) {
-            let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope);
+            // A read of a block declaration keeps its block scope; any other read's
+            // scope is the defun scope (`scope.js` `figure_out_scope`).
+            let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope)
+                && !(tw.table.defs[id].block_scoped && in_unbound_block_scope(tw, 0, id));
             let yes = (is_lambda(&fixed) && !func_scope_pinned(tw.table, &fixed))
                 || matches!(fixed.data, Data::Class { .. })
                 || (same && const_expr_truthy(&fixed, tw.table, None));
@@ -858,6 +861,34 @@ fn parent_at<'a>(tw: &'a Tw<'_>, level: usize) -> Option<&'a N> {
     let len = tw.parents.len();
     let index = len.checked_sub(2 + level)?;
     tw.parents.get(index)
+}
+
+/// terser `scope.js` `is_block_scope`: a loop (`AST_IterationStatement`) and a switch body
+/// (`AST_Switch`, not its expression) are block scopes, so a symbol there has that scope.
+/// The binder has no scope for them; true when one lies between the symbol and `ref_scope`.
+/// A `let` / `const` in a `for` head belongs to that loop's scope, so it is not crossed for `id`.
+fn in_unbound_block_scope(tw: &Tw, level: usize, id: usize) -> bool {
+    let Some(start) = tw.parents.len().checked_sub(1 + level) else { return false };
+    for i in (1..=start).rev() {
+        let (child, parent) = (&tw.parents[i], &tw.parents[i - 1]);
+        if tw.table.node_scope.contains_key(&syms::ptr(child)) {
+            return false;
+        }
+        match &parent.data {
+            Data::For { init, .. } => return !init.as_ref().is_some_and(|init| declares_lexical(tw.table, init, id)),
+            Data::ForIn { init, .. } | Data::ForOf { init, .. } => return !declares_lexical(tw.table, init, id),
+            Data::While { .. } | Data::Do { .. } => return true,
+            Data::Switch { expr, .. } if syms::ptr(expr) != syms::ptr(child) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn declares_lexical(table: &SymTable, init: &N, id: usize) -> bool {
+    let Data::Defs { kind, defs, .. } = &init.data else { return false };
+    !matches!(kind, ast::DefKind::Var)
+        && defs.iter().any(|d| matches!(&d.data, Data::VarDef { name, .. } if table.node_def.get(&syms::ptr(name)) == Some(&id)))
 }
 
 fn ref_scope(tw: &Tw, level: usize) -> Option<usize> {
@@ -1056,7 +1087,9 @@ fn is_literal(n: &N) -> bool {
 /// terser `lib/compress/inference.js` `has_side_effects` for the nodes a fixed value can be.
 fn has_side_effects(n: &N) -> bool {
     match &n.data {
-        Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null | Data::This => false,
+        // `AST_Constant` (a regexp and a bigint included) and `this`.
+        Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::RegExp { .. } | Data::Infinity => false,
+        Data::True | Data::False | Data::Null | Data::This => false,
         Data::Unary { op, expr, .. } => matches!(op.as_str(), "delete" | "++" | "--") || has_side_effects(expr),
         Data::Binary { left, right, .. } => has_side_effects(left) || has_side_effects(right),
         Data::Symbol { kind: SymKind::Ref, .. } => false,
@@ -1078,7 +1111,7 @@ fn may_throw(n: &N) -> bool {
             Data::Prop { key: Key::Static { .. }, value, method: None, .. } => may_throw(value),
             _ => true,
         }),
-        Data::Hole => false,
+        Data::Hole | Data::BigInt { .. } | Data::RegExp { .. } | Data::Infinity => false,
         _ => !is_literal(n) && !matches!(n.data, Data::Unary { .. } | Data::Binary { .. }),
     }
 }
