@@ -79,6 +79,27 @@ pub fn ids_minted() -> usize {
     NEXT_ID.with(|c| c.get() as usize)
 }
 
+/// Hashes a [`NodeId`] as itself: ids are small, dense and unique, so SipHash buys nothing.
+#[derive(Default, Clone, Copy)]
+pub struct IdHasher(u64);
+
+impl std::hash::Hasher for IdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0 ^ b as u64).wrapping_mul(0x100_0000_01b3);
+        }
+    }
+    fn write_u32(&mut self, v: u32) {
+        self.0 = v as u64;
+    }
+}
+
+pub type IdMap<V> = std::collections::HashMap<NodeId, V, std::hash::BuildHasherDefault<IdHasher>>;
+pub type IdSet = std::collections::HashSet<NodeId, std::hash::BuildHasherDefault<IdHasher>>;
+
 /// Not `Clone`: a copy would duplicate the id. Use [`Node::make`] (a new node: terser
 /// `make_node` / `clone()`) or [`Node::rebuild`] (the same node edited: terser's in-place edit).
 #[derive(Debug)]

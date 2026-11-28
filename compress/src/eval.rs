@@ -3905,21 +3905,21 @@ thread_local! {
     /// terser `size.js` `AST_Symbol._size`: with mangle options, a symbol whose
     /// definition will be mangled counts as one character. Ids of those
     /// symbol nodes for the current pass.
-    static MANGLED: std::cell::RefCell<std::collections::HashSet<ast::NodeId>> = Default::default();
+    static MANGLED: std::cell::RefCell<ast::IdSet> = Default::default();
 }
 
 thread_local! {
     /// Every symbol node bound at the start of the pass, and whether a symbol
     /// made during the pass (`hoist_props`, `flatten_fn`) counts as mangleable.
-    static KNOWN: std::cell::RefCell<std::collections::HashSet<ast::NodeId>> = Default::default();
+    static KNOWN: std::cell::RefCell<ast::IdSet> = Default::default();
     static NEW_MANGLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-pub(crate) fn set_mangled_symbols(set: std::collections::HashSet<ast::NodeId>) {
+pub(crate) fn set_mangled_symbols(set: ast::IdSet) {
     MANGLED.with(|m| *m.borrow_mut() = set);
 }
 
-pub(crate) fn set_known_symbols(set: std::collections::HashSet<ast::NodeId>, new_mangled: bool) {
+pub(crate) fn set_known_symbols(set: ast::IdSet, new_mangled: bool) {
     KNOWN.with(|k| *k.borrow_mut() = set);
     NEW_MANGLED.with(|c| c.set(new_mangled));
 }

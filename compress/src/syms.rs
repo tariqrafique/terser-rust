@@ -66,9 +66,9 @@ pub struct SymTable {
     /// terser `thedef`: symbol node id to definition. A rebuild (`Node::rebuild`, terser's
     /// in-place edit) keeps the id and so the definition; terser's copies (`clone(true)`,
     /// `make_node(X, orig, orig)`) add their new ids with `copy_binding`.
-    pub node_def: RefCell<HashMap<NodeId, usize>>,
+    pub node_def: RefCell<ast::IdMap<usize>>,
     /// Scope node id to scope index, the same way.
-    pub node_scope: RefCell<HashMap<NodeId, usize>>,
+    pub node_scope: RefCell<ast::IdMap<usize>>,
     pub scope_defs: HashMap<usize, Vec<usize>>,
     /// Parent scope id for each scope, indexed by scope id.
     pub scope_parent: Vec<Option<usize>>,
@@ -78,7 +78,7 @@ pub struct SymTable {
     pub scope_pinned: Vec<bool>,
     /// Function and class nodes currently stored in `fixed`, by id, so a compressed
     /// replacement can follow them. Built at the end of `reduce_vars::analyze`.
-    pub fixed_of_node: HashMap<NodeId, Vec<usize>>,
+    pub fixed_of_node: ast::IdMap<Vec<usize>>,
     /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
     pub inlined_scopes: RefCell<HashSet<usize>>,
 }
@@ -103,13 +103,13 @@ pub fn bind(root: &N) -> SymTable {
     }];
     let mut table = SymTable {
         defs: Vec::new(),
-        node_def: RefCell::new(HashMap::new()),
-        node_scope: RefCell::new(HashMap::new()),
+        node_def: RefCell::new(ast::IdMap::default()),
+        node_scope: RefCell::new(ast::IdMap::default()),
         scope_defs: HashMap::new(),
         scope_parent: Vec::new(),
         fn_of: Vec::new(),
         scope_pinned: Vec::new(),
-        fixed_of_node: HashMap::new(),
+        fixed_of_node: ast::IdMap::default(),
         inlined_scopes: RefCell::new(HashSet::new()),
     };
     table.bind_scope(root, 0);

@@ -22,7 +22,7 @@ mod reduce_vars;
 mod syms;
 mod unary;
 
-use ast::{Data, Key, N, Node, NodeId, Seg};
+use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -502,7 +502,7 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         trace::trace!("pass", n = pass);
         tree = compress_pass(&tree, opts.clone(), mangle);
     }
-    eval::set_mangled_symbols(HashSet::new());
+    eval::set_mangled_symbols(ast::IdSet::default());
     if expression {
         tree = process_expression(&tree, false);
     }
@@ -592,8 +592,8 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         consts: vec![HashMap::new()],
         syms: None,
         squeezed: HashSet::new(),
-        squeezed_ids: HashSet::new(),
-        optimized_ids: RefCell::new(HashSet::new()),
+        squeezed_ids: ast::IdSet::default(),
+        optimized_ids: RefCell::new(ast::IdSet::default()),
         redescend: 0,
         optimized: HashSet::new(),
         sealed: RefCell::new(Vec::new()),
@@ -618,7 +618,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     // terser `size.js`: a mangleable symbol is one character when mangle options exist.
     if let Some(mangle_toplevel) = mangle {
         let table = syms::bind(root);
-        let mut set = HashSet::new();
+        let mut set = ast::IdSet::default();
         for (nid, id) in table.node_def.borrow().iter() {
             let d = &table.defs[*id];
             let unmangleable = (d.global && !mangle_toplevel) || d.undeclared || d.pinned || d.exported || d.name == "arguments";
@@ -629,8 +629,8 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         eval::set_mangled_symbols(set);
         eval::set_known_symbols(table.node_def.borrow().keys().copied().collect(), mangle_toplevel);
     } else {
-        eval::set_mangled_symbols(HashSet::new());
-        eval::set_known_symbols(HashSet::new(), false);
+        eval::set_mangled_symbols(ast::IdSet::default());
+        eval::set_known_symbols(ast::IdSet::default(), false);
     }
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -695,8 +695,8 @@ struct Cx {
     squeezed: HashSet<usize>,
     /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` by id, set only where terser sets
     /// the flag, never by the pointer carry-overs. Nothing decides by them yet.
-    squeezed_ids: HashSet<NodeId>,
-    optimized_ids: RefCell<HashSet<NodeId>>,
+    squeezed_ids: ast::IdSet,
+    optimized_ids: RefCell<ast::IdSet>,
     /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
     redescend: u32,
     /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
