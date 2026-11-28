@@ -429,19 +429,29 @@ fn walk(n: &N, tw: &mut Tw) {
                 // `safe_to_assign` rejects `const` (its `orig` is `AST_SymbolConst`):
                 // `const n=1; return n=2, n` keeps the read as `n`.
                 let safe = !*logical
-                    && op == "="
                     && tw.conditional_var == 0
                     && !tw.table.defs[id].is_const
                     && safe_to_assign(tw, id);
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
-                if safe {
-                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(Rc::clone(right));
+                // `if (!fixed && node.operator != "=" && !node.logical) return finish_walk()`.
+                let prev = if op == "=" { None } else { tw.table.defs[id].fixed.clone() };
+                if safe && (op == "=" || prev.is_some()) {
+                    // A compound assignment's value is `old fixed <op> right`
+                    // (`make_node(AST_Binary, node, ...)`); it escapes as the assignment itself.
+                    let (value, escaped) = match prev {
+                        None => (Rc::clone(right), Rc::clone(right)),
+                        Some(old) => (
+                            span_node(n, Data::Binary { op: op[..op.len() - 1].into(), left: old, right: Rc::clone(right) }),
+                            Rc::clone(n),
+                        ),
+                    };
+                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(value);
                     tw.table.defs[id].references.push(left.id());
                     mark(tw, id, false);
                     walk(right, tw);
                     mark(tw, id, true);
                     // terser `reduce-vars.js` `AST_Assign`: the assignment expression can escape.
-                    mark_escaped(tw, id, n, Some(Rc::clone(right)), 0, 1, ref_scope(tw, 0));
+                    mark_escaped(tw, id, n, Some(escaped), 0, 1, ref_scope(tw, 0));
                     done = true;
                 } else {
                     // The left-hand reference is modified, which clears `fixed`.
