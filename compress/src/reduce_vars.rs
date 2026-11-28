@@ -454,7 +454,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 let safe = !*logical
                     && tw.conditional_var == 0
                     && !tw.table.defs[id].is_const
-                    && safe_to_assign(tw, id);
+                    && safe_to_assign_value(tw, id, true);
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
                 // `if (!fixed && node.operator != "=" && !node.logical) return finish_walk()`.
                 let prev = if op == "=" { None } else { tw.table.defs[id].fixed.clone() };
@@ -734,6 +734,14 @@ fn safe_to_read(tw: &mut Tw, id: usize) -> bool {
 
 /// terser `reduce-vars.js` `safe_to_assign`.
 fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
+    safe_to_assign_value(tw, id, false)
+}
+
+/// terser `safe_to_assign(tw, def, scope, value)` where `value` is a node (an
+/// assignment's right side, a `var` initializer): a function declaration's
+/// name can take it when the write is in the scope that declares the function
+/// (`def.fixed.parent_scope === scope`).
+fn safe_to_assign_value(tw: &mut Tw, id: usize, value_node: bool) -> bool {
     if tw.table.defs[id].fixed_null {
         if let Some(frame) = tw.null_safe.remove(&id) {
             if let Some(f) = tw.safe.get_mut(frame) {
@@ -745,7 +753,7 @@ fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
     // terser `reduce-vars.js` `safe_to_assign`: a function or class name is not a fixed write target.
     // `const` is rejected by the caller that would overwrite `fixed`.
     // `safe_to_assign` itself still accepts the initializer (`AST_VarDef`).
-    if tw.table.defs[id].is_defun {
+    if tw.table.defs[id].is_defun && !value_node {
         return false;
     }
     let d = &tw.table.defs[id];
@@ -767,7 +775,24 @@ fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
     if d.references.len() as u32 > d.assignments {
         return false;
     }
+    if d.is_defun {
+        // `def.fixed instanceof AST_Defun`: the write is in the declaring scope.
+        // Once reassigned, `orig` still holds the `AST_SymbolDefun`.
+        let declared_here = matches!(d.fixed.as_ref().map(|f| &f.data), Some(Data::Func { kind: FuncKind::Decl, .. }));
+        let scope = d.scope;
+        return declared_here && defun_scope(tw) == Some(scope);
+    }
     true
+}
+
+/// terser `sym.scope` of a reference to a non-block declaration: the nearest
+/// function or toplevel scope on the walk's stack.
+fn defun_scope(tw: &Tw) -> Option<usize> {
+    tw.parents
+        .iter()
+        .rev()
+        .find(|p| matches!(p.data, Data::Func { .. } | Data::Toplevel { .. }))
+        .and_then(|p| tw.table.scope_of(p).as_ref().copied())
 }
 
 /// terser `reduce-vars.js` `ref_once`.
