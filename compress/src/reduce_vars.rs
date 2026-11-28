@@ -621,15 +621,11 @@ fn walk_children(n: &N, tw: &mut Tw) {
             }
             pop(tw);
         }
+        // terser `reduce-vars.js` `AST_LabeledStatement`.
         Data::Labeled { body, .. } => {
-            let skips = contains_break(body);
-            if skips {
-                tw.conditional_var += 1;
-            }
+            push(tw);
             walk(body, tw);
-            if skips {
-                tw.conditional_var -= 1;
-            }
+            pop(tw);
         }
         Data::Export { value, definition, names, module_name, .. } => {
             if let Some(v) = value {
@@ -1410,17 +1406,6 @@ fn has_break_or_continue(lp: &N) -> bool {
         _ => return false,
     };
     rec(body, &mut vec![Rc::clone(lp)], lp)
-}
-
-fn contains_break(n: &N) -> bool {
-    match &n.data {
-        Data::Break { .. } | Data::Continue { .. } => true,
-        Data::Func { .. } | Data::Class { .. } => false,
-        Data::Block { body } | Data::Default { body } => body.iter().any(contains_break),
-        Data::If { body, alt, .. } => contains_break(body) || alt.as_ref().is_some_and(|a| contains_break(a)),
-        Data::Labeled { body, .. } | Data::Simple { body } | Data::Return { value: Some(body) } => contains_break(body),
-        _ => false,
-    }
 }
 
 fn def_of(tw: &Tw, n: &N) -> Option<usize> {

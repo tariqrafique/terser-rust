@@ -141,6 +141,7 @@ fn mangle_options(value: &Value) -> scope::MangleOptions {
     if let Some(Value::Object(m)) = value.get("mangle") {
         let truthy = |k: &str| m.get(k).is_some_and(|v| !matches!(v, Value::Bool(false) | Value::Null));
         opts.toplevel = truthy("toplevel") || truthy("module");
+        opts.module = truthy("module");
     }
     opts
 }

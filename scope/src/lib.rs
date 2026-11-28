@@ -69,6 +69,9 @@ struct Analyzer {
 #[derive(Clone, Debug, Default)]
 pub struct MangleOptions {
     pub toplevel: bool,
+    /// terser `figure_out_scope` with `module`: the code is strict, so a function
+    /// declaration in a block is bound in the block.
+    pub module: bool,
 }
 
 #[derive(Clone)]
@@ -85,6 +88,7 @@ pub fn mangle_map(root: &N) -> Result<(HashMap<usize, String>, HashMap<String, S
 pub fn mangle_map_with(root: &N, opts: &MangleOptions) -> Result<(HashMap<usize, String>, HashMap<String, String>), ScopeError> {
     let mut a = Analyzer::new();
     a.opts = opts.clone();
+    a.scopes[0].strict = opts.module;
     a.walk(root);
     if let Some(err) = a.error.clone() {
         return Err(err);

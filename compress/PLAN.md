@@ -6,7 +6,7 @@ Goal: byte-exact terser 5.51.4 output, the lwc-rollup options first. The acorn/E
 
 ## Status (2026-11-28)
 
-- Compress default board 2435/2671, lwc 339/339, bundles 0/3 (after triage rounds 1-3).
+- Compress default board 2477/2671, lwc 339/339, bundles 0/3 (after triage rounds 1-3 and BOARD.md task T4).
 - lwc-rollup: all 779 inputs match terser byte for byte (`tools/rollup-check.py 100000000`, mangling on). Next: the rest of terser's own suite (`BOARD.md`, in progress).
 - Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`.
 
