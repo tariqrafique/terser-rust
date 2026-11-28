@@ -23,7 +23,7 @@ mod unary;
 
 use ast::{Data, Key, N, Node, Seg};
 use serde_json::{Map, Value};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -601,6 +601,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
+        optimize_self_off: Cell::new(None),
         fresh: RefCell::new(HashMap::new()),
         late_squeezed: RefCell::new(HashMap::new()),
         injected: RefCell::new(HashMap::new()),
@@ -695,6 +696,9 @@ struct Cx {
     /// copy): `tighten_body` runs on them before their children are descended,
     /// and never again (`OPTIMIZED`).
     pre_tighten: RefCell<HashMap<usize, N>>,
+    /// The lambda whose `tighten_body` runs from inside another node's
+    /// `optimize` (an inlined copy): terser's `compressor.self()` is not it.
+    optimize_self_off: Cell<Option<usize>>,
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<HashMap<usize, N>>,
@@ -1145,7 +1149,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.pre_tighten.borrow_mut().remove(&(Rc::as_ptr(&out) as usize)).is_some() {
         cx.parents.push(Rc::clone(&out));
         let entered = cx.enter(&out);
+        // `compressor.self()` is still the node being optimized, so this
+        // lambda's `tighten_body` is not `in_lambda` (`handle_if_return`).
+        let outer = cx.optimize_self_off.replace(Some(Rc::as_ptr(&out) as usize));
         let tightened = after_descend(Rc::clone(&out), &out, cx);
+        cx.optimize_self_off.set(outer);
         cx.leave(entered);
         cx.parents.pop();
         if !Rc::ptr_eq(&tightened, &out) {

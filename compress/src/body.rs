@@ -374,7 +374,9 @@ fn if_parts(n: &N) -> Option<(&N, &N, Option<&N>)> {
 
 fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
     let self_n = self_node(cx);
-    let in_lambda = self_n.as_ref().is_some_and(|s| matches!(s.data, Data::Func { .. }));
+    let in_lambda = self_n.as_ref().is_some_and(|s| {
+        matches!(s.data, Data::Func { .. }) && cx.optimize_self_off.get() != Some(Rc::as_ptr(s) as usize)
+    });
     let multiple_if_returns = {
         let mut n = 0;
         stmts
