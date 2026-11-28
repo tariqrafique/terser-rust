@@ -665,8 +665,8 @@ fn safe_to_read(tw: &mut Tw, id: usize) -> bool {
         if d.funarg || d.name == "arguments" {
             return false;
         }
-        let zero = Rc::new(Node { start: None, end: None, data: Data::Number { value: 0.0, raw: "0".into() } });
-        d.fixed = Some(Rc::new(Node { start: None, end: None, data: Data::Unary { op: "void".into(), expr: zero, prefix: true } }));
+        let zero = Node::new(Data::Number { value: 0.0, raw: "0".into() });
+        d.fixed = Some(Node::new(Data::Unary { op: "void".into(), expr: zero, prefix: true }));
         d.fixed_null = false;
     }
     true
@@ -1777,7 +1777,7 @@ fn num_node(value: f64) -> N {
 }
 
 fn span_node(span: &N, data: Data) -> N {
-    Rc::new(Node { start: span.start.clone(), end: span.end.clone(), data })
+    Node::make(span, data)
 }
 
 /// Every node under `n`, pre-order, in the order of terser's `walk(node, cb)` helper.

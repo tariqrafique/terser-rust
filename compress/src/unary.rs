@@ -678,10 +678,7 @@ fn reads_name(n: &N, name: &str) -> bool {
         return true;
     }
     let mut hit = false;
-    let _ = ast::map_children(n, &mut |c| {
-        hit = hit || reads_name(c, name);
-        Rc::clone(c)
-    });
+    ast::transform_children(n, &mut |c| hit = hit || reads_name(c, name));
     hit
 }
 

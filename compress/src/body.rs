@@ -1065,10 +1065,7 @@ fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::coll
             }
         }
         _ => {
-            let _ = ast::map_children(n, &mut |c| {
-                collect_vardef_refs(c, table, out);
-                Rc::clone(c)
-            });
+            ast::transform_children(n, &mut |c| collect_vardef_refs(c, table, out));
         }
     }
 }

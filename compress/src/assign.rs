@@ -446,9 +446,5 @@ fn assign_ops_commutative(op: &str) -> bool {
 }
 
 fn assign_node(span: &N, op: &str, left: N, right: N, logical: bool) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data: Data::Assign { op: op.into(), left, right, logical },
-    })
+    Node::make(span, Data::Assign { op: op.into(), left, right, logical })
 }

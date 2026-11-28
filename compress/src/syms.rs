@@ -761,5 +761,5 @@ fn map_drop(n: &N, table: &SymTable) -> N {
 }
 
 fn node(orig: &N, data: Data) -> N {
-    Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+    Node::make(orig, data)
 }

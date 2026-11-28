@@ -93,6 +93,8 @@ impl std::error::Error for MinifyError {}
 
 /// Minify `src` with `opts`.
 pub fn minify(src: &str, opts: &Options) -> Result<Output, MinifyError> {
+    // Node ids are compared within this tree only; number it from zero.
+    ast::reset_ids();
     let ast = parser::parse(src).map_err(|err| MinifyError::syntax(err.message, err.line, err.col))?;
     let resolved = resolve_options(opts.as_value());
     let ast = compress::compress(&ast, &resolved);

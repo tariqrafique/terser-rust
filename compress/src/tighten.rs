@@ -2602,11 +2602,7 @@ fn ptr(n: &N) -> usize {
 }
 
 fn node(orig: &N, data: Data) -> N {
-    Rc::new(Node {
-        start: orig.start.clone(),
-        end: orig.end.clone(),
-        data,
-    })
+    Node::make(orig, data)
 }
 
 fn num0(span: &N) -> N {

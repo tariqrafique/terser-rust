@@ -452,10 +452,7 @@ fn count_reads(body: &[N], name: &str) -> usize {
             }
             _ => {
                 let mut c = 0;
-                let _ = ast::map_children(n, &mut |k| {
-                    c += rec(k, name);
-                    Rc::clone(k)
-                });
+                ast::transform_children(n, &mut |k| c += rec(k, name));
                 c
             }
         }
@@ -1425,7 +1422,7 @@ fn polish(n: N, cx: &Cx) -> N {
 }
 
 fn atom(orig: &N, data: Data) -> N {
-    Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+    Node::make(orig, data)
 }
 
 fn num(orig: &N, value: f64) -> N {

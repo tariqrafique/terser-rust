@@ -90,10 +90,7 @@ fn mentions_arguments_or_pinned(func: &N) -> bool {
             Data::Func { kind, .. } if !top && !matches!(kind, ast::FuncKind::Arrow) => false,
             _ => {
                 let mut hit = false;
-                let _ = ast::map_children(n, &mut |c| {
-                    hit = hit || rec(c, false);
-                    Rc::clone(c)
-                });
+                ast::transform_children(n, &mut |c| hit = hit || rec(c, false));
                 hit
             }
         }

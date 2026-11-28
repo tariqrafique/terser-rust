@@ -1449,14 +1449,14 @@ fn optimize(n: &N, ptr: usize, cx: &Cx) -> Option<N> {
 }
 
 fn empty(n: &N) -> N {
-    Rc::new(Node { start: n.start.clone(), end: n.end.clone(), data: Data::Empty })
+    Node::make(n, Data::Empty)
 }
 
 fn finish(orig: &N, data: Data, changed: bool) -> N {
     if !changed {
         Rc::clone(orig)
     } else {
-        Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+        Node::make(orig, data)
     }
 }
 
@@ -1686,17 +1686,7 @@ fn if_return_once(stmts: Vec<N>) -> (bool, Vec<N>) {
 }
 
 fn return_cond(span: &N, cond: N, cons: N, alt: N) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data: Data::Return {
-            value: Some(Rc::new(Node {
-                start: span.start.clone(),
-                end: span.end.clone(),
-                data: Data::Cond { cond, cons, alt },
-            })),
-        },
-    })
+    Node::make(span, Data::Return { value: Some(Node::make(span, Data::Cond { cond, cons, alt })) })
 }
 
 fn var_into_for(stmts: Vec<N>) -> Vec<N> {
@@ -1705,16 +1695,8 @@ fn var_into_for(stmts: Vec<N>) -> Vec<N> {
     for stat in stmts {
         if let Some(prev_stmt) = prev.take() {
             if let Data::For { init: None, cond, step, body } = &stat.data {
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::For {
-                        init: Some(prev_stmt),
-                        cond: cond.clone(),
-                        step: step.clone(),
-                        body: Rc::clone(body),
-                    },
-                }));
+                let data = Data::For { init: Some(prev_stmt), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) };
+                out.push(Node::make(&stat, data));
                 continue;
             }
             out.push(prev_stmt);
@@ -1738,8 +1720,10 @@ fn join_vars(stmts: Vec<N>) -> Vec<N> {
             if let Some(prev) = out.last_mut() {
                 let same = matches!(&prev.data, Data::Defs { kind: pk, await_: pa, .. } if pk == kind && pa == await_);
                 if same {
-                    let prev = Rc::make_mut(prev);
-                    if let Data::Defs { defs: prev_defs, .. } = &mut prev.data {
+                    if Rc::get_mut(prev).is_none() {
+                        *prev = Node::make(prev, prev.data.clone());
+                    }
+                    if let Data::Defs { defs: prev_defs, .. } = &mut Rc::get_mut(prev).unwrap().data {
                         prev_defs.extend(defs.iter().cloned());
                     }
                     true
@@ -1770,18 +1754,10 @@ fn sequence_statements(stmts: Vec<N>, limit: i32) -> Vec<N> {
         let body = if exprs.len() == 1 {
             exprs.into_iter().next().unwrap()
         } else {
-            let span = exprs[0].clone();
-            Rc::new(Node {
-                start: span.start.clone(),
-                end: span.end.clone(),
-                data: Data::Seq { exprs },
-            })
+            let span = Rc::clone(&exprs[0]);
+            Node::make(&span, Data::Seq { exprs })
         };
-        out.push(Rc::new(Node {
-            start: body.start.clone(),
-            end: body.end.clone(),
-            data: Data::Simple { body },
-        }));
+        out.push(Node::make(&Rc::clone(&body), Data::Simple { body }));
     };
     for stat in stmts {
         match &stat.data {
@@ -1826,28 +1802,16 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
             let left = Rc::clone(left);
             if let Data::If { cond, body, alt } = &stat.data {
                 let cond = comma(left, Rc::clone(cond));
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::If { cond, body: Rc::clone(body), alt: alt.clone() },
-                }));
+                out.push(Node::make(&stat, Data::If { cond, body: Rc::clone(body), alt: alt.clone() }));
                 continue;
             }
             if let Data::Return { value } = &stat.data {
                 let right = value.clone().unwrap_or_else(|| eval_void(&stat));
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::Return { value: Some(comma(left, right)) },
-                }));
+                out.push(Node::make(&stat, Data::Return { value: Some(comma(left, right)) }));
                 continue;
             }
             if let Data::Switch { expr, body } = &stat.data {
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() },
-                }));
+                out.push(Node::make(&stat, Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() }));
                 continue;
             }
             if let Data::For { init, cond, step, body } = &stat.data {
@@ -1856,11 +1820,7 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
                         Some(init) => comma(left, Rc::clone(init)),
                         None => left,
                     });
-                    out.push(Rc::new(Node {
-                        start: stat.start.clone(),
-                        end: stat.end.clone(),
-                        data: Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
-                    }));
+                    out.push(Node::make(&stat, Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
                     continue;
                 }
             }
@@ -1887,11 +1847,7 @@ fn comma(left: N, right: N) -> N {
         Data::Seq { exprs: more } => exprs.extend(more.iter().cloned()),
         _ => exprs.push(right),
     }
-    Rc::new(Node {
-        start: left.start.clone(),
-        end: left.end.clone(),
-        data: Data::Seq { exprs },
-    })
+    Node::make(&left, Data::Seq { exprs })
 }
 
 fn eliminate_spurious_blocks(stmts: Vec<N>) -> Vec<N> {
@@ -1923,19 +1879,8 @@ pub(crate) fn can_evict(n: &N) -> bool {
 }
 
 fn eval_void(span: &N) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data: Data::Unary {
-            op: "void".into(),
-            expr: Rc::new(Node {
-                start: span.start.clone(),
-                end: span.end.clone(),
-                data: Data::Number { value: 0.0, raw: String::new() },
-            }),
-            prefix: true,
-        },
-    })
+    let zero = Node::make(span, Data::Number { value: 0.0, raw: String::new() });
+    Node::make(span, Data::Unary { op: "void".into(), expr: zero, prefix: true })
 }
 
 fn map_children(n: &N, cx: &mut Cx) -> N {

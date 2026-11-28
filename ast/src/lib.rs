@@ -2,11 +2,20 @@
 
 //! AST for the terser 5.51.4 parse and print path.
 //! Node identity is `Rc` so the printer can match terser's parent-pointer checks.
+//!
+//! Every node also has a [`NodeId`] (see `compress/NODE_IDS.md`). terser edits one tree in
+//! place; the port rebuilds immutable nodes. A rebuild that stands for terser's in-place edit
+//! keeps the id ([`Node::rebuild`]); `new AST_X` / `make_node` / `clone` make a new one
+//! ([`Node::new`], [`Node::spanned`], [`Node::make`], [`deep_clone_with`]).
 
+use std::cell::Cell;
 use std::rc::Rc;
 
 mod walk;
-pub use walk::{children_backwards, deep_clone, map_children, terser_type, transform_children, walk, walk_children};
+pub use walk::{
+    check_ids, children_backwards, data_children, deep_clone, deep_clone_with, map_children, terser_type, transform_children, walk,
+    walk_children,
+};
 
 pub type N = Rc<Node>;
 
@@ -35,8 +44,46 @@ pub struct Tok {
     pub quote: Option<char>,
 }
 
-#[derive(Clone, Debug)]
+/// The identity of a node across rebuilds: terser's "same object". Ids are minted from a
+/// thread-local counter that [`reset_ids`] restarts, so they are only compared within one tree.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub struct NodeId(u32);
+
+impl NodeId {
+    /// Dense index for tables keyed by id.
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+thread_local! {
+    static NEXT_ID: Cell<u32> = const { Cell::new(0) };
+}
+
+fn mint() -> NodeId {
+    NEXT_ID.with(|c| {
+        let v = c.get();
+        c.set(v.checked_add(1).expect("node id overflow"));
+        NodeId(v)
+    })
+}
+
+/// Restart the id counter. `terser::minify` calls it first, so every tree it builds is
+/// numbered from zero.
+pub fn reset_ids() {
+    NEXT_ID.with(|c| c.set(0));
+}
+
+/// The number of ids minted since [`reset_ids`]: an upper bound for dense tables.
+pub fn ids_minted() -> usize {
+    NEXT_ID.with(|c| c.get() as usize)
+}
+
+/// Not `Clone`: a copy would duplicate the id. Use [`Node::make`] (a new node: terser
+/// `make_node` / `clone()`) or [`Node::rebuild`] (the same node edited: terser's in-place edit).
+#[derive(Debug)]
 pub struct Node {
+    id: NodeId,
     pub start: Option<Tok>,
     pub end: Option<Tok>,
     pub data: Data,
@@ -267,18 +314,34 @@ pub enum Seg {
 }
 
 impl Node {
+    /// terser `new AST_X({..})` with no `start` / `end`: a new id.
     pub fn new(data: Data) -> N {
-        Rc::new(Node {
-            start: None,
-            end: None,
-            data,
-        })
+        Node::spanned(None, None, data)
     }
 
-    pub fn with_span(mut self, start: Option<Tok>, end: Option<Tok>) -> N {
-        self.start = start;
-        self.end = end;
-        Rc::new(self)
+    /// terser `new AST_X({ start, end, .. })` (the parser): a new id.
+    pub fn spanned(start: Option<Tok>, end: Option<Tok>, data: Data) -> N {
+        Rc::new(Node { id: mint(), start, end, data })
+    }
+
+    /// terser `make_node(X, orig, {..})`: a new id with `orig`'s span.
+    pub fn make(orig: &Node, data: Data) -> N {
+        Node::spanned(orig.start.clone(), orig.end.clone(), data)
+    }
+
+    /// terser's in-place edit (`self.x = ..; return self`, `descend`): the same id and span,
+    /// new data. Debug builds check that `data` does not hold the node itself as a direct
+    /// child (`rebuild(x, Seq[x, ..])`), which in terser would be an object inside itself.
+    pub fn rebuild(&self, data: Data) -> N {
+        #[cfg(debug_assertions)]
+        data_children(&data, &mut |c| {
+            assert!(c.id != self.id, "rebuild: {} {:?} holds itself as a child", terser_type(self), self.id)
+        });
+        Rc::new(Node { id: self.id, start: self.start.clone(), end: self.end.clone(), data })
+    }
+
+    pub fn id(&self) -> NodeId {
+        self.id
     }
 
     pub fn is_scope(&self) -> bool {

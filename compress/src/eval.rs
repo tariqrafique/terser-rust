@@ -3652,7 +3652,7 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
 }
 
 pub(crate) fn atom(orig: &N, data: Data) -> N {
-    Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+    Node::make(orig, data)
 }
 
 fn nan_node(orig: &N, cx: &Cx) -> N {

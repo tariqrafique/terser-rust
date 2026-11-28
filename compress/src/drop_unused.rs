@@ -753,7 +753,7 @@ fn ptr(n: &N) -> usize {
 }
 
 fn node(orig: &N, data: Data) -> N {
-    Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+    Node::make(orig, data)
 }
 
 fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {

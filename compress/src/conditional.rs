@@ -1259,9 +1259,5 @@ fn make_seq(span: &N, exprs: Vec<N>) -> N {
 }
 
 fn atom(span: &N, data: Data) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data,
-    })
+    Node::make(span, data)
 }

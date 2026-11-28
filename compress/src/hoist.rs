@@ -487,7 +487,7 @@ fn with_body(n: &N, body: Vec<N>) -> N {
 }
 
 fn finish(span: &N, data: Data) -> N {
-    Rc::new(Node { start: span.start.clone(), end: span.end.clone(), data })
+    Node::make(span, data)
 }
 
 fn finish_children(n: &N, data: &Data, mut map: impl FnMut(&N, bool) -> N) -> N {
