@@ -467,7 +467,7 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
                             u.fixed_ids.borrow_mut().insert(id, ptr(def));
                         }
                         // Pass 1 walks the value only when it has side effects.
-                        if has_side_effects(value) {
+                        if side_effects(value, u) {
                             scan_ref_scoped(value, table, u, record_inits);
                         }
                     }
