@@ -125,7 +125,10 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         // terser `fixed.clone(true)` when the lambda moves to another scope
         // (`fixed.parent_scope !== nearest_scope`): fresh nodes (no optimizer
         // flags) that keep their definitions.
-        let cross_scope = is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope);
+        // `fixed.parent_scope` is where the lambda is written: for an IIFE
+        // parameter that is the caller's scope, not the definition's.
+        let parent_scope = table.scope_of(&fixed).and_then(|s| table.scope_parent.get(s).copied().flatten()).unwrap_or(scope);
+        let cross_scope = is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(parent_scope);
         if cross_scope {
             let copy = table.clone_deep(&fixed);
             count_clone_refs(table, &fixed);
