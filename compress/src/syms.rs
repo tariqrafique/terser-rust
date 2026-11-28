@@ -81,6 +81,10 @@ pub struct SymTable {
     pub fixed_of_node: HashMap<usize, Vec<usize>>,
     /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
     pub inlined_scopes: RefCell<HashSet<usize>>,
+    /// Name nodes of `var`s declared inside a block scope (a block, loop, `switch`,
+    /// `try` or `catch`): terser leaves their `sym.scope` on that block scope
+    /// (`figure_out_scope` only moves references to the defun scope).
+    pub block_vars: HashSet<usize>,
 }
 
 struct Scope {
@@ -113,6 +117,7 @@ pub fn bind(root: &N) -> SymTable {
         alias: RefCell::new(HashMap::new()),
         alias_scope: RefCell::new(HashMap::new()),
         inlined_scopes: RefCell::new(HashSet::new()),
+        block_vars: HashSet::new(),
     };
     table.node_scope.insert(ptr(root), 0);
     if let Data::Toplevel { body } = &root.data {
@@ -253,6 +258,9 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     continue;
                 };
                 define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
+                if dest != scope {
+                    table.block_vars.insert(ptr(name));
+                }
                 if let Some(value) = value {
                     walk(value, scope, scopes, table);
                 }

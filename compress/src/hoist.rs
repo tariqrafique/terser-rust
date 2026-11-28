@@ -208,7 +208,7 @@ fn count_node(n: &N, count: &mut i32) {
 fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: Option<&str>, table: Option<&SymTable>) -> N {
     let Some(table) = table else { return Rc::clone(n) };
     let Some(&scope) = table.node_scope.get(&syms::ptr(n)) else { return Rc::clone(n) };
-    let mut plan: HashMap<usize, HashMap<String, String>> = HashMap::new();
+    let mut plan: HashMap<usize, Hoisted> = HashMap::new();
     let mut used = visible_names(table, scope);
     collect_props(n, n, table, scope, toplevel_vars, top_retain, &mut used, &mut plan);
     if plan.is_empty() {
@@ -217,7 +217,7 @@ fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: Option<&str>, table:
     rewrite_props(n, table, &plan)
 }
 
-fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars: bool, top_retain: Option<&str>, used: &mut HashSet<String>, plan: &mut HashMap<usize, HashMap<String, String>>) {
+fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars: bool, top_retain: Option<&str>, used: &mut HashSet<String>, plan: &mut HashMap<usize, Hoisted>) {
     if syms::ptr(n) != syms::ptr(root) && matches!(n.data, Data::Func { .. } | Data::StaticBlock { .. }) {
         return;
     }
@@ -225,6 +225,9 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
         for def in defs {
             let Data::VarDef { name, value: Some(value) } = &def.data else { continue };
             let Some(id) = table.lookup(&syms::ptr(name)) else { continue };
+            // terser `sym.scope === self`: a `var` declared in a nested block keeps
+            // that block as its scope.
+            if table.block_vars.contains(&syms::ptr(name)) { continue }
             let d = &table.defs[id];
             let exposed = d.exported || d.export_listed || (d.global && if d.is_defun { false } else { !toplevel_vars });
             if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain == Some(d.name.as_str()) {
@@ -233,7 +236,12 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
             let Some(fixed) = &d.fixed else { continue };
             if !Rc::ptr_eq(fixed, value) { continue }
             let Data::Object { props } = &value.data else { continue };
-            if props.is_empty() || !props.iter().all(|p| matches!(&p.data, Data::Prop { key: Key::Static { .. }, value, .. } if prop_value_ok(value) && !contains_this(value))) { continue }
+            // terser refuses a spread or a computed key only. Any other value is hoisted:
+            // `reduce_vars` already gave a method call that may read `this` no fixed value
+            // (`is_modified`), and a read of a getter or a method makes `direct_access`
+            // (`read_property` gives nothing). An object with a getter or a method that is
+            // never read is dropped either way, so those stay refused here.
+            if props.is_empty() || !props.iter().all(|p| matches!(&p.data, Data::Prop { key: Key::Static { .. }, method: None, .. })) { continue }
             let keys: HashSet<String> = props.iter().filter_map(|p| match &p.data {
                 Data::Prop { key: Key::Static { name, .. }, .. } => Some(name.clone()),
                 _ => None,
@@ -246,13 +254,16 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
                 Data::Prop { key: Key::Static { name, .. }, .. } => Some(name.clone()),
                 _ => None,
             }).collect();
+            // One new variable per property; a repeated key reads the last one
+            // (`defs.set(String(key), ...)`).
+            let mut names = Vec::new();
             for key in &ordered {
-                if mapped.contains_key(key) { continue }
                 let fresh = fresh_name(&sanitize(&format!("{base}_{key}")), used);
                 used.insert(fresh.clone());
+                names.push(fresh.clone());
                 mapped.insert(key.clone(), fresh);
             }
-            plan.insert(id, mapped);
+            plan.insert(id, Hoisted { names, by_key: mapped });
         }
     }
     // terser's hoister is a TreeTransformer.
@@ -269,9 +280,8 @@ fn uses_are_props(scope: &N, table: &SymTable, id: usize, keys: &HashSet<String>
             // `obj.prop.name` is a chain, not a plain property read.
             Data::Dot { expr, .. } | Data::Sub { expr, .. } if prop_of(table, expr, id) => *bad = true,
             Data::Sub { expr, prop, .. } if is_ref_of(table, expr, id) => {
-                match &prop.data {
-                    Data::String { value, .. } if keys.contains(value) => {}
-                    _ => *bad = true,
+                if !sub_key(prop).is_some_and(|k| keys.contains(&k)) {
+                    *bad = true
                 }
             }
             Data::Assign { left, .. } if prop_of(table, left, id) => *bad = true,
@@ -285,19 +295,15 @@ fn uses_are_props(scope: &N, table: &SymTable, id: usize, keys: &HashSet<String>
     !bad
 }
 
-fn contains_this(n: &N) -> bool {
-    match &n.data {
-        Data::This => true,
-        _ => {
-            let mut hit = false;
-            ast::walk_children(n, &mut |c| hit |= contains_this(c));
-            hit
+/// terser `get_simple_key` of a `[]` property, as `String(key)`.
+fn sub_key(prop: &N) -> Option<String> {
+    match &prop.data {
+        Data::String { value, .. } => Some(value.clone()),
+        Data::Number { value, .. } if value.is_finite() && value.fract() == 0.0 && value.abs() < 1e21 && !(*value == 0.0 && value.is_sign_negative()) => {
+            Some(format!("{}", *value as i64))
         }
+        _ => None,
     }
-}
-
-fn prop_value_ok(n: &N) -> bool {
-    matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null | Data::Func { .. } | Data::Array { .. } | Data::Object { .. })
 }
 
 fn prop_of(table: &SymTable, n: &N, id: usize) -> bool {
@@ -311,7 +317,7 @@ fn is_ref_of(table: &SymTable, n: &N, id: usize) -> bool {
     table.lookup(&syms::ptr(n)) == Some(id)
 }
 
-fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, String>>) -> N {
+fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, Hoisted>) -> N {
     match &n.data {
         Data::Defs { kind, defs, await_ } => {
             let mut out = Vec::new();
@@ -321,9 +327,10 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
                     if let Some(id) = table.lookup(&syms::ptr(name)) {
                         if let Some(keys) = plan.get(&id) {
                             if let Data::Object { props } = &value.data {
+                                let mut names = keys.names.iter();
                                 for prop in props {
-                                    let Data::Prop { key: Key::Static { name: key, .. }, value, .. } = &prop.data else { continue };
-                                    let Some(fresh) = keys.get(key) else { continue };
+                                    let Data::Prop { key: Key::Static { .. }, value, .. } = &prop.data else { continue };
+                                    let Some(fresh) = names.next() else { continue };
                                     let sym = sym_node(prop, fresh, sym_kind(*kind));
                                     CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&sym))));
                                     out.push(vardef(prop, &sym, Some(rewrite_props(value, table, plan))));
@@ -351,10 +358,10 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             r
         }
         Data::Sub { expr, prop, .. } => {
-            if let Data::String { value, .. } = &prop.data {
-                if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(value)) {
+            if let Some(value) = sub_key(prop) {
+                if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(&value)) {
                     let id = table.lookup(&syms::ptr(expr)).unwrap();
-                    let fresh = expr_plan(table, expr, plan).unwrap().get(value).unwrap();
+                    let fresh = expr_plan(table, expr, plan).unwrap().get(&value).unwrap();
                     let r = sym_ref_named(n, fresh);
                     CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
                     return r;
@@ -366,9 +373,16 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
     }
 }
 
-fn expr_plan<'a>(table: &SymTable, expr: &N, plan: &'a HashMap<usize, HashMap<String, String>>) -> Option<&'a HashMap<String, String>> {
+fn expr_plan<'a>(table: &SymTable, expr: &N, plan: &'a HashMap<usize, Hoisted>) -> Option<&'a HashMap<String, String>> {
     let id = table.lookup(&syms::ptr(expr))?;
-    plan.get(&id)
+    plan.get(&id).map(|h| &h.by_key)
+}
+
+/// The variables made for one object: one per property in order, and the one a
+/// read of each key becomes (the last property with that key).
+struct Hoisted {
+    names: Vec<String>,
+    by_key: HashMap<String, String>,
 }
 
 fn visible_names(table: &SymTable, scope: usize) -> HashSet<String> {
