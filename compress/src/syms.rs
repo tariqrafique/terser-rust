@@ -142,6 +142,12 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     define(table, scopes, id, sym_name, arg, SymKind::Funarg, None, false);
                 }
             }
+            // Default values and computed keys in the parameters are uses.
+            for arg in args {
+                if sym(arg).is_none() {
+                    walk(arg, id, scopes, table);
+                }
+            }
             // `var` and `function` declarations are hoisted to the function scope
             // before any reference is resolved. terser `figure_out_scope`.
             hoist(body, id, scopes, table);

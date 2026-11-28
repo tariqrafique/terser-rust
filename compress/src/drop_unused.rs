@@ -665,7 +665,12 @@ fn descend(n: &N, mut f: impl FnMut(&N)) {
         Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => { f(init); f(object); f(body); }
         Data::Switch { expr, body } => { f(expr); body.iter().for_each(|s| f(s)); }
         Data::Case { expr, body } => { f(expr); body.iter().for_each(|s| f(s)); }
-        Data::Block { body } | Data::Func { body, .. } | Data::StaticBlock { body } | Data::Default { body } => body.iter().for_each(|s| f(s)),
+        // Parameter defaults and computed keys are reads too.
+        Data::Func { args, body, .. } => {
+            args.iter().filter(|a| !matches!(a.data, Data::Symbol { .. })).for_each(|a| f(a));
+            body.iter().for_each(|s| f(s));
+        }
+        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => body.iter().for_each(|s| f(s)),
         Data::Try { body, catch, finally } => {
             f(body);
             if let Some(c) = catch { f(c); }
@@ -677,7 +682,11 @@ fn descend(n: &N, mut f: impl FnMut(&N)) {
         }
         Data::Labeled { body, .. } | Data::Finally { body } | Data::With { body, .. } => f(body),
         Data::Defs { defs, .. } => defs.iter().for_each(|d| f(d)),
-        Data::VarDef { value, .. } => { if let Some(v) = value { f(v); } }
+        Data::VarDef { name, value } => {
+            // A destructuring pattern holds defaults and computed keys.
+            if !matches!(name.data, Data::Symbol { .. }) { f(name); }
+            if let Some(v) = value { f(v); }
+        }
         Data::Destructuring { names, .. } => names.iter().for_each(|d| f(d)),
         Data::Sub { expr, prop, .. } => { f(expr); f(prop); }
         Data::Template { segments } => {

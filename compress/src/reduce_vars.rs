@@ -222,7 +222,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 walk(stmt, tw);
             }
         }
-        Data::Func { body, .. } => {
+        Data::Func { args, body, .. } => {
             // terser `reduce-vars.js` `mark_lambda`: push a safe_ids frame, reset this function's variables, descend, pop.
             // The function body is a block in terser (`AST_Block.reduce_vars` calls
             // `reset_block_variables`). Our body is the statement list on the function,
@@ -233,6 +233,13 @@ fn walk(n: &N, tw: &mut Tw) {
             }
             // terser `reduce-vars.js` `mark_lambda`: IIFE parameters become fixed values.
             bind_iife_params(tw, n);
+            // `descend()` walks the parameters first: default values and
+            // computed keys are reads.
+            for arg in args {
+                if !matches!(arg.data, Data::Symbol { .. }) {
+                    walk(arg, tw);
+                }
+            }
             for stmt in body {
                 walk(stmt, tw);
             }
@@ -322,7 +329,18 @@ fn walk(n: &N, tw: &mut Tw) {
             }
         }
         Data::VarDef { name, value } => {
-            // terser `reduce-vars.js` `AST_VarDef`.
+            // terser `reduce-vars.js` `AST_VarDef`: a destructuring pattern is
+            // `suppress`ed (its symbols lose `fixed`, its reads are counted),
+            // then descended.
+            if !matches!(name.data, Data::Symbol { .. }) {
+                suppress(name, tw);
+                walk(name, tw);
+                if let Some(value) = value {
+                    walk(value, tw);
+                }
+                tw.parents.pop();
+                return;
+            }
             if let Some(value) = value {
                 if let Some(id) = def_of(tw, name) {
                     // A `let`/`const` inside a loop is a fresh binding each iteration.
@@ -576,6 +594,16 @@ fn walk_children(data: &Data, tw: &mut Tw) {
             }
         }
         Data::PrivateIn { value, .. } => walk(value, tw),
+        // A default value or nested pattern in a parameter or destructuring.
+        Data::DefaultAssign { left, right } => {
+            walk(left, tw);
+            walk(right, tw);
+        }
+        Data::Destructuring { names, .. } => {
+            for name in names {
+                walk(name, tw);
+            }
+        }
         Data::With { expr, body } => {
             walk(expr, tw);
             walk(body, tw);
