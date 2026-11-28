@@ -287,12 +287,22 @@ fn walk(n: &N, tw: &mut Tw) {
             walk(right, tw);
             pop(tw);
         }
-        Data::While { cond, body } | Data::Do { body, cond } => {
+        // terser `reduce-vars.js` `AST_While`, `AST_Do`: a do-while walks its body first.
+        Data::While { cond, body } => {
             let saved = tw.in_loop;
             tw.in_loop = tw.in_loop.saturating_add(1);
             push(tw);
             walk(cond, tw);
             walk(body, tw);
+            pop(tw);
+            tw.in_loop = saved;
+        }
+        Data::Do { body, cond } => {
+            let saved = tw.in_loop;
+            tw.in_loop = tw.in_loop.saturating_add(1);
+            push(tw);
+            walk(body, tw);
+            walk(cond, tw);
             pop(tw);
             tw.in_loop = saved;
         }
@@ -303,13 +313,14 @@ fn walk(n: &N, tw: &mut Tw) {
             let saved = tw.in_loop;
             tw.in_loop = tw.in_loop.saturating_add(1);
             push(tw);
+            // terser `reduce-vars.js` `AST_For`: condition, body, step.
             if let Some(cond) = cond {
                 walk(cond, tw);
             }
+            walk(body, tw);
             if let Some(step) = step {
                 walk(step, tw);
             }
-            walk(body, tw);
             pop(tw);
             tw.in_loop = saved;
         }
