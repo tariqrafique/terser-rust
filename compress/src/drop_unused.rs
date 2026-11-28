@@ -496,7 +496,13 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         Data::Throw { value } => Data::Throw { value: go(value, false) },
         Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr, false), prefix: *prefix },
         Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left, false), right: go(right, false) },
-        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: Rc::clone(left), right: go(right, false), logical: *logical },
+        // `(d = x)[0] = 1`: the target's object is an expression too.
+        Data::Assign { op, left, right, logical } => Data::Assign {
+            op: op.clone(),
+            left: if matches!(left.data, Data::Dot { .. } | Data::Sub { .. }) { go(left, false) } else { Rc::clone(left) },
+            right: go(right, false),
+            logical: *logical,
+        },
         Data::Seq { exprs } => {
             let last = exprs.len().saturating_sub(1);
             let exprs: Vec<N> = exprs.iter().enumerate().filter_map(|(i, e)| rewrite_expr(e, table, u, scope_id, drop_vars, i != last || discarded)).collect();
