@@ -63,7 +63,7 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
             how = Some("drop_empty");
         }
         if slot.is_some() {
-            crate::trace::fill(slot, inlined.as_ref().map(|out| trace_inline_call(n, expr, func, &args, resolved.direct, how, out)));
+            crate::trace::fill(slot, inlined.as_ref().map(|out| trace_inline_call(n, expr, &args, how, out)));
         }
         if let Some(rewritten) = inlined {
             if !resolved.direct {
@@ -77,18 +77,9 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
 }
 
 /// The `inline_call` trace event: the call as terser's `inline_into_call` sees it
-/// (unused arguments already trimmed) and what replaced it.
-fn trace_inline_call(
-    n: &N,
-    expr: &N,
-    func: &N,
-    args: &[N],
-    direct: bool,
-    how: Option<&'static str>,
-    out: &N,
-) -> (&'static str, Vec<(&'static str, serde_json::Value)>) {
-    let callee = if direct { func } else { expr };
-    let call = atom(n, Data::Call { expr: Rc::clone(callee), args: args.to_vec(), optional: false, is_new: false });
+/// (unused arguments trimmed, the callee as it was) and what replaced it.
+fn trace_inline_call(n: &N, expr: &N, args: &[N], how: Option<&'static str>, out: &N) -> (&'static str, Vec<(&'static str, serde_json::Value)>) {
+    let call = atom(n, Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false });
     (
         "inline_call",
         crate::trace::fields!(how = how.unwrap_or("?"), call = crate::trace::code(&call), out = crate::trace::code(out)),
