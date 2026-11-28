@@ -334,16 +334,14 @@ pub(crate) fn scope_bindings(params: &[N], body: &[N]) -> HashSet<String> {
     locals
 }
 
-/// `let` / `const` / class names declared directly in a block.
+/// `let` / `const` / class names declared directly in a block, destructured ones included.
 pub(crate) fn block_lexicals(stmts: &[N]) -> HashSet<String> {
     let mut out = HashSet::new();
     for s in stmts {
         if let Data::Defs { kind: DefKind::Let | DefKind::Const, defs, .. } = &s.data {
             for d in defs {
                 if let Data::VarDef { name, .. } = &d.data {
-                    if let Some(nm) = sym_name(name) {
-                        out.insert(nm.to_string());
-                    }
+                    out.extend(scope_bindings(std::slice::from_ref(name), &[]));
                 }
             }
         }
@@ -2582,9 +2580,7 @@ fn block_scoped_names(stmts: &[N]) -> HashSet<String> {
             } => {
                 for d in defs {
                     if let Data::VarDef { name, .. } = &d.data {
-                        if let Some(sym) = sym_name(name) {
-                            names.insert(sym.to_string());
-                        }
+                        names.extend(scope_bindings(std::slice::from_ref(name), &[]));
                     }
                 }
             }
