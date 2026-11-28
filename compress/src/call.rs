@@ -21,13 +21,13 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
     if OPT_DEPTH.with(|d| d.get()) > 6 {
         return None;
     }
-    let Data::Call { expr, args, optional, is_new } = &n.data else {
+    let Data::Call { expr, args, is_new, .. } = &n.data else {
         return None;
     };
     if *is_new {
         return optimize_new(n, cx);
     }
-    if *optional || cx.in_computed_key() {
+    if cx.in_computed_key() {
         return None;
     }
     let (args, spread) = inline_array_like_spread(args);
@@ -38,6 +38,19 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         Some(func) if cx.opts.unused && !uses_arguments(func) => trim_unused(func, &args, resolved.direct, cx),
         _ => (resolved.func, args, false),
     };
+    // `console.assert(c, ..)` with a condition that evaluates to `1` or `true`
+    // is `void 0` (index.js 1744).
+    if let Data::Dot { expr: obj, prop, .. } = &expr.data {
+        if prop == "assert" && matches!(&obj.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "console" && !cx.declared_ref(obj, name)) {
+            if let Some(cond) = args.first() {
+                let table = cx.syms.as_ref().filter(|_| cx.opts.reduce_vars);
+                let value = if cx.opts.evaluate { eval::eval_lit(cond, table, &cx.parents) } else { None };
+                if matches!(value, Some(eval::Lit::Bool(true))) || matches!(value, Some(eval::Lit::Num(v)) if v == 1.0) {
+                    return Some(polish(void0(n), cx));
+                }
+            }
+        }
+    }
     // A pure call in statement position contributes only its arguments' side effects.
     if ann.pure && cx.opts.side_effects && cx.parent_is_simple() {
         let effects: Vec<N> = args.iter().filter(|a| !eval::is_pure(a)).cloned().collect();
@@ -108,10 +121,13 @@ fn finish_call(n: &N, expr: &N, args: &[N], trimmed: bool, spread: bool) -> Opti
     if !trimmed && !spread {
         return None;
     }
+    let Data::Call { optional, .. } = &n.data else {
+        return None;
+    };
     // keep: `self.args.length = pos` and `inline_array_like_spread(self.args)` edit the call (index.js 1696, 1741).
     Some(edit(
         n,
-        Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false },
+        Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: *optional, is_new: false },
     ))
 }
 
@@ -132,8 +148,14 @@ fn resolve_callee(expr: &N, cx: &Cx, noinline: bool) -> Resolved {
     let Some(fixed) = fixed_lambda(expr, cx) else {
         return Resolved { func: None, direct: false, stop: false };
     };
-    if retain_top(cx, &fixed) || (def_flag(expr, cx, |d| d.global) && !cx.opts.toplevel_funcs) {
+    if retain_top(cx, &fixed) {
         return Resolved { func: None, direct: false, stop: true };
+    }
+    // `inline_into_call` returns for a global callee, but `def_optimize(AST_Call)`
+    // has already trimmed the arguments against `fn.fixed_value()` (a global
+    // `const` keeps its fixed value when exposed).
+    if def_flag(expr, cx, |d| d.global) && !cx.opts.toplevel_funcs {
+        return Resolved { func: Some(fixed), direct: false, stop: true };
     }
     Resolved { func: Some(fixed), direct: false, stop: false }
 }
@@ -188,29 +210,12 @@ struct Ann {
     noinline: bool,
 }
 
+/// terser `has_annotation(self, ..)`: the parser's `annotate` set the bits.
 fn call_ann(n: &N) -> Ann {
-    let mut ann = Ann { pure: false, inline_: false, noinline: false };
-    mark_ann(n, &mut ann);
-    if let Data::Call { expr, .. } = &n.data {
-        mark_ann(expr, &mut ann);
-    }
-    ann
-}
-
-fn mark_ann(n: &N, ann: &mut Ann) {
-    let Some(tok) = n.start.as_ref() else {
-        return;
-    };
-    for c in &tok.comments_before {
-        let v = c.value.as_str();
-        if v.contains("@__PURE__") || v.contains("#__PURE__") {
-            ann.pure = true;
-        }
-        if v.contains("@__NOINLINE__") || v.contains("#__NOINLINE__") {
-            ann.noinline = true;
-        } else if v.contains("@__INLINE__") || v.contains("#__INLINE__") {
-            ann.inline_ = true;
-        }
+    Ann {
+        pure: n.has_annotation(ast::ANN_PURE),
+        inline_: n.has_annotation(ast::ANN_INLINE),
+        noinline: n.has_annotation(ast::ANN_NOINLINE),
     }
 }
 
@@ -245,13 +250,13 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
     if let Some(stat) = body.first() {
         if let Data::Return { value } = &stat.data {
             let constant = value.as_ref().map(is_constant_expr).unwrap_or(true);
-            if constant && args.iter().all(|a| !matches!(a.data, Data::Spread { .. })) {
+            if constant {
                 let mut exprs: Vec<N> = args.to_vec();
                 // terser `returned.clone(true)`: a fresh copy without optimizer
                 // flags, so a returned lambda is compressed again.
                 exprs.push(value.as_ref().map(|v| fresh_copy(v, cx)).unwrap_or_else(|| void0(n)));
                 crate::trace::set_how("const_return");
-                return Some(finish_seq(n, exprs, cx));
+                return Some(crate::sequence::make_and_optimize(n, exprs, cx));
             }
             if params.len() == 1
                 && is_simple_funarg(&params[0])
@@ -399,7 +404,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     // `expressions.map(exp => exp.clone(true))` (inline.js 673): copies without
     // optimizer flags, so a later descend optimizes them again.
     let exprs = exprs.iter().map(|e| fresh_copy(e, cx)).collect();
-    let out = finish_seq(n, exprs, cx);
+    let out = crate::sequence::make_and_optimize(n, exprs, cx);
     // terser `make_sequence(self, ...).optimize(compressor)`: a lone lambda
     // (the returned `stat.value.clone(true)`) gets its `tighten_body` now.
     if matches!(out.data, Data::Func { .. }) {
@@ -553,10 +558,12 @@ fn append_var(decls: &mut Vec<N>, exprs: &mut Vec<N>, declared: &mut HashSet<Str
 }
 
 /// A parameter terser's `drop_unused` would flag `UNUSED`: never read in the body.
+/// terser `has_flag(sym, UNUSED)`: `drop_unused` flags a parameter symbol it
+/// found no use of, never a destructuring pattern.
 fn param_unused(p: &N, body: &[N]) -> bool {
     match &p.data {
         Data::Symbol { name, .. } => !refs_name(body, name),
-        _ => true,
+        _ => false,
     }
 }
 
@@ -915,7 +922,7 @@ fn drop_empty_call(n: &N, func: &N, args: &[N], cx: &Cx) -> Option<N> {
     }
     let mut exprs: Vec<N> = args.to_vec();
     exprs.push(void0(n));
-    Some(finish_seq(n, exprs, cx))
+    Some(crate::sequence::make_and_optimize(n, exprs, cx))
 }
 
 fn is_empty_stmt(n: &N) -> bool {
@@ -1029,9 +1036,6 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     let Data::Func { args: params, body, .. } = &func.data else {
         return (Some(Rc::clone(func)), args.to_vec(), false);
     };
-    if params.iter().any(|p| !is_simple_funarg(p)) {
-        return (Some(Rc::clone(func)), args.to_vec(), false);
-    }
     // The IIFE's unused parameters are popped later, by `drop_unused` (du 262-285).
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
@@ -1042,11 +1046,32 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
         Rc::ptr_eq(p, func)
             || matches!((&p.data, &func.data), (Data::Func { name: Some(a), .. }, Data::Func { name: Some(b), .. }) if sym_str(a).is_some() && sym_str(a) == sym_str(b) && params_same(p, func))
     });
+    // `drop_unused` flags a parameter `UNUSED` on its symbol: a plain one, or
+    // the expression of a rest parameter. A default or a pattern (the flag is
+    // on its `left`, not on `argnames[i]`) is never trimmed. A read in another
+    // parameter's default keeps a parameter in use.
+    let unused_sym = |p: &N| !inside_callee && is_simple_funarg(p) && sym_str(p).is_some_and(|name| !refs_name(body, name) && !refs_name(params, name));
     let mut kept = Vec::new();
     let mut last = 0usize;
-    for (i, arg) in args.iter().enumerate() {
-        let extra = i >= params.len();
-        let unused = extra || (!inside_callee && sym_str(&params[i]).is_some_and(|name| !refs_name(body, name)));
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if let Some(Data::Spread { expr: rest }) = params.get(i).map(|p| &p.data) {
+            if unused_sym(rest) {
+                for a in &args[i..] {
+                    if let Some(node) = crate::unary::drop_side_effect_free(a, cx, false) {
+                        kept.push(node);
+                    }
+                }
+            } else {
+                kept.extend(args[i..].iter().cloned());
+            }
+            last = kept.len();
+            break;
+        }
+        i += 1;
+        let extra = i > params.len();
+        let unused = extra || unused_sym(&params[i - 1]);
         if unused {
             // terser `self.args[i].drop_side_effect_free(compressor)`.
             match crate::unary::drop_side_effect_free(arg, cx, false) {

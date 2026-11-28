@@ -125,7 +125,10 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         // terser `fixed.clone(true)` when the lambda moves to another scope
         // (`fixed.parent_scope !== nearest_scope`): fresh nodes (no optimizer
         // flags) that keep their definitions.
-        let cross_scope = is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope);
+        // `fixed.parent_scope` is where the lambda is written: for an IIFE
+        // parameter that is the caller's scope, not the definition's.
+        let parent_scope = table.scope_of(&fixed).and_then(|s| table.scope_parent.get(s).copied().flatten()).unwrap_or(scope);
+        let cross_scope = is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(parent_scope);
         if cross_scope {
             let copy = table.clone_deep(&fixed);
             count_clone_refs(table, &fixed);
@@ -171,6 +174,33 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     // Multiple reads: terser `fixed.evaluate` and `make_node_from_constant`,
     // kept when it is not longer than the name plus the declaration overhead
     // `unused` can remove.
+    // terser: `fixed instanceof AST_This` is the replacement when every
+    // reference is in the definition's own scope (and it is not a parameter).
+    if matches!(fixed.data, Data::This) {
+        let def = &table.defs[id];
+        if def.funarg {
+            return None;
+        }
+        let same_scope = def.references.iter().all(|r| {
+            table.ref_scope.borrow().get(r).copied().map(|s| if def.block_scoped { s } else { table.fn_of.get(s).copied().unwrap_or(s) }) == Some(def.scope)
+        });
+        if !same_scope {
+            return None;
+        }
+        let size = |node: &N| crate::size::size_in(node, std::slice::from_ref(n), true);
+        let replace_len = size(&fixed);
+        let reads = references.saturating_sub(assignments);
+        let overhead = if at.env.unused && !exposed_now && reads > 0 {
+            (name_len + 2 + replace_len) as f64 / reads as f64
+        } else {
+            0.0
+        };
+        if replace_len as f64 <= name_len as f64 + overhead {
+            def.replaced.set(def.replaced.get().saturating_add(1));
+            return Some(fixed);
+        }
+        return None;
+    }
     if !at.env.evaluate {
         return None;
     }
@@ -462,7 +492,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 let safe = !*logical
                     && tw.conditional_var == 0
                     && !tw.table.defs[id].is_const
-                    && safe_to_assign(tw, id);
+                    && safe_to_assign_value(tw, id, true);
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
                 // `if (!fixed && node.operator != "=" && !node.logical) return finish_walk()`.
                 let prev = if op == "=" { None } else { tw.table.defs[id].fixed.clone() };
@@ -747,6 +777,14 @@ fn safe_to_read(tw: &mut Tw, id: usize) -> bool {
 
 /// terser `reduce-vars.js` `safe_to_assign`.
 fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
+    safe_to_assign_value(tw, id, false)
+}
+
+/// terser `safe_to_assign(tw, def, scope, value)` where `value` is a node (an
+/// assignment's right side, a `var` initializer): a function declaration's
+/// name can take it when the write is in the scope that declares the function
+/// (`def.fixed.parent_scope === scope`).
+fn safe_to_assign_value(tw: &mut Tw, id: usize, value_node: bool) -> bool {
     if tw.table.defs[id].fixed_null {
         if let Some(frame) = tw.null_safe.remove(&id) {
             if let Some(f) = tw.safe.get_mut(frame) {
@@ -758,7 +796,7 @@ fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
     // terser `reduce-vars.js` `safe_to_assign`: a function or class name is not a fixed write target.
     // `const` is rejected by the caller that would overwrite `fixed`.
     // `safe_to_assign` itself still accepts the initializer (`AST_VarDef`).
-    if tw.table.defs[id].is_defun {
+    if tw.table.defs[id].is_defun && !value_node {
         return false;
     }
     let d = &tw.table.defs[id];
@@ -780,7 +818,24 @@ fn safe_to_assign(tw: &mut Tw, id: usize) -> bool {
     if d.references.len() as u32 > d.assignments {
         return false;
     }
+    if d.is_defun {
+        // `def.fixed instanceof AST_Defun`: the write is in the declaring scope.
+        // Once reassigned, `orig` still holds the `AST_SymbolDefun`.
+        let declared_here = matches!(d.fixed.as_ref().map(|f| &f.data), Some(Data::Func { kind: FuncKind::Decl, .. }));
+        let scope = d.scope;
+        return declared_here && defun_scope(tw) == Some(scope);
+    }
     true
+}
+
+/// terser `sym.scope` of a reference to a non-block declaration: the nearest
+/// function or toplevel scope on the walk's stack.
+fn defun_scope(tw: &Tw) -> Option<usize> {
+    tw.parents
+        .iter()
+        .rev()
+        .find(|p| matches!(p.data, Data::Func { .. } | Data::Toplevel { .. }))
+        .and_then(|p| tw.table.scope_of(p).as_ref().copied())
 }
 
 /// terser `reduce-vars.js` `ref_once`.
@@ -1651,17 +1706,10 @@ fn call_targets(parent: &N, sym: &N) -> bool {
     }
 }
 
+/// terser `parent.is_callee_pure(compressor) || has_annotation(parent, _NOINLINE)`,
+/// the annotation half.
 fn is_pure_or_noinline_call(n: &N) -> bool {
-    let Data::Call { expr, .. } = &n.data else { return false };
-    // Same lookup as `call.rs` `call_ann`: the call's first token, then the callee's.
-    [n, expr].iter().any(|node| {
-        node.start.as_ref().is_some_and(|tok| {
-            tok.comments_before.iter().any(|c| {
-                let v = c.value.as_str();
-                v.contains("@__PURE__") || v.contains("#__PURE__") || v.contains("@__NOINLINE__") || v.contains("#__NOINLINE__")
-            })
-        })
-    })
+    matches!(n.data, Data::Call { .. }) && n.has_annotation(ast::ANN_PURE | ast::ANN_NOINLINE)
 }
 
 fn named_recursive(table: &SymTable, func: &N) -> bool {
@@ -1831,7 +1879,9 @@ fn const_expr(n: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         | Data::True
         | Data::False
         | Data::Null
-        | Data::Infinity => CExpr::Yes,
+        | Data::Infinity
+        // `AST_Hole` is an `AST_Atom`, so an `AST_Constant`.
+        | Data::Hole => CExpr::Yes,
         Data::Unary { expr, .. } => const_expr(expr, table, None),
         Data::Binary { left, right, .. } => join_expr(const_expr(left, table, None), const_expr(right, table, None)),
         // inference.js: arrays, objects and their properties do not pass

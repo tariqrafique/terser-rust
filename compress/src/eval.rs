@@ -278,15 +278,28 @@ fn optimize_default_assign(n: &N, cx: &Cx) -> Option<N> {
     let Data::DefaultAssign { left, right } = &n.data else {
         return None;
     };
-    if !is_undefined_value(right, cx) {
+    let lit = eval(right, cx)?;
+    if matches!(lit, Lit::Undef) {
+        // `[x = undefined] = foo` to `[x] = foo`. A parameter keeps its
+        // default (`keep_fargs` is on) unless its lambda is an IIFE's callee.
+        let keep = match cx.parent() {
+            Some(lambda) if matches!(lambda.data, Data::Func { .. }) => {
+                let len = cx.parents.len();
+                let iife = if len >= 3 { cx.parents.get(len - 3) } else { None };
+                !iife.is_some_and(|c| matches!(&c.data, Data::Call { expr, is_new: false, .. } if expr.id() == lambda.id()))
+            }
+            _ => false,
+        };
+        return (!keep).then(|| Rc::clone(left));
+    }
+    // `self.right = best_of_expression(make_node_from_constant(..), self.right)`.
+    let folded = lit_node(right, lit, cx);
+    let best = crate::size::best_of_expression(&folded, right);
+    if Rc::ptr_eq(&best, right) {
         return None;
     }
-    // Default `keep_fargs` is on, so a parameter `= undefined` stays unless
-    // this is not a parameter (a destructuring default).
-    if cx.parent().is_some_and(|p| matches!(p.data, Data::Func { .. })) {
-        return None;
-    }
-    Some(Rc::clone(left))
+    // keep: `self.right = ..` (index.js 3141).
+    Some(edit(n, Data::DefaultAssign { left: Rc::clone(left), right: best }))
 }
 
 /// terser `def_optimize(AST_VarDef)`.
@@ -687,7 +700,42 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     if matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::Null | Data::RegExp { .. }) {
         return None;
     }
+    if let Some(folded) = fold_surrogate_concat(n, cx) {
+        return Some(folded);
+    }
     finish_constant(n, eval_raw(n, cx)?, cx)
+}
+
+/// terser `evaluate` of `"\ud83d" + "\ude00"`: JavaScript strings are UTF-16,
+/// so two string literals join unit by unit and a surrogate pair can form (the
+/// port's `String` cannot hold a lone surrogate, which `units` keeps). Only a
+/// `+` of two string literals, one of them with lone surrogates.
+fn fold_surrogate_concat(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.evaluate {
+        return None;
+    }
+    let Data::Binary { op, left, right } = &n.data else { return None };
+    let (Data::String { value: lv, units: lu, .. }, Data::String { value: rv, units: ru, .. }) = (&left.data, &right.data) else {
+        return None;
+    };
+    if op != "+" || (lu.is_none() && ru.is_none()) {
+        return None;
+    }
+    let units_of = |v: &String, u: &Option<Vec<u16>>| u.clone().unwrap_or_else(|| v.encode_utf16().collect());
+    let mut units = units_of(lv, lu);
+    units.extend(units_of(rv, ru));
+    // `val.length + 2 > this.size(compressor)`.
+    if units.len() + 2 > crate::size::size_in(n, std::slice::from_ref(n), true) {
+        return None;
+    }
+    let (value, units) = match String::from_utf16(&units) {
+        Ok(v) => (v, None),
+        Err(_) => (String::from_utf16_lossy(&units), Some(units)),
+    };
+    let quote = if value.contains('"') && !value.contains('\'') { '\'' } else { '"' };
+    let folded = atom(n, Data::String { value, quote, units });
+    let best = crate::size::best_of(crate::unary::first_in_statement(cx), &folded, n);
+    if Rc::ptr_eq(&best, n) { None } else { Some(folded) }
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Conditional)`.
@@ -2910,11 +2958,7 @@ fn skip_flatten(cx: &Cx) -> bool {
 }
 
 fn has_noinline(n: &N) -> bool {
-    n.start.as_ref().is_some_and(|t| {
-        t.comments_before.iter().any(|c| {
-            c.value.contains("@__NOINLINE__") || c.value.contains("#__NOINLINE__")
-        })
-    })
+    n.has_annotation(ast::ANN_NOINLINE)
 }
 
 enum PropKey {
@@ -3550,6 +3594,9 @@ fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
 fn eval_at(n: &N, table: Option<&SymTable>, depth: u32) -> Option<Lit> {
     match &n.data {
         Data::Number { value, .. } => Some(Lit::Num(*value)),
+        // A string with lone surrogates has no `String` value (`value` is
+        // lossy); `fold_surrogate_concat` folds its concatenations.
+        Data::String { units: Some(_), .. } => None,
         Data::String { value, .. } => Some(Lit::Str(value.clone())),
         Data::True => Some(Lit::Bool(true)),
         Data::False => Some(Lit::Bool(false)),
@@ -3719,8 +3766,9 @@ fn eval(n: &N, cx: &Cx) -> Option<Lit> {
 /// terser `AST_Node.evaluate(compressor)` with the compressor's stack `stack`.
 pub(crate) fn eval_lit(n: &N, table: Option<&SymTable>, stack: &[N]) -> Option<Lit> {
     let lit = with_eval_stack(stack, || eval_in(n, table))?;
+    // `if (!val ...) return val` comes first: `""` skips the size check.
     if let Lit::Str(s) = &lit {
-        if utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
+        if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
             return None;
         }
     }
@@ -4009,7 +4057,7 @@ pub(crate) fn best_constant(n: &N, cx: &Cx) -> Option<N> {
 fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
     if let Lit::Str(s) = &lit {
         // `evaluate`: `val.length + 2 > this.size(compressor)`; the stack's top is `this`.
-        if utf16_len(s) + 2 > crate::size::size_in(orig, std::slice::from_ref(orig), true) {
+        if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(orig, std::slice::from_ref(orig), true) {
             return None;
         }
     }
@@ -4112,6 +4160,23 @@ pub(crate) fn set_mangled_symbols(set: ast::IdSet) {
 pub(crate) fn set_known_symbols(set: ast::IdSet, new_mangled: bool) {
     KNOWN.with(|k| *k.borrow_mut() = set);
     NEW_MANGLED.with(|c| c.set(new_mangled));
+}
+
+/// A copy that keeps its definition (terser `clone(true)` keeps `thedef`)
+/// has that definition's `unmangleable`, so it counts as its original does.
+pub(crate) fn copy_mangled(from: ast::NodeId, to: ast::NodeId) {
+    MANGLED.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.contains(&from) {
+            m.insert(to);
+        }
+    });
+    KNOWN.with(|k| {
+        let mut k = k.borrow_mut();
+        if k.contains(&from) {
+            k.insert(to);
+        }
+    });
 }
 
 pub(crate) fn mangled_size(n: &N) -> bool {

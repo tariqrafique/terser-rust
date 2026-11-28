@@ -708,12 +708,16 @@ fn define(
         // `AST_Function`) gives way to the parameter, `var` or inner function that
         // redeclares it, and only a function brings an `init`.
         let lambda_init = table.defs[id].init.as_ref().is_some_and(|i| matches!(i.data, Data::Func { kind: ast::FuncKind::Expr, .. }));
+        // terser `def_function`: a later declaration replaces an `AST_Defun`
+        // init (`if (!def.init || def.init instanceof AST_Defun)`), so the last
+        // `function g` in source order is the fixed value.
+        let defun_init = matches!(table.defs[id].init.as_ref().map(|i| &i.data), Some(Data::Func { kind: ast::FuncKind::Decl, .. }));
         if lambda_init {
             table.defs[id].init = if kind == SymKind::Defun { init } else { None };
             // A `var`'s `init` is `null` (`fixed === null` at reset), a parameter's
             // `undefined`.
             table.defs[id].var_decl |= kind == SymKind::Var;
-        } else if table.defs[id].init.is_none() {
+        } else if table.defs[id].init.is_none() || (kind == SymKind::Defun && defun_init) {
             table.defs[id].init = init;
         }
         return;
@@ -886,6 +890,7 @@ impl SymTable {
     pub fn copy_binding(&self, from: &N, to: &N) {
         if let Some(d) = self.def_of(from) {
             self.bind_def(to, d);
+            crate::eval::copy_mangled(from.id(), to.id());
         }
         if let Some(s) = self.scope_of(from) {
             self.bind_scope(to, s);

@@ -59,6 +59,10 @@ struct Analyzer {
     error: Option<ScopeError>,
     privates: Vec<String>,
     opts: MangleOptions,
+    /// terser `mangle_names` `unmangleable_names`: the names of the
+    /// `MASK_EXPORT_DONT_MANGLE` definitions, which `next_mangled` never
+    /// hands out in any scope.
+    unmangleable_names: std::collections::HashSet<String>,
 }
 
 /// terser `scope.js` `format_mangler_options`. `module` implies `toplevel`.
@@ -150,6 +154,7 @@ impl Analyzer {
             error: None,
             privates: Vec::new(),
             opts: MangleOptions::default(),
+            unmangleable_names: std::collections::HashSet::new(),
         }
     }
 
@@ -770,6 +775,13 @@ impl Analyzer {
 
         let mut order = Vec::new();
         self.collect(0, &mut order);
+        // terser `collect`: every exported definition's name is set aside
+        // before any definition is mangled.
+        for id in &order {
+            if self.defs[*id].export_dont {
+                self.unmangleable_names.insert(self.defs[*id].name.clone());
+            }
+        }
         for id in order {
             if self.defs[id].mangled.is_some() {
                 continue;
@@ -813,7 +825,7 @@ impl Analyzer {
         loop {
             self.scopes[scope].cname += 1;
             let m = freq.get(self.scopes[scope].cname);
-            if is_reserved(&m) {
+            if is_reserved(&m) || self.unmangleable_names.contains(&m) {
                 continue;
             }
             let hit = self.scopes[scope].enclosed.iter().any(|id| {
@@ -1041,12 +1053,20 @@ pub fn touch() {
 
 /// Declaration symbols of an `export` definition.
 fn export_decl_symbols(n: &N, out: &mut Vec<N>) {
-    fn pattern(n: &N, out: &mut Vec<N>) {
+    // terser `mark_export` looks `level` parents up from the symbol, counted
+    // from the innermost destructuring. That reaches the `AST_Export` only
+    // when the innermost destructuring is the definition's own pattern, so
+    // a name in a nested pattern (`export const {c:[d]}=x`) is mangled.
+    fn pattern(n: &N, nested: bool, out: &mut Vec<N>) {
         match &n.data {
             Data::Symbol { .. } => out.push(Rc::clone(n)),
-            Data::Destructuring { names, .. } => names.iter().for_each(|x| pattern(x, out)),
-            Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => pattern(left, out),
-            Data::Prop { value, .. } => pattern(value, out),
+            Data::Destructuring { names, .. } => {
+                if !nested {
+                    names.iter().for_each(|x| pattern(x, true, out));
+                }
+            }
+            Data::DefaultAssign { left, .. } | Data::Spread { expr: left } => pattern(left, nested, out),
+            Data::Prop { value, .. } => pattern(value, nested, out),
             _ => {}
         }
     }
@@ -1055,7 +1075,7 @@ fn export_decl_symbols(n: &N, out: &mut Vec<N>) {
         Data::Defs { defs, .. } => {
             for d in defs {
                 if let Data::VarDef { name, .. } = &d.data {
-                    pattern(name, out);
+                    pattern(name, false, out);
                 }
             }
         }
