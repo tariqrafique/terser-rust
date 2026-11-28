@@ -819,12 +819,16 @@ fn finish_block(span: &N, body: Vec<N>, cx: &Cx) -> N {
     atom(span, Data::Block { body: out })
 }
 
+/// terser `make_node(AST_SimpleStatement, ...).optimize(compressor)`: the
+/// statement's own optimizer, `drop_side_effect_free(body, true)`.
 fn simple_opt(span: &N, body: N, cx: &Cx) -> N {
-    if cx.opts.side_effects && statement_pure(&body, cx) {
-        empty(span)
-    } else {
-        simple(span, body)
+    if !cx.opts.side_effects {
+        return simple(span, body);
     }
+    if statement_pure(&body, cx) {
+        return empty(span);
+    }
+    statement_from_drop(span, &body, cx).unwrap_or_else(|| simple(span, body))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
