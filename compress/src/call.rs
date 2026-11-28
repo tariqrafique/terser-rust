@@ -431,9 +431,28 @@ fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
         }
     }
     rec(func, &mut Vec::new(), &mut free);
+    // terser `pulled_scope.enclosed`: only definitions outside `func` count. A
+    // name declared in a nested block of `func` (a `for (let i ...)`) is not
+    // free even when the name stack above misses it.
+    let func_scope = table.scope_lookup(&crate::syms::ptr(func));
+    let inside_func = |mut sc: usize| -> bool {
+        let Some(fs) = func_scope else { return false };
+        loop {
+            if sc == fs {
+                return true;
+            }
+            match table.scope_parent.get(sc).copied().flatten() {
+                Some(p) => sc = p,
+                None => return false,
+            }
+        }
+    };
     for r in free {
         let Data::Symbol { name, .. } = &r.data else { continue };
         let target = table.lookup(&crate::syms::ptr(&r)).map(|id| table.defs[id].scope);
+        if target.is_some_and(|t| inside_func(t)) {
+            continue;
+        }
         let mut cur = Some(site);
         while let Some(sc) = cur {
             if Some(sc) == target {
