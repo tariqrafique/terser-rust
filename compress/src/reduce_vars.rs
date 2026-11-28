@@ -1578,7 +1578,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) || injected_var(table, &nested, name) {
+        if defined_inside(table, id, func_scope, &nested) || injected_var(table, &nested, name) {
             return;
         }
         if find_var(table, nearest, name).is_some_and(|found| found != id) {
@@ -1609,7 +1609,7 @@ fn count_clone_refs(table: &SymTable, func: &N) {
     each_node(func, &mut |node| {
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) || injected_var(table, &nested, name) {
+        if defined_inside(table, id, func_scope, &nested) || injected_var(table, &nested, name) {
             return;
         }
         let def = &table.defs[id];
@@ -1627,10 +1627,14 @@ fn injected_var(table: &SymTable, scopes: &std::collections::HashSet<usize>, nam
     scopes.iter().any(|sc| injected.get(sc).is_some_and(|names| names.contains(name)))
 }
 
-fn defined_inside(table: &SymTable, def_id: usize, func_scope: usize) -> bool {
+/// The definition is in `func_scope` or below it, or below a scope `nested`
+/// in it by position (an inlined copy keeps its scope ids; a block in it the
+/// optimizer rebuilt has no scope node of its own any more, but its
+/// definitions still chain up to the copy's function).
+fn defined_inside(table: &SymTable, def_id: usize, func_scope: usize, nested: &std::collections::HashSet<usize>) -> bool {
     let mut scope = table.defs[def_id].scope;
     loop {
-        if scope == func_scope {
+        if scope == func_scope || nested.contains(&scope) {
             return true;
         }
         scope = match table.scope_parent.get(scope).copied().flatten() {
@@ -1737,7 +1741,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
         // Locals and names defined in a nested function are not free references.
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) || injected_var(table, &nested, name) {
+        if defined_inside(table, id, func_scope, &nested) || injected_var(table, &nested, name) {
             return;
         }
         match scope {
