@@ -115,6 +115,9 @@ pub struct SymTable {
     /// those references, and the original definition's `replaced` at the time
     /// (later replacements of the shared record count against the copy).
     pub fresh_refs: RefCell<ast::IdMap<(usize, u32)>>,
+    /// References in such a copy to one of its own names: the new definition has
+    /// no `fixed` value (`fixed = false`) for the rest of the pass.
+    pub fresh_ref_nodes: RefCell<ast::IdSet>,
 }
 
 struct Scope {
@@ -151,6 +154,7 @@ pub fn bind(root: &N) -> SymTable {
         class_scopes: HashSet::new(),
         copied_decls: RefCell::new(ast::IdSet::default()),
         fresh_refs: RefCell::new(ast::IdMap::default()),
+        fresh_ref_nodes: RefCell::new(ast::IdSet::default()),
     };
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
@@ -722,6 +726,9 @@ impl SymTable {
         if let Some(s) = self.scope_of(from) {
             self.bind_scope(to, s);
         }
+        if self.fresh_ref_nodes.borrow().contains(&from.id()) {
+            self.fresh_ref_nodes.borrow_mut().insert(to.id());
+        }
         let rs = self.ref_scope.borrow().get(&from.id()).copied();
         if let Some(s) = rs {
             self.ref_scope.borrow_mut().insert(to.id(), s);
@@ -747,6 +754,12 @@ impl SymTable {
                 self.copied_decls.borrow_mut().insert(new.id());
             }
         })
+    }
+
+    /// terser `fixed_value()` is `false` for reference `n` (its definition is
+    /// one an inlined copy made).
+    pub fn unfixed_ref(&self, n: &N) -> bool {
+        self.fresh_ref_nodes.borrow().contains(&n.id())
     }
 
     /// terser `get_lhs` `def.references.length - def.replaced` for declaration name

@@ -71,6 +71,9 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     }
     let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
     let id = table.def_of(n)?;
+    if table.unfixed_ref(n) {
+        return None;
+    }
     let (scope, mut single, assignments, references, name_len, exposed_now) = {
         let def = &table.defs[id];
         if def.suppress_fixed.get() || def.fixed.is_none() {
@@ -146,6 +149,10 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
                 table.copy_binding(old, new);
                 if old.id() != top {
                     (at.copy_flags)(old, new);
+                }
+                // `node.thedef = lambda_def`: the lambda's name has no `fixed` value.
+                if matches!(old.data, Data::Symbol { kind: SymKind::Ref, .. }) && table.def_of(old) == Some(id) {
+                    table.fresh_ref_nodes.borrow_mut().insert(new.id());
                 }
             });
             let out = expr_value(&copy);
@@ -1706,6 +1713,7 @@ fn note_fresh_defs(table: &SymTable, func: &N, copy: &N) {
         }
         if matches!(kind, SymKind::Ref) {
             *refs.entry(id).or_default() += 1;
+            table.fresh_ref_nodes.borrow_mut().insert(node.id());
         } else {
             decls.push((node.id(), id));
         }

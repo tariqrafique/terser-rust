@@ -144,6 +144,9 @@ fn fixed_lambda(expr: &N, cx: &Cx) -> Option<N> {
     };
     let table = cx.syms.as_ref()?;
     let id = table.def_of(expr)?;
+    if table.unfixed_ref(expr) {
+        return None;
+    }
     let fixed = table.defs[id].fixed.clone()?;
     matches!(fixed.data, Data::Func { .. }).then_some(fixed)
 }
@@ -640,7 +643,7 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
             Data::Class { .. } => return None,
             // `scope instanceof AST_SymbolRef && scope.fixed_value() instanceof AST_Scope`.
             Data::Symbol { kind: ast::SymKind::Ref, .. }
-                if cx.syms.as_ref().and_then(|t| t.def_of(node).and_then(|d| t.defs[d].fixed.clone()))
+                if cx.syms.as_ref().filter(|t| !t.unfixed_ref(node)).and_then(|t| t.def_of(node).and_then(|d| t.defs[d].fixed.clone()))
                     .is_some_and(|f| matches!(f.data, Data::Func { .. } | Data::Class { .. })) =>
             {
                 return None;

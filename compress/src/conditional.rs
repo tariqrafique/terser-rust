@@ -404,7 +404,7 @@ fn is_nullish_value(n: &N, cx: &Cx) -> bool {
     }
     if let Data::Symbol { kind: SymKind::Ref, .. } = &n.data {
         if let Some(table) = &cx.syms {
-            if let Some(id) = table.def_of(n) {
+            if let Some(id) = table.def_of(n).filter(|_| !table.unfixed_ref(n)) {
                 if let Some(fixed) = &table.defs[id].fixed {
                     return matches!(fixed.data, Data::Null) || is_undefined(fixed, cx);
                 }

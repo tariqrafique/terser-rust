@@ -1753,7 +1753,7 @@ fn same_object_ref(left: &N, right: &N, cx: &Cx) -> bool {
     let Some(idr) = table.def_of(right) else {
         return false;
     };
-    if idl != idr {
+    if idl != idr || table.unfixed_ref(left) || table.unfixed_ref(right) {
         return false;
     }
     let Some(fixed) = table.defs.get(idl).and_then(|d| d.fixed.as_ref()) else {
@@ -2367,6 +2367,9 @@ fn safe_to_flatten(value: &N, cx: &Cx) -> bool {
 fn fixed_of<'a>(n: &N, cx: &'a Cx) -> Option<&'a N> {
     let table = cx.syms.as_ref()?;
     let id = table.def_of(n)?;
+    if table.unfixed_ref(n) {
+        return None;
+    }
     table.defs.get(id)?.fixed.as_ref()
 }
 
@@ -2905,6 +2908,9 @@ pub(crate) fn dot_throw(n: &N, cx: &Cx) -> bool {
                 return true;
             }
             // `!fixed || fixed._dot_throw(compressor)`
+            if table.unfixed_ref(n) {
+                return true;
+            }
             match &def.fixed {
                 Some(fixed) => dot_throw(fixed, cx),
                 None => true,
