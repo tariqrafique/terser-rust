@@ -102,8 +102,14 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                         collect_lexical_targets(st, table, &mut lexical);
                     }
                     crate::tighten::set_lexical_targets(lexical);
+                    let mut declared = std::collections::HashMap::new();
+                    for st in &stmts {
+                        collect_declared_refs(st, table, &mut declared);
+                    }
+                    crate::tighten::set_declared_refs(declared);
                 } else {
                     crate::tighten::set_lexical_targets(Default::default());
+                    crate::tighten::set_declared_refs(Default::default());
                 }
                 let (next, changed) = crate::tighten::collapse_step(
                     stmts,
@@ -222,6 +228,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
     let shadowed = if foreign {
         let mut bound = Default::default();
         crate::tighten::bindings_deep(&me, &mut bound);
+        let outer = visible_names(cx, true).unwrap_or(outer);
         bound.retain(|n: &String| outer.contains(n));
         declared.extend(own);
         bound
@@ -248,10 +255,10 @@ fn visible_names(cx: &Cx, skip_self: bool) -> Option<std::collections::HashSet<S
             Data::Func { .. } | Data::Toplevel { .. } | Data::Block { .. } | Data::StaticBlock { .. } | Data::Switch { .. } | Data::Catch { .. }
         )
     })?;
-    table.scope_lookup(&(Rc::as_ptr(nearest) as usize))?;
+    table.scope_of(nearest)?;
     let mut out = std::collections::HashSet::new();
     for p in chain {
-        let Some(id) = table.scope_lookup(&(Rc::as_ptr(p) as usize)) else { continue };
+        let Some(id) = table.scope_of(p) else { continue };
         if let Some(defs) = table.scope_defs.get(&id) {
             out.extend(defs.iter().filter(|&&d| !table.defs[d].undeclared).map(|&d| table.defs[d].name.clone()));
         }
@@ -1141,6 +1148,17 @@ fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::
         collect_lexical_targets(c, table, out);
         Rc::clone(c)
     });
+}
+
+/// terser `is_declared` of every reference here the symbol table knows.
+fn collect_declared_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, bool>) {
+    if let Data::Symbol { kind: ast::SymKind::Ref | ast::SymKind::Export, .. } = &n.data {
+        if let Some(id) = table.def_of(n) {
+            out.insert(crate::syms::ptr(n), !table.defs[id].undeclared);
+        }
+        return;
+    }
+    ast::walk_children(n, &mut |c| collect_declared_refs(c, table, out));
 }
 
 fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {

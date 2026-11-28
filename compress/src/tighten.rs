@@ -246,6 +246,24 @@ thread_local! {
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// See `set_visible`.
     static VISIBLE: std::cell::RefCell<Option<HashSet<String>>> = Default::default();
+    /// See `set_declared_refs`.
+    static DECLARED_REFS: std::cell::RefCell<HashMap<usize, bool>> = Default::default();
+}
+
+/// terser `AST_SymbolRef.is_declared` for the references the symbol table
+/// knows, by node: `false` for a global. The name sets answer for the others.
+pub(crate) fn set_declared_refs(map: HashMap<usize, bool>) {
+    DECLARED_REFS.with(|d| *d.borrow_mut() = map);
+}
+
+/// Whether the reference `n` (named `name`) is declared: its definition when
+/// the table has one, else a binding of the name in `declared`. An empty set
+/// is `lhs_bad`'s query with no bindings at all and stays by name.
+fn is_declared(n: &N, name: &str, declared: &HashSet<String>) -> bool {
+    if declared.is_empty() {
+        return false;
+    }
+    DECLARED_REFS.with(|d| d.borrow().get(&ptr(n)).copied()).unwrap_or_else(|| declared.contains(name))
 }
 
 /// Names `find_variable` reaches from the scope being collapsed (terser
@@ -556,7 +574,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // terser `get_lhs` takes any declared symbol (a free one has
                         // side effects and is skipped).
                         let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
-                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || env.declared.contains(name) || injected) {
+                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || is_declared(left, name, env.declared) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -1115,7 +1133,7 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
         }
     }) || (!st.replace_all
         && ref_name(n).is_some_and(|name| {
-            !st.declared.contains(name) && !pure_global(name) && !(st.block_only && INJECTED.with(|i| i.borrow().contains_key(name)))
+            !is_declared(n, name, st.declared) && !pure_global(name) && !(st.block_only && INJECTED.with(|i| i.borrow().contains_key(name)))
         }))
 }
 
@@ -2010,7 +2028,7 @@ fn is_mangleable(value: &N, cand_name: &str, env: &Env<'_>) -> bool {
     let Some(name) = ref_name(value) else {
         return false;
     };
-    name != "arguments" && name != cand_name && env.declared.contains(name)
+    name != "arguments" && name != cand_name && is_declared(value, name, env.declared)
 }
 
 /// `(reads, writes, hidden)`. Writes are `a = …` / `a++` / `delete a`. Hidden refs sit in nested functions.
@@ -2315,7 +2333,7 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             kind: SymKind::Ref,
             name,
             ..
-        } => !locals.contains(name) && !pure_global(name),
+        } => !is_declared(n, name, locals) && !pure_global(name),
         Data::Unary { op, expr, .. } => {
             matches!(op.as_str(), "delete" | "++" | "--") || expr_effects(expr, locals)
         }
@@ -2386,7 +2404,7 @@ fn node_effects(n: &N, declared: &HashSet<String>) -> bool {
         Data::Defs { defs, .. } => any(defs),
         Data::VarDef { value, .. } => value.is_some(),
         // `AST_SymbolExport` is an `AST_SymbolRef`.
-        Data::Symbol { kind: SymKind::Export, name, .. } => !declared.contains(name) && !pure_global(name),
+        Data::Symbol { kind: SymKind::Export, name, .. } => !is_declared(n, name, declared) && !pure_global(name),
         // `AST_SymbolDeclaration` and `AST_SymbolClassProperty`; the other
         // plain `AST_Symbol`s are `AST_Node` (true).
         Data::Symbol { kind, .. } if !matches!(
@@ -2420,7 +2438,7 @@ fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
             kind: SymKind::Ref,
             name,
             ..
-        } => !locals.contains(name) && !pure_global(name),
+        } => !is_declared(n, name, locals) && !pure_global(name),
         Data::Unary { op, expr, .. }
             if op == "typeof" && matches!(expr.data, Data::Symbol { .. }) =>
         {
