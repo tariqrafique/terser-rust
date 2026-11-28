@@ -527,6 +527,10 @@ pub(crate) fn may_side_effect(n: &N, cx: &Cx) -> bool {
         Data::Cond { cond, cons, alt } => may_side_effect(cond, cx) || may_side_effect(cons, cx) || may_side_effect(alt, cx),
         Data::Symbol { .. } => !symbol_read_is_pure(n, cx),
         Data::Object { props } => props.iter().any(|p| prop_may_effect(p, cx)),
+        // `AST_Class`: the heritage and the properties.
+        Data::Class { extends, props, .. } => {
+            extends.as_ref().is_some_and(|e| may_side_effect(e, cx)) || props.iter().any(|p| prop_may_effect(p, cx))
+        }
         Data::Spread { expr } | Data::Chain { expr } => may_side_effect(expr, cx),
         // `AST_Dot` / `AST_Sub`: a nullish short-circuit only runs the receiver;
         // otherwise a read that may throw on access is an effect.
@@ -556,6 +560,17 @@ fn prop_may_effect(n: &N, cx: &Cx) -> bool {
             key_fx || (method.is_none() && may_side_effect(value, cx))
         }
         Data::Spread { expr } => may_side_effect(expr, cx),
+        // `AST_ClassProperty`: a computed key, or a static initializer.
+        Data::Field { key, value, static_, .. } => {
+            matches!(key, Key::Computed(expr) if may_side_effect(expr, cx))
+                || (*static_ && value.as_ref().is_some_and(|v| may_side_effect(v, cx)))
+        }
+        // `AST_ClassStaticBlock`: its statements.
+        Data::StaticBlock { body } => body.iter().any(|st| match &st.data {
+            Data::Empty => false,
+            Data::Simple { body } => may_side_effect(body, cx),
+            _ => true,
+        }),
         _ => true,
     }
 }
@@ -589,7 +604,8 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         Data::Class { stmt: false, name, extends, props } => drop_class(n, name.as_ref(), extends.as_ref(), props, cx),
         Data::Unary { op, expr, .. } => drop_unary(n, op, expr, cx, first),
         Data::Binary { op, left, right } => drop_binary(n, op, left, right, cx, first),
-        Data::Assign { .. } | Data::Yield { .. } | Data::Await { .. } => Some(Rc::clone(n)),
+        Data::Assign { logical, left, right, .. } => drop_assign(n, *logical, left, right, cx, first),
+        Data::Yield { .. } | Data::Await { .. } => Some(Rc::clone(n)),
         Data::Call { expr, is_new, .. } => drop_call(n, expr, *is_new, cx),
         Data::Seq { exprs } => drop_sequence(n, exprs, cx),
         Data::Cond { cond, cons, alt } => drop_cond(n, cond, cons, alt, cx),
@@ -624,6 +640,39 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         }
         _ => Some(Rc::clone(n)),
     }
+}
+
+/// terser `drop-side-effect-free.js` `AST_Assign`: a write to a property of a constant
+/// expression (`(class{}).v = 1`) keeps only the value's effects.
+fn drop_assign(n: &N, logical: bool, left: &N, right: &N, cx: &Cx, first: bool) -> Option<N> {
+    if logical {
+        return Some(Rc::clone(n));
+    }
+    let strict_const = cx.lookup("use strict").is_some()
+        && matches!(&left.data, Data::Dot { expr, .. } | Data::Sub { expr, .. } if crate::eval::is_constant(expr));
+    if may_side_effect(left, cx) || strict_const {
+        return Some(Rc::clone(n));
+    }
+    let mut obj = left;
+    while let Data::Dot { expr, .. } | Data::Sub { expr, .. } = &obj.data {
+        obj = expr;
+    }
+    // `left.is_constant_expression(compressor.find_parent(AST_Scope))`
+    let constant = cx.syms.as_ref().is_some_and(|table| {
+        let scope = cx
+            .parents
+            .iter()
+            .rev()
+            .skip(1)
+            .filter(|p| matches!(p.data, Data::Func { .. } | Data::Class { .. } | Data::Toplevel { .. }))
+            .find_map(|p| table.scope_of(p))
+            .or(Some(0));
+        crate::reduce_vars::is_constant_expression(obj, table, scope)
+    });
+    if constant {
+        return drop_side_effect_free(right, cx, first);
+    }
+    Some(Rc::clone(n))
 }
 
 /// terser `drop-side-effect-free.js` `AST_Class`.

@@ -2252,7 +2252,7 @@ fn prec(op: &str) -> i32 {
     }
 }
 
-fn is_constant(n: &N) -> bool {
+pub(crate) fn is_constant(n: &N) -> bool {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }
