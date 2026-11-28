@@ -114,3 +114,5 @@ Export and collapse board: `export { x }` is a reference (`AST_SymbolExport` ext
 - `functions/issue_2657`: terser never re-collapses the body after the flatten; here an injected var is only treated as a local inside a nested block.
 
 Drop-unused writes: `scan_ref_scoped` matches `assign_as_unused` on the `AST_Assign` only, not on a `SimpleStatement` around it, so `x = f();` walks `f` (it was skipped, and a function or `let` read only there was dropped). An undeclared global is in `toplevel.globals`, not `variables`, so its write is a use and `tt` keeps it (`x = f()` at the top level with `toplevel` became `f()`). Compress default 2362 → 2364/2671.
+
+After a collapse in a function body, `tighten.rs` `drop_unmentioned` (a port shortcut; terser leaves this to `drop_unused`) drops a declaration whose name is never mentioned. Its name walk now uses `ast::walk_children`; it skipped object literals, so `var d` went while `{i:(d=r,d.h)}` still assigned it.

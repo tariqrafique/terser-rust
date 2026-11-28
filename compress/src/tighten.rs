@@ -405,128 +405,15 @@ fn drop_unmentioned(stmts: &[N]) -> Vec<N> {
 }
 
 fn names_used(stmts: &[N]) -> HashSet<String> {
-    let mut used = HashSet::new();
+    // Every reference anywhere below, nested functions included (`ast::walk_children`
+    // reaches every node kind, object literals and templates too).
     fn rec(n: &N, used: &mut HashSet<String>) {
         if let Some(name) = ref_name(n) {
             used.insert(name.to_string());
         }
-        match &n.data {
-            Data::Func { body, .. }
-            | Data::Block { body }
-            | Data::Switch { body, .. }
-            | Data::Default { body }
-            | Data::Case { body, .. } => {
-                body.iter().for_each(|s| rec(s, used));
-            }
-            Data::Class { extends, props, .. } => {
-                if let Some(extends) = extends {
-                    rec(extends, used);
-                }
-                props.iter().for_each(|p| rec(p, used));
-            }
-            Data::Assign { left, right, .. }
-            | Data::Binary { left, right, .. }
-            | Data::DefaultAssign { left, right } => {
-                rec(left, used);
-                rec(right, used);
-            }
-            Data::Call { expr, args, .. } => {
-                rec(expr, used);
-                args.iter().for_each(|a| rec(a, used));
-            }
-            Data::Unary { expr, .. }
-            | Data::Return { value: Some(expr) }
-            | Data::Simple { body: expr }
-            | Data::Throw { value: expr }
-            | Data::Dot { expr, .. }
-            | Data::Await { expr }
-            | Data::Spread { expr }
-            | Data::Chain { expr }
-            | Data::Yield {
-                expr: Some(expr), ..
-            } => rec(expr, used),
-            Data::Seq { exprs } | Data::Array { elements: exprs } => {
-                exprs.iter().for_each(|e| rec(e, used))
-            }
-            Data::If { cond, body, alt } => {
-                rec(cond, used);
-                rec(body, used);
-                if let Some(alt) = alt {
-                    rec(alt, used);
-                }
-            }
-            Data::Cond { cond, cons, alt } => {
-                rec(cond, used);
-                rec(cons, used);
-                rec(alt, used);
-            }
-            Data::For {
-                init,
-                cond,
-                step,
-                body,
-            } => {
-                if let Some(init) = init {
-                    rec(init, used);
-                }
-                if let Some(cond) = cond {
-                    rec(cond, used);
-                }
-                if let Some(step) = step {
-                    rec(step, used);
-                }
-                rec(body, used);
-            }
-            Data::ForIn { init, object, body }
-            | Data::ForOf {
-                init, object, body, ..
-            } => {
-                rec(init, used);
-                rec(object, used);
-                rec(body, used);
-            }
-            Data::While { cond, body } | Data::Do { body, cond } => {
-                rec(cond, used);
-                rec(body, used);
-            }
-            Data::Try {
-                body,
-                catch,
-                finally,
-            } => {
-                rec(body, used);
-                if let Some(catch) = catch {
-                    rec(catch, used);
-                }
-                if let Some(finally) = finally {
-                    rec(finally, used);
-                }
-            }
-            Data::Catch { body, .. }
-            | Data::Finally { body }
-            | Data::Labeled { body, .. }
-            | Data::With { body, .. } => rec(body, used),
-            Data::Defs { defs, .. } => defs.iter().for_each(|d| rec(d, used)),
-            Data::VarDef {
-                value: Some(value), ..
-            } => rec(value, used),
-            Data::Destructuring { names, .. } => names.iter().for_each(|n| rec(n, used)),
-            Data::Prop { key, value, .. } => {
-                if let Key::Computed(expr) = key {
-                    rec(expr, used);
-                }
-                rec(value, used);
-            }
-            Data::Sub { expr, prop, .. } => {
-                rec(expr, used);
-                rec(prop, used);
-            }
-            Data::Field {
-                value: Some(value), ..
-            } => rec(value, used),
-            _ => {}
-        }
+        ast::walk_children(n, &mut |c| rec(c, used));
     }
+    let mut used = HashSet::new();
     for stmt in stmts {
         rec(stmt, &mut used);
     }

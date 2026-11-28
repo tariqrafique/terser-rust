@@ -60,4 +60,6 @@ r M3d-undeclared-global-write-dropped 'x = f(); y = f()'
 r M4-missing-var-MISCOMPILE 'function pt(s){ return s && p(s) }
 function gi(d){ return d.h + d.m }
 export function n(v){ const r = pt(v); if (!r) return 0; return { i: gi(r) } }'
+r M4b-var-read-only-in-object-dropped 'export function n(v){ var r = g(v), d; return {i: (d=r,d.h)} }'
+r M2b-decl-dropped-in-block 'export function e(d){ if (d) { const v = d.pop(); x = v; } }'
 echo "$same same, $diff differ"
