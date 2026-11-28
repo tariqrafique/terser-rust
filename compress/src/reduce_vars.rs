@@ -734,7 +734,7 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
             // Leave `single_use` alone. An earlier read in this walk may already be the one use.
             tw.table.defs[id].recursive_refs = tw.table.defs[id].recursive_refs.saturating_add(1);
         } else if tw.env.unused && !exposed(&tw.table.defs[id], tw.env) && ref_once(tw, id) {
-            let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope);
+            let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope) && !in_unbound_block_scope(tw, 0, id);
             let yes = (is_lambda(&fixed) && !func_scope_pinned(tw.table, &fixed))
                 || matches!(fixed.data, Data::Class { .. })
                 || (same && const_expr_truthy(&fixed, tw.table, None));
@@ -845,6 +845,34 @@ fn parent_at<'a>(tw: &'a Tw<'_>, level: usize) -> Option<&'a N> {
     let len = tw.parents.len();
     let index = len.checked_sub(2 + level)?;
     tw.parents.get(index)
+}
+
+/// terser `scope.js` `is_block_scope`: a loop (`AST_IterationStatement`) and a switch body
+/// (`AST_Switch`, not its expression) are block scopes, so a symbol there has that scope.
+/// The binder has no scope for them; true when one lies between the symbol and `ref_scope`.
+/// A `let` / `const` in a `for` head belongs to that loop's scope, so it is not crossed for `id`.
+fn in_unbound_block_scope(tw: &Tw, level: usize, id: usize) -> bool {
+    let Some(start) = tw.parents.len().checked_sub(1 + level) else { return false };
+    for i in (1..=start).rev() {
+        let (child, parent) = (&tw.parents[i], &tw.parents[i - 1]);
+        if tw.table.node_scope.contains_key(&syms::ptr(child)) {
+            return false;
+        }
+        match &parent.data {
+            Data::For { init, .. } => return !init.as_ref().is_some_and(|init| declares_lexical(tw.table, init, id)),
+            Data::ForIn { init, .. } | Data::ForOf { init, .. } => return !declares_lexical(tw.table, init, id),
+            Data::While { .. } | Data::Do { .. } => return true,
+            Data::Switch { expr, .. } if syms::ptr(expr) != syms::ptr(child) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn declares_lexical(table: &SymTable, init: &N, id: usize) -> bool {
+    let Data::Defs { kind, defs, .. } = &init.data else { return false };
+    !matches!(kind, ast::DefKind::Var)
+        && defs.iter().any(|d| matches!(&d.data, Data::VarDef { name, .. } if table.node_def.get(&syms::ptr(name)) == Some(&id)))
 }
 
 fn ref_scope(tw: &Tw, level: usize) -> Option<usize> {
