@@ -1107,10 +1107,12 @@ fn transform(n: &N, cx: &mut Cx) -> N {
                 table.define_hoisted(created);
             }
         }
-        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope
-        // and definitions; the flags still follow by pointer.
+        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope,
+        // definitions and flags; what `hoist` made is new and has none (terser `make_node`).
+        // A rebuilt function or class that is a `fixed` value is followed (terser's `fixed`
+        // reads the edited object).
         if !Rc::ptr_eq(&hoisted, n) {
-            transfer_flags(n, &hoisted, cx);
+            follow_rebuilt(cx, n, &hoisted);
         }
         &hoisted
     } else {
@@ -1260,6 +1262,23 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     }
     retarget(cx, &orig, &out);
     out
+}
+
+/// Retarget `fixed` from each function or class in `old` that `new` holds rebuilt (same id,
+/// another node). Children are paired by id; a subtree that did not change is skipped.
+fn follow_rebuilt(cx: &mut Cx, old: &N, new: &N) {
+    if Rc::ptr_eq(old, new) || old.id() != new.id() {
+        return;
+    }
+    if matches!(new.data, Data::Func { .. } | Data::Class { .. }) {
+        retarget(cx, old, new);
+    }
+    let olds: ast::IdMap<&N> = child_refs(&old.data).into_iter().map(|c| (c.id(), c)).collect();
+    for c in child_refs(&new.data) {
+        if let Some(o) = olds.get(&c.id()) {
+            follow_rebuilt(cx, o, c);
+        }
+    }
 }
 
 fn retarget(cx: &mut Cx, orig: &N, out: &N) {
