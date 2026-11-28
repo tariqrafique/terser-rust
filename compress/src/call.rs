@@ -974,7 +974,7 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
     // callee sees none.
-    let flagged = cx.squeezed.contains(&func.id()) || cx.is_optimized(func);
+    let flagged = cx.is_squeezed(func) || cx.is_optimized(func);
     crate::audit_flags(cx, "callee_processed", func, flagged, true, true);
     let processed = direct || flagged;
     let inside_callee = !processed || cx.parents.iter().any(|p| {

@@ -1336,7 +1336,7 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             None => {}
         }
     }
-    if let Some(next) = reassoc_lazy(&cur) {
+    if let Some(next) = reassoc_lazy(&cur, cx) {
         cur = next;
     }
     if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
@@ -1841,7 +1841,7 @@ fn reversible(left: &N, right: &N, cx: &Cx) -> bool {
 }
 
 /// `x && (y && z)` => `(x && y) && z`, and the same for `||` and `??`.
-fn reassoc_lazy(n: &N) -> Option<N> {
+fn reassoc_lazy(n: &N, cx: &Cx) -> Option<N> {
     let Data::Binary { op, left, right } = &n.data else {
         return None;
     };
@@ -1854,13 +1854,22 @@ fn reassoc_lazy(n: &N) -> Option<N> {
     if rop != op {
         return None;
     }
-    let mut cur_left = binary(n, op, Rc::clone(left), Rc::clone(rl));
+    // The new left is `make_node(AST_Binary, ..)`, which `self.transform(compressor)`
+    // optimizes (`bar||(baz||baa)` is reassociated in turn); each round of the loop is
+    // `self.transform`'s optimize of `self` again.
+    let new_left = |l: N, r: N| {
+        let made = binary(n, op, l, r);
+        let out = fold(&made, cx);
+        cx.transformed(&made, &out);
+        out
+    };
+    let mut cur_left = new_left(Rc::clone(left), Rc::clone(rl));
     let mut cur_right = Rc::clone(rr);
     while let Data::Binary { op: rop, left: rl, right: rr } = &cur_right.data {
         if rop != op {
             break;
         }
-        cur_left = binary(n, op, cur_left, Rc::clone(rl));
+        cur_left = new_left(cur_left, Rc::clone(rl));
         cur_right = Rc::clone(rr);
     }
     // keep: `self.left = make_node(..); self.right = ..; return self.transform(..)`
