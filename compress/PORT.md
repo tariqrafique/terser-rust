@@ -120,3 +120,5 @@ Boolean binary negation: `def_optimize(AST_Binary)` with `comparisons` turns a b
 String joins: `(x + "foo") + "bar"` and `(x + "foo") + ("bar" + y)` optimize the middle pair as a binary (terser `binary.optimize`), so a template takes the constant: ``a+`u ${p}. `+"See"`` → ``a+`u ${p}. See` ``.
 
 Switch default pruning: `def_optimize(AST_Switch)` "Prune side-effect free branches that fall into default" is `loops.rs` `prune_into_default`. When the default (or exact) body is the last body, side-effect free cases that only fall into it are spliced away (not `eliminate_branch`ed). Case tests use `has_side_effects` (`unary::may_side_effect`), so an undeclared `case qux` stays.
+
+Single-use constants: `reduce_vars` `has_side_effects` / `may_throw` treat every `AST_Constant` (regexp, bigint, `Infinity`) as free of effects, so a single-use `const w=/a/` is substituted. A multiply-read regexp is still not evaluated (`unsafe_regexp`).

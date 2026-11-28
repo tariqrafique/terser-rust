@@ -1071,7 +1071,9 @@ fn is_literal(n: &N) -> bool {
 /// terser `lib/compress/inference.js` `has_side_effects` for the nodes a fixed value can be.
 fn has_side_effects(n: &N) -> bool {
     match &n.data {
-        Data::Number { .. } | Data::String { .. } | Data::True | Data::False | Data::Null | Data::This => false,
+        // `AST_Constant` (a regexp and a bigint included) and `this`.
+        Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::RegExp { .. } | Data::Infinity => false,
+        Data::True | Data::False | Data::Null | Data::This => false,
         Data::Unary { op, expr, .. } => matches!(op.as_str(), "delete" | "++" | "--") || has_side_effects(expr),
         Data::Binary { left, right, .. } => has_side_effects(left) || has_side_effects(right),
         Data::Symbol { kind: SymKind::Ref, .. } => false,
@@ -1093,7 +1095,7 @@ fn may_throw(n: &N) -> bool {
             Data::Prop { key: Key::Static { .. }, value, method: None, .. } => may_throw(value),
             _ => true,
         }),
-        Data::Hole => false,
+        Data::Hole | Data::BigInt { .. } | Data::RegExp { .. } | Data::Infinity => false,
         _ => !is_literal(n) && !matches!(n.data, Data::Unary { .. } | Data::Binary { .. }),
     }
 }
