@@ -126,6 +126,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         if cross_scope {
             let copy = table.clone_deep(&fixed);
             count_clone_refs(table, &fixed);
+            note_fresh_defs(table, &fixed, &copy);
             let out = expr_value(&copy);
             // `make_node(AST_Function, fixed, fixed)` copies the scope (il 247-250).
             table.copy_binding(&copy, &out);
@@ -1685,6 +1686,34 @@ fn count_clone_refs(table: &SymTable, func: &N) {
         let def = &table.defs[id];
         def.clone_refs.set(def.clone_refs.get().saturating_add(1));
     });
+}
+
+/// terser `figure_out_scope` on a `clone(true, toplevel)` copy: each name the
+/// copy declares gets a new definition, whose `references` are the copy's
+/// references to it (not the original's, which may count reads the optimizer
+/// has removed since). Recorded by the copy's declaration names
+/// (`SymTable.fresh_refs`), for `get_lhs`.
+fn note_fresh_defs(table: &SymTable, func: &N, copy: &N) {
+    let Some(func_scope) = table.scope_of(func) else { return };
+    let nested = nested_scopes(func, table);
+    let mut refs: HashMap<usize, usize> = HashMap::new();
+    let mut decls: Vec<(ast::NodeId, usize)> = Vec::new();
+    each_node(copy, &mut |node| {
+        let Data::Symbol { kind, .. } = &node.data else { return };
+        let Some(id) = table.def_of(node) else { return };
+        if !defined_inside(table, id, func_scope, &nested) {
+            return;
+        }
+        if matches!(kind, SymKind::Ref) {
+            *refs.entry(id).or_default() += 1;
+        } else {
+            decls.push((node.id(), id));
+        }
+    });
+    let mut fresh = table.fresh_refs.borrow_mut();
+    for (node, id) in decls {
+        fresh.insert(node, (refs.get(&id).copied().unwrap_or(0), table.defs[id].replaced.get()));
+    }
 }
 
 /// terser `this.variables.has(def.name)`: a name `flatten_fn` injected into
