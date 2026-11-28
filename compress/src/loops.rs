@@ -276,7 +276,7 @@ fn drop_expr(n: &N, cx: &Cx) -> Option<N> {
 
 fn smaller_constant(orig: &N, lit: Lit, cx: &Cx) -> N {
     let made = eval::fold(&eval::lit_node(orig, lit, cx), cx);
-    if eval::node_size(&made) > eval::node_size(orig) {
+    if crate::size::size(&made) > crate::size::size(orig) {
         Rc::clone(orig)
     } else {
         made

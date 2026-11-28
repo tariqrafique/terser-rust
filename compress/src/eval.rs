@@ -284,10 +284,15 @@ fn optimize_template(n: &N, cx: &Cx) -> Option<N> {
                 continue;
             }
         }
-        if let Some(lit) = eval(expr) {
+        // `segment.evaluate(compressor)` (a string longer than the segment's size stays), then
+        // `(result + "").length <= segment.size() + "${}".length`.
+        let lit = eval(expr).filter(|lit| match lit {
+            Lit::Str(s) => utf16_len(s) + 2 <= crate::size::size_in(expr, std::slice::from_ref(n), true),
+            _ => true,
+        });
+        if let Some(lit) = lit {
             let text = lit_text(&lit);
-            let expr_size = print_len(expr);
-            if text.len() <= expr_size + 3 {
+            if utf16_len(&text) <= crate::size::size(expr) + 3 {
                 if let Some(Seg::Cooked { value, raw, units }) = out.last_mut() {
                     let next = segments.get(i + 1);
                     if let Some(Seg::Cooked { value: tail, raw: tail_raw, .. }) = next {
@@ -627,7 +632,8 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
     if !cx.opts.dead_code {
         if let Some(lit) = eval_if_cond(&cond, cx) {
             let made = fold(&lit_node(&cond, lit, cx), cx);
-            if node_size(&made) <= node_size(&cond) {
+            // `best_of_expression(made.transform(compressor), orig)`.
+            if crate::size::size(&made) <= crate::size::size(&cond) {
                 cond = made;
             }
         }
@@ -639,8 +645,8 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
         }
     }
     let negated = negate_expr(&cond, cx);
-    let self_len = node_size(&cond);
-    let neg_len = node_size(&negated);
+    let self_len = crate::size::size(&cond);
+    let neg_len = crate::size::size(&negated);
     let mut negated_is_best = neg_len < self_len;
     if alt.is_some() && negated_is_best {
         negated_is_best = false;
@@ -791,7 +797,8 @@ pub(crate) fn eval_if_cond(n: &N, cx: &Cx) -> Option<Lit> {
     }
     let lit = eval(n)?;
     if let Lit::Str(s) = &lit {
-        if !s.is_empty() && utf16_len(s) + 2 > node_size(n) {
+        // `this.size(compressor)`: mangled names count 1.
+        if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(n, &[], true) {
             return None;
         }
     }
@@ -1072,180 +1079,7 @@ fn basic_negate(n: &N) -> N {
 }
 
 fn best_expr(a: &N, b: &N) -> N {
-    if node_size(a) > node_size(b) { Rc::clone(b) } else { Rc::clone(a) }
-}
-
-/// terser `size.js` `AST_Node.size`. Parentheses follow `output.js` `needs_parens`
-/// for binaries; the root's parent is the `if`, which adds none.
-pub(crate) fn node_size(n: &N) -> usize {
-    size_at(n, None)
-}
-
-fn size_at(n: &N, parent: Option<&N>) -> usize {
-    let own = own_size(n, parent);
-    let mut kids = 0usize;
-    each_size_child(n, |child| kids += size_at(child, Some(n)));
-    own + kids
-}
-
-fn own_size(n: &N, parent: Option<&N>) -> usize {
-    match &n.data {
-        Data::Binary { op, right, .. } | Data::Assign { op, right, .. } => {
-            let mut size = if op == "in" { 4 } else { op.len() };
-            if op == "+" || op == "-" {
-                if let Data::Unary { op: rop, prefix: true, .. } = &right.data {
-                    if rop == op {
-                        size += 1;
-                    }
-                }
-            }
-            size + binary_paren_cost(parent, n, op)
-        }
-        Data::Unary { op, .. } => match op.as_str() {
-            "typeof" => 7,
-            "void" => 5,
-            _ => op.len(),
-        },
-        Data::Number { value, .. } => number_size(*value),
-        Data::String { value, .. } => utf16_len(value) + 2,
-        Data::True => 4,
-        Data::False => 5,
-        Data::Null => 4,
-        Data::Infinity => 8,
-        Data::This => 4,
-        Data::Symbol { name, .. } => {
-            if name == "arguments" { 9 } else if mangled_size(n) { 1 } else { name.chars().count() }
-        }
-        Data::Cond { .. } => 3,
-        Data::Seq { exprs } => exprs.len().saturating_sub(1),
-        Data::Array { elements } => 2 + elements.len().saturating_sub(1),
-        Data::Call { args, optional, is_new, .. } => {
-            let base = if *is_new { 6 } else if *optional { 4 } else { 2 };
-            base + args.len().saturating_sub(1)
-        }
-        Data::Dot { prop, optional, private, .. } => prop.len() + 1 + usize::from(*optional) + usize::from(*private),
-        Data::Sub { optional, .. } => {
-            if *optional { 4 } else { 2 }
-        }
-        Data::Object { props } => 2 + props.len().saturating_sub(1),
-        _ => 0,
-    }
-}
-
-fn each_size_child(n: &N, mut f: impl FnMut(&N)) {
-    match &n.data {
-        Data::Unary { expr, .. }
-        | Data::Dot { expr, .. }
-        | Data::Chain { expr, .. }
-        | Data::Spread { expr, .. }
-        | Data::Await { expr, .. } => f(expr),
-        Data::Binary { left, right, .. }
-        | Data::Assign { left, right, .. }
-        | Data::DefaultAssign { left, right } => {
-            f(left);
-            f(right);
-        }
-        Data::Cond { cond, cons, alt } => {
-            f(cond);
-            f(cons);
-            f(alt);
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => {
-            for expr in exprs {
-                f(expr);
-            }
-        }
-        Data::Call { expr, args, .. } => {
-            f(expr);
-            for arg in args {
-                f(arg);
-            }
-        }
-        Data::Sub { expr, prop, .. } => {
-            f(expr);
-            f(prop);
-        }
-        Data::Object { props } => {
-            for prop in props {
-                f(prop);
-            }
-        }
-        Data::Prop { key, value, .. } => {
-            if let Key::Computed(expr) = key {
-                f(expr);
-            }
-            f(value);
-        }
-        _ => {}
-    }
-}
-
-fn binary_paren_cost(parent: Option<&N>, node: &N, op: &str) -> usize {
-    let Some(p) = parent else {
-        return 0;
-    };
-    let needs = match &p.data {
-        Data::Call { expr, .. } if Rc::ptr_eq(expr, node) => true,
-        Data::Unary { .. } => true,
-        Data::Dot { expr, .. } | Data::Sub { expr, .. } if Rc::ptr_eq(expr, node) => true,
-        Data::Binary { op: pop, right, .. } | Data::Assign { op: pop, right, .. } => {
-            let mixed = (op == "??" && (pop == "||" || pop == "&&")) || (pop == "??" && (op == "||" || op == "&&"));
-            if mixed {
-                true
-            } else {
-                match (prec_rank(pop), prec_rank(op)) {
-                    (Some(pp), Some(sp)) => pp > sp || (pp == sp && (Rc::ptr_eq(right, node) || pop == "**")),
-                    _ => false,
-                }
-            }
-        }
-        Data::PrivateIn { value, .. } => match (prec_rank("in"), prec_rank(op)) {
-            (Some(pp), Some(sp)) => pp > sp || (pp == sp && Rc::ptr_eq(value, node)),
-            _ => false,
-        },
-        _ => false,
-    };
-    if needs { 2 } else { 0 }
-}
-
-fn prec_rank(op: &str) -> Option<i32> {
-    Some(match op {
-        "||" => 1,
-        "??" => 2,
-        "&&" => 3,
-        "|" => 4,
-        "^" => 5,
-        "&" => 6,
-        "==" | "===" | "!=" | "!==" => 7,
-        "<" | ">" | "<=" | ">=" | "in" | "instanceof" => 8,
-        ">>" | "<<" | ">>>" => 9,
-        "+" | "-" => 10,
-        "*" | "/" | "%" => 11,
-        "**" => 12,
-        _ => return None,
-    })
-}
-
-fn number_size(value: f64) -> usize {
-    if value == 0.0 {
-        return 1;
-    }
-    if value > 0.0 && value.is_finite() && value.fract() == 0.0 && value < 1e21 {
-        return (value.log10().floor() as usize) + 1;
-    }
-    if value.is_nan() {
-        return 3;
-    }
-    if value.is_infinite() {
-        return if value.is_sign_negative() { 9 } else { 8 };
-    }
-    let text = format!("{value}");
-    let text = text.strip_suffix(".0").unwrap_or(&text);
-    let mut len = text.len();
-    if text.contains('e') && !text.contains("e-") && !text.contains("e+") {
-        len += 1;
-    }
-    len
+    crate::size::best_of_expression(a, b)
 }
 
 fn utf16_len(s: &str) -> usize {
@@ -1772,13 +1606,11 @@ fn numeric_swap(n: &N, cx: &Cx) -> Option<N> {
         return None;
     }
     let reversed = binary(n, op, Rc::clone(right), Rc::clone(left));
-    let prefer_reversed = is_constant(right) && !is_constant(left);
-    let pick = if prefer_reversed {
-        if print_len(n) > print_len(&reversed) { reversed } else if print_len(n) == print_len(&reversed) { reversed } else { Rc::clone(n) }
-    } else if print_len(&reversed) < print_len(n) {
-        reversed
+    let first = crate::unary::first_in_statement(cx);
+    let pick = if is_constant(right) && !is_constant(left) {
+        crate::size::best_of(first, &reversed, n)
     } else {
-        Rc::clone(n)
+        crate::size::best_of(first, n, &reversed)
     };
     if Rc::ptr_eq(&pick, n) { None } else { Some(pick) }
 }
@@ -1911,7 +1743,9 @@ fn fold_cmp_bits(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> 
             return Some(booleanify(span, Rc::clone(left), op.starts_with('!'), cx));
         }
         if let Some(masked) = mask_bits(span, op, left, right, cx) {
-            if print_len(&masked) < print_len(span) {
+            // `best_of(compressor, optimized, self)`.
+            let best = crate::size::best_of(crate::unary::first_in_statement(cx), &masked, span);
+            if Rc::ptr_eq(&best, &masked) {
                 return Some(masked);
             }
         }
@@ -2397,10 +2231,10 @@ fn fold_sub(n: &N, cx: &Cx, depth: u8) -> Option<N> {
         if let Some(lit) = eval(prop) {
             let key = normalize_prop_key(lit);
             let constant = lit_node(prop, prop_key_lit(&key), cx);
-            prop_node = best_of_expr(prop, constant);
+            prop_node = crate::size::best_of_expression(prop, &constant);
             property = prop_key_string(&key);
             evaluated = true;
-            if is_basic_ident(&property) && property.len() <= terser_size(&prop_node) + 1 {
+            if is_basic_ident(&property) && property.len() <= crate::size::size(&prop_node) + 1 {
                 let quote = match &prop_node.data {
                     Data::String { quote, .. } => Some(*quote),
                     _ => None,
@@ -2770,13 +2604,13 @@ fn make_seq(span: &N, exprs: Vec<N>) -> N {
 fn eval_length(span: &N, expr: &N, cx: &Cx) -> Option<N> {
     if let Some(Lit::Str(s)) = eval(expr) {
         let len = js_str_len(&s, string_units(expr));
-        return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
+        return Some(prefer(span, lit_node(span, Lit::Num(len), cx), cx));
     }
     // A reference evaluates through its fixed value (`AST_SymbolRef._eval`).
     if let Some(table) = cx.syms.as_ref().filter(|_| cx.opts.reduce_vars) {
         if let Some(Lit::Str(s)) = crate::reduce_vars::fixed_eval(expr, table) {
             let len = js_str_len(&s, None);
-            return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
+            return Some(prefer(span, lit_node(span, Lit::Num(len), cx), cx));
         }
     }
     let Data::Array { elements } = &expr.data else {
@@ -2785,7 +2619,7 @@ fn eval_length(span: &N, expr: &N, cx: &Cx) -> Option<N> {
     if elements.iter().any(|el| matches!(el.data, Data::Spread { .. }) || expr_has_side_effects(el, cx)) {
         return None;
     }
-    Some(prefer(span, lit_node(span, Lit::Num(elements.len() as f64), cx)))
+    Some(prefer(span, lit_node(span, Lit::Num(elements.len() as f64), cx), cx))
 }
 
 fn eval_length_sub(span: &N, expr: &N, prop: &N, cx: &Cx) -> Option<N> {
@@ -2962,64 +2796,6 @@ fn reformat_ryu(raw: &str) -> String {
 
 fn format_exp(exp: i32) -> String {
     if exp >= 0 { format!("e+{exp}") } else { format!("e{exp}") }
-}
-
-fn best_of_expr(orig: &N, alt: N) -> N {
-    if terser_size(&alt) < terser_size(orig) { alt } else { Rc::clone(orig) }
-}
-
-/// terser `lib/size.js` `AST_Node.size` for a property key.
-fn terser_size(n: &N) -> usize {
-    let here = match &n.data {
-        Data::String { value, .. } => value.len() + 2,
-        Data::Number { value, .. } => number_size(*value),
-        Data::BigInt { value } => value.len(),
-        Data::Null => 4,
-        Data::True => 4,
-        Data::False => 5,
-        Data::Infinity => 8,
-        Data::This => 4,
-        Data::Hole => 0,
-        Data::Unary { op, .. } => match op.as_str() {
-            "typeof" => 7,
-            "void" => 5,
-            _ => op.len(),
-        },
-        Data::Binary { op, right, .. } => {
-            let mut s = if op == "in" { 4 } else { op.len() };
-            if matches!(op.as_str(), "+" | "-") {
-                if let Data::Unary { op: rop, .. } = &right.data {
-                    if rop == op {
-                        s += 1;
-                    }
-                }
-            }
-            s
-        }
-        Data::Symbol { name, .. } => if name == "arguments" { 9 } else if mangled_size(n) { 1 } else { name.len() },
-        Data::Dot { prop, optional, private, .. } => {
-            prop.len() + if *private { if *optional { 3 } else { 2 } } else if *optional { 2 } else { 1 }
-        }
-        Data::Sub { optional, .. } => if *optional { 4 } else { 2 },
-        Data::Array { elements } => 2 + list_overhead(elements.len()),
-        Data::Seq { exprs } => list_overhead(exprs.len()),
-        Data::Cond { .. } => 3,
-        Data::Call { args, is_new, optional, .. } => {
-            (if *is_new { 6 } else { 2 }) + if *optional { 2 } else { 0 } + list_overhead(args.len())
-        }
-        _ => return print_len(n),
-    };
-    here + match &n.data {
-        Data::Unary { expr, .. } | Data::Dot { expr, .. } | Data::Await { expr } | Data::Spread { expr } | Data::Chain { expr } => {
-            terser_size(expr)
-        }
-        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => terser_size(left) + terser_size(right),
-        Data::Sub { expr, prop, .. } => terser_size(expr) + terser_size(prop),
-        Data::Cond { cond, cons, alt } => terser_size(cond) + terser_size(cons) + terser_size(alt),
-        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().map(terser_size).sum(),
-        Data::Call { expr, args, .. } => terser_size(expr) + args.iter().map(terser_size).sum::<usize>(),
-        _ => 0,
-    }
 }
 
 fn list_overhead(len: usize) -> usize {
@@ -3676,12 +3452,9 @@ fn is_assign(op: &str) -> bool {
     )
 }
 
-fn prefer(orig: &N, folded: N) -> N {
-    if print_len(&folded) > print_len(orig) {
-        Rc::clone(orig)
-    } else {
-        folded
-    }
+/// `best_of(compressor, ev, self)`.
+fn prefer(orig: &N, folded: N, cx: &Cx) -> N {
+    crate::size::best_of(crate::unary::first_in_statement(cx), &folded, orig)
 }
 
 pub(crate) fn print_len(n: &N) -> usize {
@@ -3797,7 +3570,8 @@ pub(crate) fn best_constant(n: &N, cx: &Cx) -> Option<N> {
 
 fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
     if let Lit::Str(s) = &lit {
-        if s.len() + 2 > print_len(orig) {
+        // `evaluate`: `val.length + 2 > this.size(compressor)`; the stack's top is `this`.
+        if utf16_len(s) + 2 > crate::size::size_in(orig, std::slice::from_ref(orig), true) {
             return None;
         }
     }
@@ -3807,7 +3581,9 @@ fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
         Data::False => crate::unary::optimize_bool(false, &folded, cx),
         _ => folded,
     };
-    if print_len(&folded) > print_len(orig) { None } else { Some(folded) }
+    // `best_of(compressor, ev, self)`.
+    let best = crate::size::best_of(crate::unary::first_in_statement(cx), &folded, orig);
+    if Rc::ptr_eq(&best, orig) { None } else { Some(folded) }
 }
 
 fn apply_unary(op: &str, inner: Lit) -> Option<Lit> {
