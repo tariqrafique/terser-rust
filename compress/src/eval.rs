@@ -851,28 +851,12 @@ fn dead_if(span: &N, cond: &N, body: &N, alt: Option<&N>, truthy: bool, cx: &Cx)
     finish_block(span, stmts, cx)
 }
 
+/// terser `make_node(AST_BlockStatement, self, { body }).optimize(compressor)`: the block's
+/// `tighten_body` runs when `transform` takes the result (`pre_tighten`).
 fn finish_block(span: &N, body: Vec<N>, cx: &Cx) -> N {
-    let mut out = Vec::new();
-    for stat in body {
-        if matches!(stat.data, Data::Empty) {
-            continue;
-        }
-        if cx.opts.side_effects {
-            if let Data::Simple { body } = &stat.data {
-                if statement_pure(body, cx) {
-                    continue;
-                }
-            }
-        }
-        out.push(stat);
-    }
-    if out.is_empty() {
-        return empty(span);
-    }
-    if out.len() == 1 && super::can_evict(&out[0]) {
-        return out.pop().unwrap();
-    }
-    atom(span, Data::Block { body: out })
+    let block = atom(span, Data::Block { body });
+    cx.pre_tighten.borrow_mut().insert(block.id());
+    block
 }
 
 /// terser `make_node(AST_SimpleStatement, ...).optimize(compressor)`: the
