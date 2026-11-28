@@ -622,7 +622,42 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     if matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::Null | Data::RegExp { .. }) {
         return None;
     }
+    if let Some(folded) = fold_surrogate_concat(n, cx) {
+        return Some(folded);
+    }
     finish_constant(n, eval_raw(n, cx)?, cx)
+}
+
+/// terser `evaluate` of `"\ud83d" + "\ude00"`: JavaScript strings are UTF-16,
+/// so two string literals join unit by unit and a surrogate pair can form (the
+/// port's `String` cannot hold a lone surrogate, which `units` keeps). Only a
+/// `+` of two string literals, one of them with lone surrogates.
+fn fold_surrogate_concat(n: &N, cx: &Cx) -> Option<N> {
+    if !cx.opts.evaluate {
+        return None;
+    }
+    let Data::Binary { op, left, right } = &n.data else { return None };
+    let (Data::String { value: lv, units: lu, .. }, Data::String { value: rv, units: ru, .. }) = (&left.data, &right.data) else {
+        return None;
+    };
+    if op != "+" || (lu.is_none() && ru.is_none()) {
+        return None;
+    }
+    let units_of = |v: &String, u: &Option<Vec<u16>>| u.clone().unwrap_or_else(|| v.encode_utf16().collect());
+    let mut units = units_of(lv, lu);
+    units.extend(units_of(rv, ru));
+    // `val.length + 2 > this.size(compressor)`.
+    if units.len() + 2 > crate::size::size_in(n, std::slice::from_ref(n), true) {
+        return None;
+    }
+    let (value, units) = match String::from_utf16(&units) {
+        Ok(v) => (v, None),
+        Err(_) => (String::from_utf16_lossy(&units), Some(units)),
+    };
+    let quote = if value.contains('"') && !value.contains('\'') { '\'' } else { '"' };
+    let folded = atom(n, Data::String { value, quote, units });
+    let best = crate::size::best_of(crate::unary::first_in_statement(cx), &folded, n);
+    if Rc::ptr_eq(&best, n) { None } else { Some(folded) }
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Conditional)`.
@@ -3288,6 +3323,9 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
 fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
     match &n.data {
         Data::Number { value, .. } => Some(Lit::Num(*value)),
+        // A string with lone surrogates has no `String` value (`value` is
+        // lossy); `fold_surrogate_concat` folds its concatenations.
+        Data::String { units: Some(_), .. } => None,
         Data::String { value, .. } => Some(Lit::Str(value.clone())),
         Data::True => Some(Lit::Bool(true)),
         Data::False => Some(Lit::Bool(false)),
