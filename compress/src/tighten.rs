@@ -985,12 +985,16 @@ fn pre_scan(n: &N, st: &mut Scan<'_>) -> bool {
         }
     }
     if ref_name(n) == Some(st.cand.name.as_str())
-        && !is_write(n, parent)
         && !shadows(&st.parents, &st.cand.path, st.lvalues)
         && !st.inner_shadow
     {
         if st.stop_if_hit.is_some() {
             st.abort = true;
+            return false;
+        }
+        // terser `is_lhs(node, parent)`: a write of the name is returned as
+        // is, before the `stop_after` tests, and not descended.
+        if is_write(n, parent) {
             return false;
         }
         st.sites.push(ptr(n));
