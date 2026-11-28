@@ -1518,6 +1518,25 @@ fn empty(n: &N) -> N {
 
 /// keep: terser's `descend` / `do_list` edit the node in place (transform.js), and so does
 /// `tighten_body(self.body, ..)` in the block optimizers (index.js 703-741).
+/// terser `def_transform` stores each field as soon as its transform returns
+/// (`self.left = self.left.transform(tw)`; a list once the whole list is done), so while a
+/// later field is descended, `parent()` shows the earlier fields transformed: a sibling check
+/// such as `in_32_bit_context` reads `p.left` after its optimization. The stack tops that
+/// are `n` (same id) become `n` with the fields done so far; `transform` resets them after
+/// the descend.
+fn expose(cx: &mut Cx, n: &N, changed: bool, data: impl FnOnce() -> Data) {
+    if !changed {
+        return;
+    }
+    let partial = n.rebuild(data());
+    if let Some(top) = cx.parents.last_mut().filter(|t| t.id() == n.id()) {
+        *top = Rc::clone(&partial);
+    }
+    if let Some(top) = cx.stack.last_mut().filter(|t| t.id() == n.id()) {
+        *top = partial;
+    }
+}
+
 fn finish(orig: &N, data: Data, changed: bool) -> N {
     if !changed {
         Rc::clone(orig)
@@ -1732,18 +1751,21 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Labeled { label, body } => {
             let label_m = transform(label, cx);
+            expose(cx, n, !Rc::ptr_eq(&label_m, label), || Data::Labeled { label: Rc::clone(&label_m), body: Rc::clone(body) });
             let body_m = transform(body, cx);
             let c = !Rc::ptr_eq(&label_m, label) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::Labeled { label: label_m, body: body_m }, c)
         }
         Data::Do { body, cond } => {
             let body_m = transform(body, cx);
+            expose(cx, n, !Rc::ptr_eq(&body_m, body), || Data::Do { body: Rc::clone(&body_m), cond: Rc::clone(cond) });
             let cond_m = transform_bool(cond, cx);
             let c = !Rc::ptr_eq(&body_m, body) || !Rc::ptr_eq(&cond_m, cond);
             finish(n, Data::Do { body: body_m, cond: cond_m }, c)
         }
         Data::While { cond, body } => {
             let cond_m = transform_bool(cond, cx);
+            expose(cx, n, !Rc::ptr_eq(&cond_m, cond), || Data::While { cond: Rc::clone(&cond_m), body: Rc::clone(body) });
             let body_m = transform(body, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body);
             finish(n, Data::While { cond: cond_m, body: body_m }, c)
@@ -1753,9 +1775,12 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             cx.in_for_init = true;
             let (init, c1) = map_opt(init, cx);
             cx.in_for_init = prev;
+            expose(cx, n, c1, || Data::For { init: init.clone(), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) });
             let pushed = push_loop_bindings(init.as_ref(), cx);
             let (cond, c2) = map_opt_bool(cond, cx);
+            expose(cx, n, c1 || c2, || Data::For { init: init.clone(), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) });
             let (step, c3) = map_opt(step, cx);
+            expose(cx, n, c1 || c2 || c3, || Data::For { init: init.clone(), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) });
             let body_m = transform(body, cx);
             if pushed {
                 pop_loop_bindings(cx);
@@ -1770,7 +1795,11 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let init_m = transform(init, cx);
             cx.in_lhs = false;
             cx.in_for_init = prev;
+            let c1 = !Rc::ptr_eq(&init_m, init);
+            expose(cx, n, c1, || Data::ForIn { init: Rc::clone(&init_m), object: Rc::clone(object), body: Rc::clone(body) });
             let object_m = transform(object, cx);
+            let c2 = c1 || !Rc::ptr_eq(&object_m, object);
+            expose(cx, n, c2, || Data::ForIn { init: Rc::clone(&init_m), object: Rc::clone(&object_m), body: Rc::clone(body) });
             let pushed = push_loop_bindings(Some(&init_m), cx);
             let body_m = transform(body, cx);
             if pushed {
@@ -1786,7 +1815,11 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let init_m = transform(init, cx);
             cx.in_lhs = false;
             cx.in_for_init = prev;
+            let c1 = !Rc::ptr_eq(&init_m, init);
+            expose(cx, n, c1, || Data::ForOf { init: Rc::clone(&init_m), object: Rc::clone(object), body: Rc::clone(body), await_: *await_ });
             let object_m = transform(object, cx);
+            let c2 = c1 || !Rc::ptr_eq(&object_m, object);
+            expose(cx, n, c2, || Data::ForOf { init: Rc::clone(&init_m), object: Rc::clone(&object_m), body: Rc::clone(body), await_: *await_ });
             let pushed = push_loop_bindings(Some(&init_m), cx);
             let body_m = transform(body, cx);
             if pushed {
@@ -1797,6 +1830,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::With { expr, body } => {
             let expr_m = transform(expr, cx);
+            expose(cx, n, !Rc::ptr_eq(&expr_m, expr), || Data::With { expr: Rc::clone(&expr_m), body: Rc::clone(body) });
             let prev = cx.in_with;
             cx.in_with = true;
             let body_m = transform(body, cx);
@@ -1806,7 +1840,10 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::If { cond, body, alt } => {
             let cond_m = transform_bool(cond, cx);
+            let c1 = !Rc::ptr_eq(&cond_m, cond);
+            expose(cx, n, c1, || Data::If { cond: Rc::clone(&cond_m), body: Rc::clone(body), alt: alt.clone() });
             let body_m = transform(body, cx);
+            expose(cx, n, c1 || !Rc::ptr_eq(&body_m, body), || Data::If { cond: Rc::clone(&cond_m), body: Rc::clone(&body_m), alt: alt.clone() });
             let (alt, c3) = map_opt(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body) || c3;
             finish(n, Data::If { cond: cond_m, body: body_m, alt }, c)
@@ -1814,12 +1851,14 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         Data::Switch { expr, body } => {
             let expr_m = transform(expr, cx);
             let c1 = !Rc::ptr_eq(&expr_m, expr);
+            expose(cx, n, c1, || Data::Switch { expr: Rc::clone(&expr_m), body: body.clone() });
             let (body, c2) = map_list(body, cx);
             finish(n, Data::Switch { expr: expr_m, body }, c1 || c2)
         }
         Data::Case { expr, body } => {
             let expr_m = transform(expr, cx);
             let c1 = !Rc::ptr_eq(&expr_m, expr);
+            expose(cx, n, c1, || Data::Case { expr: Rc::clone(&expr_m), body: body.clone() });
             let (body, c2) = map_list(body, cx);
             finish(n, Data::Case { expr: expr_m, body }, c1 || c2)
         }
@@ -1829,13 +1868,17 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Try { body, catch, finally } => {
             let body_m = transform_block(body, cx);
+            let c1 = !Rc::ptr_eq(&body_m, body);
+            expose(cx, n, c1, || Data::Try { body: Rc::clone(&body_m), catch: catch.clone(), finally: finally.clone() });
             let (catch, c2) = map_opt(catch, cx);
+            expose(cx, n, c1 || c2, || Data::Try { body: Rc::clone(&body_m), catch: catch.clone(), finally: finally.clone() });
             let (finally, c3) = map_opt(finally, cx);
             let c = !Rc::ptr_eq(&body_m, body) || c2 || c3;
             finish(n, Data::Try { body: body_m, catch, finally }, c)
         }
         Data::Catch { arg, body } => {
             let (arg, c1) = map_opt(arg, cx);
+            expose(cx, n, c1, || Data::Catch { arg: arg.clone(), body: Rc::clone(body) });
             let body_m = transform_block(body, cx);
             let c2 = !Rc::ptr_eq(&body_m, body);
             finish(n, Data::Catch { arg, body: body_m }, c1 || c2)
@@ -1855,18 +1898,24 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         Data::VarDef { name, value } => {
             let name_m = transform(name, cx);
             let c1 = !Rc::ptr_eq(&name_m, name);
+            expose(cx, n, c1, || Data::VarDef { name: Rc::clone(&name_m), value: value.clone() });
             let (value, c2) = map_opt(value, cx);
             finish(n, Data::VarDef { name: name_m, value }, c1 || c2)
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let (name, c1) = map_opt(name, cx);
+            let func = |name: &Option<N>, args: &[N]| Data::Func { kind: *kind, name: name.clone(), args: args.to_vec(), body: body.clone(), async_: *async_, generator: *generator };
+            expose(cx, n, c1, || func(&name, args));
             let (args, c2) = map_list(args, cx);
+            expose(cx, n, c1 || c2, || func(&name, &args));
             let (body, c3) = map_list(body, cx);
             finish(n, Data::Func { kind: *kind, name, args, body, async_: *async_, generator: *generator }, c1 || c2 || c3)
         }
         Data::Class { stmt, name, extends, props } => {
             let (name, c1) = map_opt(name, cx);
+            expose(cx, n, c1, || Data::Class { stmt: *stmt, name: name.clone(), extends: extends.clone(), props: props.clone() });
             let (extends, c2) = map_opt(extends, cx);
+            expose(cx, n, c1 || c2, || Data::Class { stmt: *stmt, name: name.clone(), extends: extends.clone(), props: props.clone() });
             let (props, c3) = map_list(props, cx);
             finish(n, Data::Class { stmt: *stmt, name, extends, props }, c1 || c2 || c3)
         }
@@ -1921,6 +1970,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::NameMap { foreign, name } => {
             let foreign_m = transform(foreign, cx);
+            expose(cx, n, !Rc::ptr_eq(&foreign_m, foreign), || Data::NameMap { foreign: Rc::clone(&foreign_m), name: Rc::clone(name) });
             let name_m = transform(name, cx);
             let c = !Rc::ptr_eq(&foreign_m, foreign) || !Rc::ptr_eq(&name_m, name);
             finish(n, Data::NameMap { foreign: foreign_m, name: name_m }, c)
@@ -1935,6 +1985,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Prop { method, key, value, static_, private, generator, async_ } => {
             let (key, c1) = map_key(key, cx);
+            expose(cx, n, c1, || Data::Prop { method: *method, key: key.clone(), value: Rc::clone(value), static_: *static_, private: *private, generator: *generator, async_: *async_ });
             let value_m = transform(value, cx);
             let c2 = !Rc::ptr_eq(&value_m, value);
             finish(
@@ -1945,6 +1996,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Field { key, value, static_, private } => {
             let (key, c1) = map_key(key, cx);
+            expose(cx, n, c1, || Data::Field { key: key.clone(), value: value.clone(), static_: *static_, private: *private });
             let (value, c2) = map_opt(value, cx);
             finish(n, Data::Field { key, value, static_: *static_, private: *private }, c1 || c2)
         }
@@ -1968,6 +2020,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Sub { expr, prop, optional } => {
             let expr_m = transform(expr, cx);
+            expose(cx, n, !Rc::ptr_eq(&expr_m, expr), || Data::Sub { expr: Rc::clone(&expr_m), prop: Rc::clone(prop), optional: *optional });
             let prop_m = transform(prop, cx);
             let c = !Rc::ptr_eq(&expr_m, expr) || !Rc::ptr_eq(&prop_m, prop);
             finish(n, Data::Sub { expr: expr_m, prop: prop_m, optional: *optional }, c)
@@ -1988,6 +2041,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
                 }
                 None => args.as_slice(),
             };
+            expose(cx, n, c1, || Data::Call { expr: Rc::clone(&expr_m), args: args.to_vec(), optional: *optional, is_new: *is_new });
             let (args, c2) = map_list(args, cx);
             finish(n, Data::Call { expr: expr_m, args, optional: *optional, is_new: *is_new }, c1 || c2)
         }
@@ -2017,6 +2071,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
                 cx.eq_cmp = false;
             }
             let left_m = transform(left, cx);
+            expose(cx, n, !Rc::ptr_eq(&left_m, left), || Data::Binary { op: op.clone(), left: Rc::clone(&left_m), right: Rc::clone(right) });
             let right_m = transform(right, cx);
             cx.in_bool = old_bool;
             cx.eq_cmp = old_eq;
@@ -2027,19 +2082,24 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             cx.in_lhs = true;
             let left_m = transform(left, cx);
             cx.in_lhs = false;
+            expose(cx, n, !Rc::ptr_eq(&left_m, left), || Data::Assign { op: op.clone(), left: Rc::clone(&left_m), right: Rc::clone(right), logical: *logical });
             let right_m = transform(right, cx);
             let c = !Rc::ptr_eq(&left_m, left) || !Rc::ptr_eq(&right_m, right);
             finish(n, Data::Assign { op: op.clone(), left: left_m, right: right_m, logical: *logical }, c)
         }
         Data::DefaultAssign { left, right } => {
             let left_m = transform(left, cx);
+            expose(cx, n, !Rc::ptr_eq(&left_m, left), || Data::DefaultAssign { left: Rc::clone(&left_m), right: Rc::clone(right) });
             let right_m = transform(right, cx);
             let c = !Rc::ptr_eq(&left_m, left) || !Rc::ptr_eq(&right_m, right);
             finish(n, Data::DefaultAssign { left: left_m, right: right_m }, c)
         }
         Data::Cond { cond, cons, alt } => {
             let cond_m = transform_bool(cond, cx);
+            let c1 = !Rc::ptr_eq(&cond_m, cond);
+            expose(cx, n, c1, || Data::Cond { cond: Rc::clone(&cond_m), cons: Rc::clone(cons), alt: Rc::clone(alt) });
             let cons_m = transform(cons, cx);
+            expose(cx, n, c1 || !Rc::ptr_eq(&cons_m, cons), || Data::Cond { cond: Rc::clone(&cond_m), cons: Rc::clone(&cons_m), alt: Rc::clone(alt) });
             let alt_m = transform(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&cons_m, cons) || !Rc::ptr_eq(&alt_m, alt);
             finish(n, Data::Cond { cond: cond_m, cons: cons_m, alt: alt_m }, c)
@@ -2059,6 +2119,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::TaggedTemplate { tag, template } => {
             let tag_m = transform(tag, cx);
+            expose(cx, n, !Rc::ptr_eq(&tag_m, tag), || Data::TaggedTemplate { tag: Rc::clone(&tag_m), template: Rc::clone(template) });
             let template_m = transform(template, cx);
             let c = !Rc::ptr_eq(&tag_m, tag) || !Rc::ptr_eq(&template_m, template);
             finish(n, Data::TaggedTemplate { tag: tag_m, template: template_m }, c)
@@ -2069,6 +2130,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::PrivateIn { key, value } => {
             let key_m = transform(key, cx);
+            expose(cx, n, !Rc::ptr_eq(&key_m, key), || Data::PrivateIn { key: Rc::clone(&key_m), value: Rc::clone(value) });
             let value_m = transform(value, cx);
             let c = !Rc::ptr_eq(&key_m, key) || !Rc::ptr_eq(&value_m, value);
             finish(n, Data::PrivateIn { key: key_m, value: value_m }, c)

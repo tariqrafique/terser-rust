@@ -738,11 +738,11 @@ fn in_boolean_context(cx: &Cx) -> bool {
 fn bool_root(parent: &N, node: &N) -> bool {
     match &parent.data {
         Data::Simple { .. } => true,
-        Data::Cond { cond, .. } if Rc::ptr_eq(cond, node) => true,
-        Data::Do { cond, .. } | Data::While { cond, .. } if Rc::ptr_eq(cond, node) => true,
-        Data::For { cond: Some(cond), .. } if Rc::ptr_eq(cond, node) => true,
-        Data::If { cond, .. } if Rc::ptr_eq(cond, node) => true,
-        Data::Unary { op, expr, prefix: true } if op == "!" && Rc::ptr_eq(expr, node) => true,
+        Data::Cond { cond, .. } if cond.id() == node.id() => true,
+        Data::Do { cond, .. } | Data::While { cond, .. } if cond.id() == node.id() => true,
+        Data::For { cond: Some(cond), .. } if cond.id() == node.id() => true,
+        Data::If { cond, .. } if cond.id() == node.id() => true,
+        Data::Unary { op, expr, prefix: true } if op == "!" && expr.id() == node.id() => true,
         _ => false,
     }
 }
@@ -751,7 +751,7 @@ fn bool_bubble(parent: &N, node: &N) -> bool {
     match &parent.data {
         Data::Binary { op, .. } if op == "&&" || op == "||" => true,
         Data::Cond { .. } => true,
-        Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, node)),
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| e.id() == node.id()),
         _ => false,
     }
 }
@@ -788,22 +788,22 @@ fn statement_body(parent: &N, node: &N) -> bool {
         | Data::If { body, .. }
         | Data::Try { body, .. }
         | Data::Finally { body }
-        | Data::Catch { body, .. } => Rc::ptr_eq(body, node),
+        | Data::Catch { body, .. } => body.id() == node.id(),
         _ => false,
     }
 }
 
 fn left_edge(parent: &N, node: &N) -> bool {
     match &parent.data {
-        Data::Seq { exprs } => exprs.first().is_some_and(|e| Rc::ptr_eq(e, node)),
-        Data::Call { expr, is_new: false, .. } => Rc::ptr_eq(expr, node),
-        Data::TaggedTemplate { tag, .. } => Rc::ptr_eq(tag, node),
-        Data::Dot { expr, .. } | Data::Sub { expr, .. } | Data::Chain { expr } => Rc::ptr_eq(expr, node),
-        Data::Cond { cond, .. } => Rc::ptr_eq(cond, node),
+        Data::Seq { exprs } => exprs.first().is_some_and(|e| e.id() == node.id()),
+        Data::Call { expr, is_new: false, .. } => expr.id() == node.id(),
+        Data::TaggedTemplate { tag, .. } => tag.id() == node.id(),
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } | Data::Chain { expr } => expr.id() == node.id(),
+        Data::Cond { cond, .. } => cond.id() == node.id(),
         Data::Binary { left, .. } | Data::Assign { left, .. } | Data::DefaultAssign { left, .. } => {
-            Rc::ptr_eq(left, node)
+            left.id() == node.id()
         }
-        Data::Unary { expr, prefix: false, .. } => Rc::ptr_eq(expr, node),
+        Data::Unary { expr, prefix: false, .. } => expr.id() == node.id(),
         _ => false,
     }
 }

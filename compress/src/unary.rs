@@ -292,11 +292,11 @@ pub(crate) fn in_boolean_context(cx: &Cx) -> bool {
 fn bool_stop(p: &N, self_n: &N) -> bool {
     match &p.data {
         Data::Simple { .. } => true,
-        Data::Cond { cond, .. } if Rc::ptr_eq(cond, self_n) => true,
-        Data::Do { cond, .. } | Data::While { cond, .. } if Rc::ptr_eq(cond, self_n) => true,
-        Data::For { cond: Some(cond), .. } if Rc::ptr_eq(cond, self_n) => true,
-        Data::If { cond, .. } if Rc::ptr_eq(cond, self_n) => true,
-        Data::Unary { op, expr, prefix: true } if op == "!" && Rc::ptr_eq(expr, self_n) => true,
+        Data::Cond { cond, .. } if cond.id() == self_n.id() => true,
+        Data::Do { cond, .. } | Data::While { cond, .. } if cond.id() == self_n.id() => true,
+        Data::For { cond: Some(cond), .. } if cond.id() == self_n.id() => true,
+        Data::If { cond, .. } if cond.id() == self_n.id() => true,
+        Data::Unary { op, expr, prefix: true } if op == "!" && expr.id() == self_n.id() => true,
         _ => false,
     }
 }
@@ -305,7 +305,7 @@ fn bool_propagate(p: &N, self_n: &N) -> bool {
     match &p.data {
         Data::Binary { op, .. } if op == "&&" || op == "||" => true,
         Data::Cond { .. } => true,
-        Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, self_n)),
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| e.id() == self_n.id()),
         _ => false,
     }
 }
@@ -325,7 +325,7 @@ pub(crate) fn in_32_bit_context_of(cx: &Cx, other_number: bool) -> bool {
         if let Data::Binary { op, left, right } = &p.data {
             if bitwise_binop(op) {
                 if other_number {
-                    let other = if Rc::ptr_eq(left, &self_n) { right } else { left };
+                    let other = if left.id() == self_n.id() { right } else { left };
                     return is_number(other);
                 }
                 return true;
@@ -335,9 +335,9 @@ pub(crate) fn in_32_bit_context_of(cx: &Cx, other_number: bool) -> bool {
             return op == "~";
         }
         let propagate = match &p.data {
-            Data::Binary { op, right, .. } if matches!(op.as_str(), "&&" | "||" | "??") && Rc::ptr_eq(right, &self_n) => true,
-            Data::Cond { cond, .. } if !Rc::ptr_eq(cond, &self_n) => true,
-            Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, &self_n)),
+            Data::Binary { op, right, .. } if matches!(op.as_str(), "&&" | "||" | "??") && right.id() == self_n.id() => true,
+            Data::Cond { cond, .. } if cond.id() != self_n.id() => true,
+            Data::Seq { exprs } => exprs.last().is_some_and(|e| e.id() == self_n.id()),
             _ => false,
         };
         if propagate {
