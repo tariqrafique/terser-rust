@@ -668,7 +668,11 @@ fn define(
         table.bind_def(node, id);
         table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
         table.defs[id].lexical |= matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using);
-        if table.defs[id].init.is_none() {
+        // terser `def_function`: a later declaration replaces an `AST_Defun`
+        // init (`if (!def.init || def.init instanceof AST_Defun)`), so the last
+        // `function g` in source order is the fixed value.
+        let defun_init = matches!(table.defs[id].init.as_ref().map(|i| &i.data), Some(Data::Func { kind: ast::FuncKind::Decl, .. }));
+        if table.defs[id].init.is_none() || (kind == SymKind::Defun && defun_init) {
             table.defs[id].init = init;
         }
         return;
