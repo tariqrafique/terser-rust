@@ -371,7 +371,9 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                     Data::Simple { body } => Rc::clone(body),
                     _ => l,
                 });
-                out.push(node(n, Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
+                // The body is rewritten too (its definitions are this scope's).
+                let body = one(body, table, u, scope_id, drop_vars);
+                out.push(node(n, Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body }));
                 return;
             }
         }
