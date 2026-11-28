@@ -1422,12 +1422,8 @@ fn retain_top(at: &At, func: &N) -> bool {
     sym_str(name).as_deref() == Some(keep)
 }
 
-fn scope_is_inlined(table: &SymTable, func: &N) -> bool {
-    table
-        .node_scope
-        .get(&syms::ptr(func))
-        .copied()
-        .is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
+pub(crate) fn scope_is_inlined(table: &SymTable, func: &N) -> bool {
+    table.scope_lookup(&syms::ptr(func)).is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
 }
 
 fn mark_inlined(table: &SymTable, mut scope: Option<usize>) {

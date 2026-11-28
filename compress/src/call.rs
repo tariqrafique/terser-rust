@@ -304,6 +304,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         && cx.opts.unused
         && def_flag(_expr_of(n), cx, |d| d.references.len() == 1 && d.recursive_refs == 0)
         && !inside_own_lambda(_expr_of(n), func, cx)
+        && !cx.syms.as_ref().is_some_and(|t| crate::reduce_vars::scope_is_inlined(t, func))
         && !free_ref_shadowed(func, cx);
     if !direct && !ann.inline_ && !single_ref {
         return None;
