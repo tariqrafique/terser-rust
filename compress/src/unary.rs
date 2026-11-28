@@ -621,6 +621,10 @@ fn drop_assign(n: &N, logical: bool, left: &N, right: &N, cx: &Cx, first: bool) 
     if logical {
         return Some(Rc::clone(n));
     }
+    // An `AST_Constant` target has no side effects and is a constant expression.
+    if crate::eval::global_atom_ref(left, cx) {
+        return drop_side_effect_free(right, cx, first);
+    }
     let strict_const = cx.lookup("use strict").is_some()
         && matches!(&left.data, Data::Dot { expr, .. } | Data::Sub { expr, .. } if crate::eval::is_constant(expr));
     if may_side_effect(left, cx) || strict_const {

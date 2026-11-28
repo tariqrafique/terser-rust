@@ -512,6 +512,17 @@ fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
     None
 }
 
+/// terser `def_optimize(AST_SymbolRef)` on an assignment target: an undeclared
+/// `undefined`, `NaN` or `Infinity` outside `with` becomes the atom (`AST_Undefined`,
+/// `AST_NaN`, `AST_Infinity`, kept as is there by `is_atomic`), an `AST_Constant`. The
+/// port keeps the reference; this says it stands for that atom.
+pub(crate) fn global_atom_ref(n: &N, cx: &Cx) -> bool {
+    let Data::Symbol { name, kind: ast::SymKind::Ref, .. } = &n.data else {
+        return false;
+    };
+    matches!(name.as_str(), "undefined" | "NaN" | "Infinity") && !cx.opts.ie8 && is_undeclared_ref(n, name, cx) && !inside_with(cx)
+}
+
 /// terser `inference.js` `is_undeclared_ref`.
 fn is_undeclared_ref(n: &N, name: &str, cx: &Cx) -> bool {
     if let Some(table) = &cx.syms {
@@ -3602,7 +3613,12 @@ fn eval_at(n: &N, table: Option<&SymTable>, depth: u32) -> Option<Lit> {
             }
             let l = eval_at(left, table, depth)?;
             let r = eval_at(right, table, depth)?;
-            eval_bin(op, l, r)
+            let result = eval_bin(op, l, r)?;
+            // "leave original expression as is": a `NaN` result inside `with`.
+            if matches!(result, Lit::Num(v) if v.is_nan()) && EVAL_IN_WITH.with(|w| w.get()) {
+                return None;
+            }
+            Some(result)
         }
         Data::Cond { cond, cons, alt } => {
             let c = eval_at(cond, table, depth)?;
@@ -3678,7 +3694,21 @@ fn canonical_flags(flags: &str) -> String {
 /// terser `AST_Node._eval`, with references evaluated through their fixed values
 /// (`reduce_vars`).
 fn eval_raw(n: &N, cx: &Cx) -> Option<Lit> {
-    eval_in(n, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars))
+    with_eval_stack(&cx.parents, || eval_in(n, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars)))
+}
+
+thread_local! {
+    /// `compressor.find_parent(AST_With)` for the evaluation running now.
+    static EVAL_IN_WITH: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs an evaluation under the compressor stack `stack` (`find_parent(AST_With)`).
+fn with_eval_stack<T>(stack: &[N], f: impl FnOnce() -> T) -> T {
+    let inside = stack.iter().any(|p| matches!(p.data, Data::With { .. }));
+    let saved = EVAL_IN_WITH.with(|w| w.replace(inside));
+    let out = f();
+    EVAL_IN_WITH.with(|w| w.set(saved));
+    out
 }
 
 /// terser `AST_Node.evaluate(compressor)`: `_eval`, except that a string longer than
@@ -3689,7 +3719,7 @@ fn eval(n: &N, cx: &Cx) -> Option<Lit> {
 
 /// terser `AST_Node.evaluate(compressor)` with the compressor's stack `stack`.
 pub(crate) fn eval_lit(n: &N, table: Option<&SymTable>, stack: &[N]) -> Option<Lit> {
-    let lit = eval_in(n, table)?;
+    let lit = with_eval_stack(stack, || eval_in(n, table))?;
     if let Lit::Str(s) = &lit {
         if utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
             return None;
@@ -3870,14 +3900,8 @@ fn prefer(orig: &N, folded: N, cx: &Cx) -> N {
 pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
     match lit {
         Lit::Num(n) if n.is_nan() => nan_node(orig, cx),
-        Lit::Num(n) if n.is_infinite() => {
-            if cx.shadowed("Infinity") {
-                let node = atom(orig, Data::Infinity);
-                if n.is_sign_negative() { unary(orig, "-", node) } else { node }
-            } else {
-                infinity(orig, n.is_sign_negative())
-            }
-        }
+        // `make_node(AST_Infinity).optimize(compressor)`: `1/0` unless `keep_infinity`.
+        Lit::Num(n) if n.is_infinite() => infinity(orig, n.is_sign_negative()),
         Lit::Num(n) if n == 0.0 && n.is_sign_negative() => unary(orig, "-", num(orig, 0.0)),
         Lit::Num(n) => num(orig, n),
         Lit::Str(s) => string(orig, s),
