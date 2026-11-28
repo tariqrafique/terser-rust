@@ -213,15 +213,28 @@ fn optimize_default_assign(n: &N, cx: &Cx) -> Option<N> {
     let Data::DefaultAssign { left, right } = &n.data else {
         return None;
     };
-    if !is_undefined_value(right, cx) {
+    let lit = eval(right, cx)?;
+    if matches!(lit, Lit::Undef) {
+        // `[x = undefined] = foo` to `[x] = foo`. A parameter keeps its
+        // default (`keep_fargs` is on) unless its lambda is an IIFE's callee.
+        let keep = match cx.parent() {
+            Some(lambda) if matches!(lambda.data, Data::Func { .. }) => {
+                let len = cx.parents.len();
+                let iife = if len >= 3 { cx.parents.get(len - 3) } else { None };
+                !iife.is_some_and(|c| matches!(&c.data, Data::Call { expr, is_new: false, .. } if expr.id() == lambda.id()))
+            }
+            _ => false,
+        };
+        return (!keep).then(|| Rc::clone(left));
+    }
+    // `self.right = best_of_expression(make_node_from_constant(..), self.right)`.
+    let folded = lit_node(right, lit, cx);
+    let best = crate::size::best_of_expression(&folded, right);
+    if Rc::ptr_eq(&best, right) {
         return None;
     }
-    // Default `keep_fargs` is on, so a parameter `= undefined` stays unless
-    // this is not a parameter (a destructuring default).
-    if cx.parent().is_some_and(|p| matches!(p.data, Data::Func { .. })) {
-        return None;
-    }
-    Some(Rc::clone(left))
+    // keep: `self.right = ..` (index.js 3141).
+    Some(edit(n, Data::DefaultAssign { left: Rc::clone(left), right: best }))
 }
 
 /// terser `def_optimize(AST_VarDef)`.
@@ -3392,8 +3405,9 @@ fn eval(n: &N, cx: &Cx) -> Option<Lit> {
 /// terser `AST_Node.evaluate(compressor)` with the compressor's stack `stack`.
 pub(crate) fn eval_lit(n: &N, table: Option<&SymTable>, stack: &[N]) -> Option<Lit> {
     let lit = eval_in(n, table)?;
+    // `if (!val ...) return val` comes first: `""` skips the size check.
     if let Lit::Str(s) = &lit {
-        if utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
+        if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
             return None;
         }
     }
@@ -3662,7 +3676,7 @@ pub(crate) fn best_constant(n: &N, cx: &Cx) -> Option<N> {
 fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
     if let Lit::Str(s) = &lit {
         // `evaluate`: `val.length + 2 > this.size(compressor)`; the stack's top is `this`.
-        if utf16_len(s) + 2 > crate::size::size_in(orig, std::slice::from_ref(orig), true) {
+        if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(orig, std::slice::from_ref(orig), true) {
             return None;
         }
     }
@@ -3753,6 +3767,23 @@ pub(crate) fn set_mangled_symbols(set: ast::IdSet) {
 pub(crate) fn set_known_symbols(set: ast::IdSet, new_mangled: bool) {
     KNOWN.with(|k| *k.borrow_mut() = set);
     NEW_MANGLED.with(|c| c.set(new_mangled));
+}
+
+/// A copy that keeps its definition (terser `clone(true)` keeps `thedef`)
+/// has that definition's `unmangleable`, so it counts as its original does.
+pub(crate) fn copy_mangled(from: ast::NodeId, to: ast::NodeId) {
+    MANGLED.with(|m| {
+        let mut m = m.borrow_mut();
+        if m.contains(&from) {
+            m.insert(to);
+        }
+    });
+    KNOWN.with(|k| {
+        let mut k = k.borrow_mut();
+        if k.contains(&from) {
+            k.insert(to);
+        }
+    });
 }
 
 pub(crate) fn mangled_size(n: &N) -> bool {

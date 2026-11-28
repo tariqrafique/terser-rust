@@ -746,6 +746,7 @@ impl SymTable {
     pub fn copy_binding(&self, from: &N, to: &N) {
         if let Some(d) = self.def_of(from) {
             self.bind_def(to, d);
+            crate::eval::copy_mangled(from.id(), to.id());
         }
         if let Some(s) = self.scope_of(from) {
             self.bind_scope(to, s);
