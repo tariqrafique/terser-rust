@@ -667,6 +667,11 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
                 if let Some(defs) = table.scope_defs.get(&id) {
                     taken.extend(defs.iter().map(|&d| table.defs[d].name.clone()));
                 }
+                // `append_var` adds a flattened call's names to that scope's
+                // `variables`.
+                if let Some(names) = cx.injected.borrow().get(&(id | (1 << 60))) {
+                    taken.extend(names.iter().cloned());
+                }
             }
         }
         None => {
