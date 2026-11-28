@@ -148,7 +148,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return None;
     }
     use crate::eval::Lit;
-    let lit = if is_literal(&fixed) { None } else { crate::eval::eval_lit(&fixed).or_else(|| eval_num(&fixed).map(Lit::Num)) };
+    let lit = if is_literal(&fixed) { None } else { crate::eval::eval_lit(&fixed, Some(table), at.parents).or_else(|| eval_num(&fixed).map(Lit::Num)) };
     // terser compares `replace.size(compressor)` and `fixed.size(compressor)`: mangled names
     // count 1, and the stack's top is this reference.
     let size = |node: &N| crate::size::size_in(node, std::slice::from_ref(n), true);
@@ -194,19 +194,6 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return Some(replace);
     }
     None
-}
-
-/// terser `evaluate.js` `AST_SymbolRef._eval`: the evaluated `fixed_value()`
-/// of a reference, or `None` when it has none or it does not evaluate.
-pub fn fixed_eval(n: &N, table: &SymTable) -> Option<crate::eval::Lit> {
-    let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
-    let id = table.def_of(n)?;
-    let def = &table.defs[id];
-    if def.suppress_fixed.get() {
-        return None;
-    }
-    let fixed = def.fixed.as_ref()?;
-    crate::eval::eval_lit(fixed).or_else(|| eval_num(fixed).map(crate::eval::Lit::Num))
 }
 
 /// Numeric value of a fixed constant expression. terser `evaluate.js` for `+`, `-`, and arithmetic.
@@ -328,6 +315,11 @@ fn walk(n: &N, tw: &mut Tw) {
             tw.in_loop = tw.in_loop.saturating_add(1);
             push(tw);
             walk(body, tw);
+            // A `break` / `continue` may skip the marks the body made.
+            if has_break_or_continue(n) {
+                pop(tw);
+                push(tw);
+            }
             walk(cond, tw);
             pop(tw);
             tw.in_loop = saved;
@@ -345,6 +337,10 @@ fn walk(n: &N, tw: &mut Tw) {
             }
             walk(body, tw);
             if let Some(step) = step {
+                if has_break_or_continue(n) {
+                    pop(tw);
+                    push(tw);
+                }
                 walk(step, tw);
             }
             pop(tw);
@@ -429,19 +425,29 @@ fn walk(n: &N, tw: &mut Tw) {
                 // `safe_to_assign` rejects `const` (its `orig` is `AST_SymbolConst`):
                 // `const n=1; return n=2, n` keeps the read as `n`.
                 let safe = !*logical
-                    && op == "="
                     && tw.conditional_var == 0
                     && !tw.table.defs[id].is_const
                     && safe_to_assign(tw, id);
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
-                if safe {
-                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(Rc::clone(right));
+                // `if (!fixed && node.operator != "=" && !node.logical) return finish_walk()`.
+                let prev = if op == "=" { None } else { tw.table.defs[id].fixed.clone() };
+                if safe && (op == "=" || prev.is_some()) {
+                    // A compound assignment's value is `old fixed <op> right`
+                    // (`make_node(AST_Binary, node, ...)`); it escapes as the assignment itself.
+                    let (value, escaped) = match prev {
+                        None => (Rc::clone(right), Rc::clone(right)),
+                        Some(old) => (
+                            span_node(n, Data::Binary { op: op[..op.len() - 1].into(), left: old, right: Rc::clone(right) }),
+                            Rc::clone(n),
+                        ),
+                    };
+                    tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(value);
                     tw.table.defs[id].references.push(left.id());
                     mark(tw, id, false);
                     walk(right, tw);
                     mark(tw, id, true);
                     // terser `reduce-vars.js` `AST_Assign`: the assignment expression can escape.
-                    mark_escaped(tw, id, n, Some(Rc::clone(right)), 0, 1, ref_scope(tw, 0));
+                    mark_escaped(tw, id, n, Some(escaped), 0, 1, ref_scope(tw, 0));
                     done = true;
                 } else {
                     // The left-hand reference is modified, which clears `fixed`.
@@ -1294,6 +1300,34 @@ fn sym_str(n: &N) -> Option<String> {
         Data::Symbol { name, .. } => Some(name.clone()),
         _ => None,
     }
+}
+
+/// terser `common.js` `has_break_or_continue(loop)` (no parent): a `break` or `continue`
+/// in the body whose `loopcontrol_target` is the loop, outside nested scopes.
+fn has_break_or_continue(lp: &N) -> bool {
+    fn rec(n: &N, stack: &mut Vec<N>, lp: &N) -> bool {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } => return false,
+            Data::Break { .. } | Data::Continue { .. } => {
+                return crate::loops::loop_target(n, stack).is_some_and(|t| t.id() == lp.id());
+            }
+            _ => {}
+        }
+        stack.push(Rc::clone(n));
+        let mut found = false;
+        ast::walk_children(n, &mut |c| {
+            if !found {
+                found = rec(c, stack, lp);
+            }
+        });
+        stack.pop();
+        found
+    }
+    let body = match &lp.data {
+        Data::Do { body, .. } | Data::For { body, .. } | Data::While { body, .. } => body,
+        _ => return false,
+    };
+    rec(body, &mut vec![Rc::clone(lp)], lp)
 }
 
 fn contains_break(n: &N) -> bool {

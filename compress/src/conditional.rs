@@ -36,7 +36,7 @@ fn opt_cond(n: &N, cx: &Cx, depth: u32) -> Option<N> {
         }
     }
     if cx.opts.evaluate {
-        if let Some(truthy) = eval::known_truth(cond) {
+        if let Some(truthy) = eval::known_truth(cond, cx) {
             let branch = if truthy { Rc::clone(cons) } else { Rc::clone(alt) };
             return Some(maintain_this_binding(cx, branch));
         }
@@ -161,7 +161,7 @@ fn reopt(n: N, cx: &Cx, depth: u32) -> N {
     match &n.data {
         Data::Cond { .. } => opt_cond(&n, cx, depth).unwrap_or(n),
         Data::Seq { .. } => optimize_sequence(n, cx, depth),
-        Data::Binary { op, .. } if matches!(op.as_str(), "&&" | "||" | "??") => fold_lazy(n),
+        Data::Binary { op, .. } if matches!(op.as_str(), "&&" | "||" | "??") => fold_lazy(n, cx),
         _ => n,
     }
 }
@@ -214,11 +214,11 @@ impl SpanNode for N {
     }
 }
 
-fn fold_lazy(n: N) -> N {
+fn fold_lazy(n: N, cx: &Cx) -> N {
     let Data::Binary { op, left, right } = &n.data else {
         return n;
     };
-    let Some(truthy) = eval::known_truth(left) else {
+    let Some(truthy) = eval::known_truth(left, cx) else {
         return n;
     };
     match op.as_str() {
