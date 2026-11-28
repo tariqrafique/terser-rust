@@ -664,9 +664,9 @@ pub fn drop_replaced(root: &N, table: &SymTable, unused: bool) -> N {
 
 fn drop_node(n: &N, table: &SymTable) -> N {
     match &n.data {
-        Data::Toplevel { body } => node(n, Data::Toplevel { body: drop_list(body, table) }),
-        Data::Block { body } => node(n, Data::Block { body: drop_list(body, table) }),
-        Data::Func { kind, name, args, body, async_, generator } => node(
+        Data::Toplevel { body } => renode(n, Data::Toplevel { body: drop_list(body, table) }),
+        Data::Block { body } => renode(n, Data::Block { body: drop_list(body, table) }),
+        Data::Func { kind, name, args, body, async_, generator } => renode(
             n,
             Data::Func {
                 kind: *kind,
@@ -686,7 +686,7 @@ fn drop_node(n: &N, table: &SymTable) -> N {
             if defs.is_empty() {
                 return node(n, Data::Empty);
             }
-            node(n, Data::Defs { kind: *kind, defs, await_: *await_ })
+            renode(n, Data::Defs { kind: *kind, defs, await_: *await_ })
         }
         other => {
             // Rebuild only the containers that hold statements. Expressions keep
@@ -757,9 +757,15 @@ fn map_drop(n: &N, table: &SymTable) -> N {
         Data::Seq { exprs } => Data::Seq { exprs: exprs.iter().map(go).collect() },
         _ => return Rc::clone(n),
     };
-    node(n, data)
+    renode(n, data)
 }
 
 fn node(orig: &N, data: Data) -> N {
     Node::make(orig, data)
+}
+
+/// keep: `drop_replaced` is a port-only filter over the same statements (drop_unused edits
+/// `definitions` in place too, du 391).
+fn renode(orig: &N, data: Data) -> N {
+    orig.rebuild(data)
 }
