@@ -98,7 +98,13 @@ Known gaps worth the next pass:
 - lwc-rollup bundles: remaining differences in the LWC engine code shift the mangler's character frequencies, so many bundles differ only in names.
 - A `var` injected by `flatten_fn` is not in the `reduce_vars` table, so `collapse` uses current counts for it where terser has the parameter's references (`inline/issue_308`).
 - `arrow/issue_2136_2` (rest parameter in an IIFE), `drop_console`, `unsafe_Function`.
+- The compressor's `syms::bind` defines only plain-identifier bindings. Destructured
+  and defaulted parameters and `var`/`let`/`const` patterns stay undeclared there;
+  `read_is_pure` falls back to the scope stack. Defining them outright regressed 57
+  cases, since callers rely on the gap.
 
 Optimize-once board: `tighten_body` (`after_descend`) is skipped for a node that is already `OPTIMIZED`, as terser's `def_optimize` is. A node terser `.optimize()`s where it is made (an inlined lambda not yet optimized, a switch-built block, a falsy-loop block) is in `Cx.pre_tighten`: its `tighten_body` runs once on the children as they are, before they are descended. Default 2610/3013 → 2615/3013, fixture unchanged.
 
 Copy board: an inlined lambda copy (terser `clone(true)`, made for a declaration or a cross-scope lambda) keeps its definitions through `SymTable.alias` / `alias_scope`, so references inside it still inline and scope checks see the right scope. `scope_encloses_variables_in_this_scope` guards every flatten. A `hoist`-rebuilt scope keeps its scope id. `drop_replaced` drops a global with `toplevel`. Default 2309/2671 compress (`block-scope/issue_334` now differs: a parameter read inside the copy is inlined where terser keeps it), fixture 1849.
+
+Scope-faithful drop board: `drop_unused` drops only declarations of the scope it runs on (drop-unused.js `if (scope !== self) return`). `hoist_props` keeps unchanged nodes and gives its new names definitions. A rebuilt function stays the `fixed` value. A node an optimizer just built is tightened at once (`.optimize()`), a flattened lone lambda included. The `+ ""` removal is ported, and the short-const-by-name shortcut is off when `reduce_vars` has symbols. Compress default 2337 → 2343/2671, lwc 314 → 316/339, lwc-rollup small inputs 9 → 6 failing of 111 under 60 KB.
