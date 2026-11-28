@@ -375,6 +375,21 @@ fn hoist(stmts: &[N], fn_scope: usize, scopes: &mut Vec<Scope>, table: &mut SymT
             }
             Data::Catch { body, .. } | Data::Finally { body } => hoist_node(body, fn_scope, scopes, table),
             Data::Export { definition: Some(def), .. } => hoist(std::slice::from_ref(def), fn_scope, scopes, table),
+            // terser `scope.def_variable(node)` for an `AST_SymbolImport`: the
+            // local name of every import is a module binding.
+            Data::Import { imported_name, imported_names, .. } => {
+                let mut locals: Vec<N> = imported_name.iter().cloned().collect();
+                for m in imported_names.iter().flatten() {
+                    if let Data::NameMap { name, .. } = &m.data {
+                        locals.push(Rc::clone(name));
+                    }
+                }
+                for local in locals {
+                    if let Data::Symbol { name, kind: SymKind::Import, .. } = &local.data {
+                        define(table, scopes, fn_scope, name.clone(), &local, SymKind::Import, None, false);
+                    }
+                }
+            }
             _ => {}
         }
     }
