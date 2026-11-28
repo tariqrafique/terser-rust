@@ -1553,7 +1553,7 @@ fn lambda_inline_ok(table: &SymTable, at: &At, id: usize, fixed: &N, sym: &N) ->
     if cross || funarg {
         let result = const_expr(fixed, table, sym_scope);
         if matches!(result, CExpr::Free) {
-            mark_inlined(table, sym_scope);
+            mark_inlined(table, sym_scope, at.parents);
         }
         return !matches!(result, CExpr::No);
     }
@@ -1567,17 +1567,33 @@ fn retain_top(at: &At, func: &N) -> bool {
 }
 
 fn scope_is_inlined(table: &SymTable, func: &N) -> bool {
-    table
-        .scope_of(func).as_ref()
-        .copied()
-        .is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
+    table.scope_of(func).as_ref().copied().is_some_and(|s| node_is_inlined(table, s, func))
 }
 
-fn mark_inlined(table: &SymTable, mut scope: Option<usize>) {
+/// terser `has_flag(fn, INLINED)`: the flag is on the nodes `mark_inlined` reached, not on
+/// a later copy of them (which shares the scope index here).
+fn node_is_inlined(table: &SymTable, scope: usize, func: &N) -> bool {
+    if !table.inlined_scopes.borrow().contains(&scope) {
+        return false;
+    }
+    match table.inlined_nodes.borrow().get(&scope) {
+        Some(ids) if !ids.is_empty() => ids.contains(&func.id()),
+        _ => true,
+    }
+}
+
+fn mark_inlined(table: &SymTable, mut scope: Option<usize>, parents: &[N]) {
     let mut flagged = table.inlined_scopes.borrow_mut();
+    let mut nodes = table.inlined_nodes.borrow_mut();
     while let Some(id) = scope {
         if id != 0 && table.fn_of.get(id).copied() == Some(id) {
             flagged.insert(id);
+            let list = nodes.entry(id).or_default();
+            for p in parents.iter().filter(|p| matches!(p.data, Data::Func { .. }) && table.scope_of(p) == Some(id)) {
+                if !list.contains(&p.id()) {
+                    list.push(p.id());
+                }
+            }
         }
         scope = table.scope_parent.get(id).copied().flatten();
     }
@@ -1863,7 +1879,7 @@ fn join_expr(a: CExpr, b: CExpr) -> CExpr {
 /// terser `inference.js` `all_refs_local`.
 fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
     let Some(&func_scope) = table.scope_of(func).as_ref() else { return CExpr::No };
-    if table.inlined_scopes.borrow().contains(&func_scope) {
+    if node_is_inlined(table, func_scope, func) {
         return CExpr::No;
     }
     let arrow = matches!(func.data, Data::Func { kind: FuncKind::Arrow, .. });

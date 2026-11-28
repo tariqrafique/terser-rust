@@ -95,6 +95,9 @@ pub struct SymTable {
     pub fixed_of_node: ast::IdMap<Vec<usize>>,
     /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
     pub inlined_scopes: RefCell<HashSet<usize>>,
+    /// The function nodes (by id) that carry terser's `INLINED` flag, per flagged scope:
+    /// a copy (`make_node`, `clone(true)`) shares the scope index but not the flag.
+    pub inlined_nodes: RefCell<HashMap<usize, Vec<NodeId>>>,
     /// Names `flatten_fn` added to a scope's `variables` (`append_var`), by
     /// scope id. Their definitions stay the callee's.
     pub injected_vars: RefCell<HashMap<usize, HashSet<String>>>,
@@ -165,6 +168,7 @@ pub fn bind_strict(root: &N, strict: bool) -> SymTable {
         scope_pinned: Vec::new(),
         fixed_of_node: ast::IdMap::default(),
         inlined_scopes: RefCell::new(HashSet::new()),
+        inlined_nodes: RefCell::new(HashMap::new()),
         injected_vars: RefCell::new(HashMap::new()),
         block_vars: ast::IdSet::default(),
         class_scopes: HashSet::new(),
