@@ -73,7 +73,17 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         }
     }
     let callee = trimmed_callee(expr, func.as_ref(), trimmed, resolved.direct);
-    finish_call(n, callee, &args, trimmed, spread)
+    let out = finish_call(n, callee, &args, trimmed, spread);
+    // `compressor.parent() instanceof AST_SimpleStatement && is_iife_call(self)`:
+    // `self.negate(compressor, true)` (inline.js 459-463). Only a call whose
+    // optimizer runs is negated; the statement's own optimizer then sees `!call`.
+    if cx.opts.negate_iife && cx.parent_is_simple() {
+        let call = out.clone().unwrap_or_else(|| Rc::clone(n));
+        if eval::is_iife_call(&call) {
+            return Some(eval::unary(&call, "!", call.clone()));
+        }
+    }
+    out
 }
 
 /// The `inline_call` trace event: the call as terser's `inline_into_call` sees it

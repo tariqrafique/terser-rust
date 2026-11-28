@@ -125,19 +125,17 @@ fn opt_table(n: &N, cx: &Cx) -> Option<N> {
 }
 
 fn optimize_simple(n: &N, cx: &Cx) -> Option<N> {
-    // terser negates in `def_optimize(AST_Call)` (the child), then this
-    // statement's `drop_side_effect_free` runs on `!call`.
-    let negated = if cx.opts.negate_iife { negate_iife(n) } else { None };
-    let cur = negated.clone().unwrap_or_else(|| Rc::clone(n));
+    // `negate_iife` is the child's (`call.rs`, `def_optimize(AST_Call)`); this
+    // statement's `drop_side_effect_free` then runs on `!call`.
     if cx.opts.side_effects {
-        if let Some(rewritten) = unwrap_void_statement(&cur, cx) {
+        if let Some(rewritten) = unwrap_void_statement(n, cx) {
             return Some(rewritten);
         }
-        if let Some(rewritten) = drop_statement(&cur, cx) {
+        if let Some(rewritten) = drop_statement(n, cx) {
             return Some(rewritten);
         }
     }
-    negated
+    None
 }
 
 /// terser `def_optimize(AST_UnaryPostfix)`: `lift_sequences`.
@@ -3079,23 +3077,6 @@ fn sequence(span: &N, exprs: Vec<N>) -> N {
         return exprs.into_iter().next().unwrap();
     }
     atom(span, Data::Seq { exprs })
-}
-
-/// terser `lib/compress/inline.js` `inline_into_call`.
-///
-/// `negate_iife` wraps a call whose parent is `AST_SimpleStatement`. The caller
-/// runs this only when the option is on. `expression` turns that statement into
-/// `return` before the passes, so the parent is not a simple statement and the
-/// call stays `(function(){...})()`.
-fn negate_iife(n: &N) -> Option<N> {
-    let Data::Simple { body } = &n.data else {
-        return None;
-    };
-    if !is_iife_call(body) {
-        return None;
-    }
-    // keep: the statement's `body` is replaced by `descend`; the negation is new (inline.js 462).
-    Some(edit(n, Data::Simple { body: unary(n, "!", Rc::clone(body)) }))
 }
 
 pub(crate) fn is_iife_call(n: &N) -> bool {
