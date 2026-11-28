@@ -524,6 +524,8 @@ fn process_expression(n: &N, insert: bool) -> N {
             };
             eval::simple(n, body)
         }
+        // keep below: `process_expression` edits `if` / `with` / block bodies in place
+        // (index.js 606-617).
         Data::Toplevel { body } => rewrite_completion(n, body, insert, |body| Data::Toplevel { body }),
         Data::Block { body } => rewrite_completion(n, body, insert, |body| Data::Block { body }),
         Data::If { cond, body, alt } => {
@@ -537,10 +539,7 @@ fn process_expression(n: &N, insert: bool) -> N {
             if Rc::ptr_eq(&body_m, body) && same_alt {
                 Rc::clone(n)
             } else {
-                eval::atom(
-                    n,
-                    Data::If { cond: Rc::clone(cond), body: body_m, alt: alt_m },
-                )
+                eval::edit(n, Data::If { cond: Rc::clone(cond), body: body_m, alt: alt_m })
             }
         }
         Data::With { expr, body } => {
@@ -548,7 +547,7 @@ fn process_expression(n: &N, insert: bool) -> N {
             if Rc::ptr_eq(&body_m, body) {
                 Rc::clone(n)
             } else {
-                eval::atom(n, Data::With { expr: Rc::clone(expr), body: body_m })
+                eval::edit(n, Data::With { expr: Rc::clone(expr), body: body_m })
             }
         }
         _ => Rc::clone(n),
@@ -565,7 +564,7 @@ fn rewrite_completion(n: &N, body: &[N], insert: bool, wrap: impl Fn(Vec<N>) -> 
     }
     let mut next = body.to_vec();
     *next.last_mut().unwrap() = last_m;
-    eval::atom(n, wrap(next))
+    eval::edit(n, wrap(next))
 }
 
 fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
@@ -641,11 +640,33 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         out
     };
     let _ = collapse_vars;
-    if unused {
-        drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs)
-    } else {
-        out
+    check_ids("transform", &out);
+    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs) } else { out };
+    check_ids("drop_unused", &out);
+    out
+}
+
+/// `ast::check_ids` on a pass's tree. An id on two nodes is a site that kept an id
+/// (`rebuild`) where terser makes a new object, or that kept the old version in the tree as
+/// well. Debug builds panic; `TERSER_CHECK_IDS=log` prints instead (in any build), and `=off`
+/// skips the check.
+fn check_ids(stage: &str, root: &N) {
+    let mode = std::env::var("TERSER_CHECK_IDS").unwrap_or_default();
+    if mode == "off" || (!cfg!(debug_assertions) && mode.is_empty()) {
+        return;
     }
+    let dups = ast::check_ids(root);
+    if dups.is_empty() {
+        return;
+    }
+    if mode == "log" {
+        for (id, a, b) in &dups {
+            eprintln!("check_ids {stage}: {id:?} on {a} and {b}");
+        }
+        return;
+    }
+    let (id, a, b) = dups[0];
+    panic!("check_ids after {stage}: {} ids on two nodes, first {id:?} on {a} and {b}", dups.len());
 }
 
 struct Cx {
@@ -1452,11 +1473,13 @@ fn empty(n: &N) -> N {
     Node::make(n, Data::Empty)
 }
 
+/// keep: terser's `descend` / `do_list` edit the node in place (transform.js), and so does
+/// `tighten_body(self.body, ..)` in the block optimizers (index.js 703-741).
 fn finish(orig: &N, data: Data, changed: bool) -> N {
     if !changed {
         Rc::clone(orig)
     } else {
-        Node::make(orig, data)
+        orig.rebuild(data)
     }
 }
 
@@ -1695,8 +1718,9 @@ fn var_into_for(stmts: Vec<N>) -> Vec<N> {
     for stat in stmts {
         if let Some(prev_stmt) = prev.take() {
             if let Data::For { init: None, cond, step, body } = &stat.data {
+                // keep: `stat.init = prev` (tb 1486).
                 let data = Data::For { init: Some(prev_stmt), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) };
-                out.push(Node::make(&stat, data));
+                out.push(stat.rebuild(data));
                 continue;
             }
             out.push(prev_stmt);
@@ -1720,8 +1744,9 @@ fn join_vars(stmts: Vec<N>) -> Vec<N> {
             if let Some(prev) = out.last_mut() {
                 let same = matches!(&prev.data, Data::Defs { kind: pk, await_: pa, .. } if pk == kind && pa == await_);
                 if same {
+                    // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1449).
                     if Rc::get_mut(prev).is_none() {
-                        *prev = Node::make(prev, prev.data.clone());
+                        *prev = prev.rebuild(prev.data.clone());
                     }
                     if let Data::Defs { defs: prev_defs, .. } = &mut Rc::get_mut(prev).unwrap().data {
                         prev_defs.extend(defs.iter().cloned());
@@ -1802,16 +1827,18 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
             let left = Rc::clone(left);
             if let Data::If { cond, body, alt } = &stat.data {
                 let cond = comma(left, Rc::clone(cond));
-                out.push(Node::make(&stat, Data::If { cond, body: Rc::clone(body), alt: alt.clone() }));
+                // keep: `sequencesize_2` sets `stat.condition` (tb 1341), and the same for the
+                // other statements below (tb 1315-1345).
+                out.push(stat.rebuild(Data::If { cond, body: Rc::clone(body), alt: alt.clone() }));
                 continue;
             }
             if let Data::Return { value } = &stat.data {
                 let right = value.clone().unwrap_or_else(|| eval_void(&stat));
-                out.push(Node::make(&stat, Data::Return { value: Some(comma(left, right)) }));
+                out.push(stat.rebuild(Data::Return { value: Some(comma(left, right)) }));
                 continue;
             }
             if let Data::Switch { expr, body } = &stat.data {
-                out.push(Node::make(&stat, Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() }));
+                out.push(stat.rebuild(Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() }));
                 continue;
             }
             if let Data::For { init, cond, step, body } = &stat.data {
@@ -1820,7 +1847,7 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
                         Some(init) => comma(left, Rc::clone(init)),
                         None => left,
                     });
-                    out.push(Node::make(&stat, Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
+                    out.push(stat.rebuild(Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
                     continue;
                 }
             }

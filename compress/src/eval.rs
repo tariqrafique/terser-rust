@@ -3651,8 +3651,14 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
     }
 }
 
+/// new: terser `make_node(X, orig, ..)`, a new node with `orig`'s span.
 pub(crate) fn atom(orig: &N, data: Data) -> N {
     Node::make(orig, data)
+}
+
+/// keep: terser edits `orig` in place (`self.x = ..; return self`). The same id and span.
+pub(crate) fn edit(orig: &N, data: Data) -> N {
+    orig.rebuild(data)
 }
 
 fn nan_node(orig: &N, cx: &Cx) -> N {
