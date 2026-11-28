@@ -62,7 +62,7 @@ terser locations are in `oracle/node_modules/terser/lib/compress/` unless a path
 
 Total: 236.
 
-T5 status (`PORT.md`, round 4): 38 of the 40 T5 cases pass, and lodash's `INFINITY` is inlined at every use. Left: `evaluate/bitwise_2` (B10: `(bar^0)^(baz|0)` keeps `0|baz` in terser because `in_32_bit_context` sees the already-optimized left sibling `bar`; the port's parent on the stack still holds `bar^0`, so the fix is in `lib.rs` `map_children`, which would have to update the parent as each child is replaced) and `asm/asm_mixed` (B28: the `use asm` half matches; the non-asm function differs in `drop_unused`, terser `var q,sum=0,p=0` where the port keeps `var sum=0,p=0,q=0`, T2).
+T5 status (`PORT.md`, round 4): 38 of the 40 T5 cases pass, and lodash's `INFINITY` is inlined at every use. Left: `evaluate/bitwise_2` (B10: `(bar^0)^(baz|0)` keeps `0|baz` in terser because `in_32_bit_context` sees the already-optimized left sibling `bar`; the port's parent on the stack still holds `bar^0`, so the fix is in `lib.rs` `map_children`, which would have to update the parent as each child is replaced) and `asm/asm_mixed` (B28: the `use asm` half matches; the non-asm function differs in `drop_unused`, terser `var q,sum=0,p=0` where the port keeps `var sum=0,p=0,q=0`, T2). Both pass now (`bitwise_2`: `lib.rs` `expose`, last-failures round).
 
 ## T2 status
 
@@ -119,6 +119,8 @@ All three pass `roundtrip` and `mangle`. `default` fails on all three. Byte offs
 | three | byte 17256: terser `constructor(t=Ye.DEFAULT_IMAGE,e=…,n=1001,i=1001,…)`, port `n=I,i=I,…` | byte 354734, a different cause, not triaged: the port adds `,x=void 0` after `const outputSize=…` and passes `x=3*outputSize*…` as an argument | B30b, mangle on: terser inlines a constant into a default parameter value, and the port keeps the 1-character mangled reference. Repro (default options): `(function(){const CCCCC=1001; function Y(n=CCCCC,i=CCCCC){this.a=n;this.b=i} window.Y=Y; window.q=CCCCC})()` gives terser `function(n=1001,i=1001)` and the port `function(i=n,o=n)`. A use in a body is not inlined on either side. Check the size test in `inline_into_symbolref` (`self.size(compressor)` and `overhead`, inline.js 300-313) for a reference inside a parameter default: `AST_Symbol._size` under mangle (size.js 445) and `def.references` as reduce_vars counts them for defaults. |
 
 B30 status (T6): lodash passes (B30a: copies keep their mangled size; collapse of injected vars). three: B30b fixed (`def_optimize(AST_DefaultAssign)`, `""` folds); it now first differs at byte 303428, a collapse of `const x` that counts a nested block's `const x` with it (name-based `counts.refs` in `tighten.rs`, T1; repro in `PORT.md`).
+
+Status after the last-failures round: compress default 2671/2671, lwc 339/339, bundles 3/3 (mangle and roundtrip 2671/339/3), lwc-rollup 779/779. three: a folded negative number is `-` over its absolute value (`-.7`). react-dom: `is_boolean` of an assignment, conditional and sequence (`(d=null!==d)!=(…)`). `evaluate/bitwise_2`: `map_children` exposes each transformed field to its later siblings (`lib.rs` `expose`). `PORT.md` has the causes.
 
 B30 (bundles only, not in the compress counts): (a) the inlined copy's `undefined` (`reduce_vars.rs` / `eval.rs` `rewrite_global` for a copy), (b) mangle-aware inline size for references in parameter defaults (`reduce_vars.rs` `inline_ref` size). Both go to T6.
 
