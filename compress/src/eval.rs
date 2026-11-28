@@ -3266,41 +3266,6 @@ fn is_basic_ident(value: &str) -> bool {
 
 
 
-pub(crate) fn only_pure_decls(body: &[N], cx: &Cx) -> bool {
-    !body.is_empty() && body.iter().all(|s| pure_decl(s, cx))
-}
-
-fn pure_decl(n: &N, cx: &Cx) -> bool {
-    match &n.data {
-        Data::Empty => true,
-        Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const, defs, .. } => defs.iter().all(|d| match &d.data {
-            // A destructuring pattern throws when the value is not iterable
-            // or not an object, so the declaration is not pure even when the
-            // initializer's read is.
-            Data::VarDef { name, value: None } => matches!(name.data, Data::Symbol { .. }),
-            Data::VarDef { name, value: Some(v) } => {
-                matches!(name.data, Data::Symbol { .. }) && statement_pure(v, cx)
-            }
-            _ => false,
-        }),
-        Data::Class { extends: None, props, .. } => props.iter().all(|p| match &p.data {
-            Data::Prop { key, value, .. } => pure_key(key, cx) && matches!(value.data, Data::Func { .. }),
-            Data::Field { key, value, .. } => {
-                pure_key(key, cx) && value.as_ref().map(|v| statement_pure(v, cx)).unwrap_or(true)
-            }
-            _ => false,
-        }),
-        _ => false,
-    }
-}
-
-fn pure_key(key: &Key, cx: &Cx) -> bool {
-    match key {
-        Key::Computed(expr) => statement_pure(expr, cx),
-        _ => true,
-    }
-}
-
 /// terser `drop-side-effect-free.js` `drop_side_effect_free(AST_Unary)` for `void`,
 /// from `def_optimize(AST_SimpleStatement)` with `first_in_statement`.
 fn unwrap_void_statement(n: &N, cx: &Cx) -> Option<N> {

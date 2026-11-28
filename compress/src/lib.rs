@@ -1555,7 +1555,7 @@ fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
         }
         Data::Block { body } => {
             let next = body::tighten_body(body.clone(), cx);
-            if !cx.keep_block && (next.is_empty() || eval::only_pure_decls(&next, cx)) {
+            if !cx.keep_block && next.is_empty() {
                 return empty(&n);
             }
             if !cx.keep_block && next.len() == 1 && can_evict(&next[0]) {
