@@ -602,7 +602,16 @@ fn define(
         table.bind_def(node, id);
         table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
         table.defs[id].lexical |= matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using);
-        if table.defs[id].init.is_none() {
+        // terser `def_variable`: a function expression's own name (`init` an
+        // `AST_Function`) gives way to the parameter, `var` or inner function that
+        // redeclares it, and only a function brings an `init`.
+        let lambda_init = table.defs[id].init.as_ref().is_some_and(|i| matches!(i.data, Data::Func { kind: ast::FuncKind::Expr, .. }));
+        if lambda_init {
+            table.defs[id].init = if kind == SymKind::Defun { init } else { None };
+            // A `var`'s `init` is `null` (`fixed === null` at reset), a parameter's
+            // `undefined`.
+            table.defs[id].var_decl |= kind == SymKind::Var;
+        } else if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
         return;

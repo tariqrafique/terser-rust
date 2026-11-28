@@ -647,7 +647,8 @@ fn reset_def(tw: &mut Tw, id: usize) {
     } else if d.is_const || !exposed {
         // terser scope.js defines a `var` with `init` null, so it resets to
         // `fixed === null` and `AST_VarDef` assigns the initializer.
-        if d.var_decl && !d.is_defun {
+        // A function expression's name a `var` redeclares has the `var`'s `init`.
+        if d.var_decl && (!d.is_defun || d.init.is_none()) {
             d.fixed = None;
             d.fixed_null = true;
         } else {

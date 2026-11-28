@@ -77,7 +77,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool, cx: Option<
             // drop-unused.js: an `AST_Function` name nothing reads is removed
             // (`keep_fnames` off), when the function sits in this scope.
             let name = match (kind, name) {
-                (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
+                (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| table.defs[id].orig_count > 1 || table.defs[id].name == "arguments" || !name_read(original, args, table, id)) => None,
                 _ => name.clone(),
             };
             let body = if is_root { passes(&body, original, args, table, table.scope_of(n).as_ref().copied(), true, true, true, cx) } else { body };

@@ -78,14 +78,16 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     }
                     for p in &chain {
                         let Data::Func { kind, name, args, body, .. } = &p.data else { continue };
+                        let body: &[N] = if Rc::ptr_eq(p, chain.last().unwrap()) { &stmts } else { body };
+                        let bound = crate::tighten::scope_bindings(args, body);
+                        lambdas.retain(|n| !bound.contains(n));
+                        // A parameter or `var` with the lambda's own name is the same
+                        // definition, whose `orig[0]` is the `AST_SymbolLambda`.
                         if !matches!(kind, ast::FuncKind::Decl) {
                             if let Some(Data::Symbol { name, .. }) = name.as_ref().map(|n| &n.data) {
                                 lambdas.insert(name.clone());
                             }
                         }
-                        let body: &[N] = if Rc::ptr_eq(p, chain.last().unwrap()) { &stmts } else { body };
-                        let bound = crate::tighten::scope_bindings(args, body);
-                        lambdas.retain(|n| !bound.contains(n));
                     }
                     crate::tighten::set_lambdas(lambdas);
                 }
