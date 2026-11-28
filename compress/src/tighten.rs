@@ -2654,6 +2654,8 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
         Data::Binary { left, right, .. } => {
             expr_effects(left, locals) || expr_effects(right, locals)
         }
+        // terser `AST_Call.has_side_effects`: a callee marked `@__PURE__` leaves the arguments.
+        Data::Call { args, .. } if n.has_annotation(ast::ANN_PURE) => args.iter().any(|a| expr_effects(a, locals)),
         Data::Assign { .. }
         | Data::Call { .. }
         | Data::Await { .. }
@@ -2798,6 +2800,8 @@ fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
                 || expr_may_throw(expr, locals)
                 || expr_may_throw(prop, locals)
         }
+        // terser `AST_Call.may_throw`: the arguments, then a pure callee does not throw.
+        Data::Call { args, .. } if n.has_annotation(ast::ANN_PURE) => args.iter().any(|a| expr_may_throw(a, locals)),
         // terser has no `may_throw` for `AST_TemplateString`: `AST_Node`'s `true`.
         Data::Call { .. } | Data::Template { .. } => true,
         _ => false,
