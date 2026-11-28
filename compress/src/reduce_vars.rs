@@ -1511,7 +1511,7 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
             return true;
         }
     }
-    let Some(&scope) = table.node_scope.get(&syms::ptr(func)) else { return false };
+    let Some(scope) = table.scope_lookup(&syms::ptr(func)) else { return false };
     table.scope_defs.get(&scope).is_some_and(|ids| {
         ids.iter().any(|&id| table.defs[id].name == name && table.defs[id].recursive_refs > 0)
     })
@@ -1519,7 +1519,7 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
 
 /// terser `lib/compress/inline.js` `scope_encloses_variables_in_this_scope`.
 fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
-    let Some(&func_scope) = table.node_scope.get(&syms::ptr(func)) else { return true };
+    let Some(func_scope) = table.scope_lookup(&syms::ptr(func)) else { return true };
     let nested = nested_scopes(func, table);
     let mut conflict = false;
     each_node(func, &mut |node| {
@@ -1638,7 +1638,7 @@ fn join_expr(a: CExpr, b: CExpr) -> CExpr {
 
 /// terser `inference.js` `all_refs_local`.
 fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
-    let Some(&func_scope) = table.node_scope.get(&syms::ptr(func)) else { return CExpr::No };
+    let Some(func_scope) = table.scope_lookup(&syms::ptr(func)) else { return CExpr::No };
     if table.inlined_scopes.borrow().contains(&func_scope) {
         return CExpr::No;
     }
