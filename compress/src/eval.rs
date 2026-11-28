@@ -3016,7 +3016,7 @@ fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
         | Data::This
         | Data::Func { .. } => false,
         Data::Hole | Data::Spread { .. } => true,
-        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(name, cx),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(n, name, cx),
         Data::Unary { op, expr, prefix: true } => {
             matches!(op.as_str(), "delete" | "++" | "--") || expr_has_side_effects(expr, cx)
         }
@@ -3048,11 +3048,11 @@ fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
     }
 }
 
-fn symbol_read_pure(name: &str, cx: &Cx) -> bool {
+fn symbol_read_pure(n: &N, name: &str, cx: &Cx) -> bool {
     if cx.in_with {
         return false;
     }
-    cx.shadowed(name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
+    cx.declared_ref(n, name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
 }
 
 /// terser `lib/compress/inference.js` `may_throw_on_access`.
@@ -3408,7 +3408,7 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
         return is_pure(n);
     }
     match &n.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.declared_ref(n, name),
         Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") => {
             statement_pure(expr, cx)
         }
