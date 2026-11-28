@@ -856,7 +856,7 @@ fn optimize_new(n: &N, cx: &Cx) -> Option<N> {
 /// `unsafe` constructor folds in `def_optimize(AST_Call)`. `console.assert` is omitted.
 fn unsafe_call(n: &N, expr: &N, args: &[N], cx: &Cx) -> Option<N> {
     if let Data::Dot { expr: recv, prop, optional, .. } = &expr.data {
-        if !*optional && prop == "from" && args.len() == 1 && sym_str(recv) == Some("Array") && !cx.shadowed("Array") {
+        if !*optional && prop == "from" && args.len() == 1 && sym_str(recv) == Some("Array") && !cx.declared_ref(recv, "Array") {
             if let Data::Array { elements } = &args[0].data {
                 return Some(atom(n, Data::Array { elements: elements.clone() }));
             }
@@ -891,20 +891,13 @@ fn unsafe_call(n: &N, expr: &N, args: &[N], cx: &Cx) -> Option<N> {
 }
 
 /// terser `inference.js` `is_undeclared_ref`: `definition().undeclared`.
-/// A `var String` at toplevel is a binding even when `reduce_vars` is off and
-/// there is no symbol table. `shadowed` sees that binding, including names
-/// hoisted onto the root locals frame.
+/// Without a symbol table (or for a node it does not know) the name stack
+/// decides; it holds the names hoisted onto the root locals frame.
 fn undeclared(expr: &N, cx: &Cx, names: &[&str]) -> bool {
     let Data::Symbol { name, kind: SymKind::Ref, .. } = &expr.data else {
         return false;
     };
-    if !names.contains(&name.as_str()) || cx.shadowed(name) {
-        return false;
-    }
-    match cx.syms.as_ref().and_then(|t| t.lookup(&crate::syms::ptr(expr))) {
-        Some(id) => cx.syms.as_ref().is_some_and(|t| t.defs[id].undeclared),
-        None => true,
-    }
+    names.contains(&name.as_str()) && !cx.declared_ref(expr, name)
 }
 
 fn contains_optional(n: &N) -> bool {
