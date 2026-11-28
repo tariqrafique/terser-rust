@@ -187,7 +187,8 @@ fn optimize_return(n: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     if is_undefined_value(value, cx) {
-        Some(atom(n, Data::Return { value: None }))
+        // keep: `self.value = null` (index.js 3866).
+        Some(edit(n, Data::Return { value: None }))
     } else {
         None
     }
@@ -201,7 +202,8 @@ fn optimize_yield(n: &N, cx: &Cx) -> Option<N> {
     if *star || !is_undefined_value(expr, cx) {
         return None;
     }
-    Some(atom(n, Data::Yield { expr: None, star: false }))
+    // keep: `self.expression = null` (index.js 3909).
+    Some(edit(n, Data::Yield { expr: None, star: false }))
 }
 
 /// terser `def_optimize(AST_DefaultAssign)`.
@@ -232,7 +234,8 @@ fn optimize_vardef(n: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     if is_undefined_value(value, cx) {
-        Some(atom(n, Data::VarDef { name: Rc::clone(name), value: None }))
+        // keep: `self.value = null` (index.js 1684).
+        Some(edit(n, Data::VarDef { name: Rc::clone(name), value: None }))
     } else {
         None
     }
@@ -330,7 +333,8 @@ fn optimize_template(n: &N, cx: &Cx) -> Option<N> {
     if out.len() == segments.len() && out.iter().zip(segments).all(|(a, b)| seg_eq(a, b)) {
         return None;
     }
-    Some(atom(n, Data::Template { segments: out }))
+    // keep: `self.segments = segments` (index.js 3950).
+    Some(edit(n, Data::Template { segments: out }))
 }
 
 fn lit_text(lit: &Lit) -> String {
@@ -509,7 +513,8 @@ fn fold_computed(n: &N, cx: &Cx) -> Option<N> {
     match &n.data {
         Data::Prop { method, key, value, static_, private, generator, async_ } => {
             let key = lift_key(key, cx)?;
-            Some(atom(
+            // keep: `lift_key` sets `self.key` (index.js 4009-4018).
+            Some(edit(
                 n,
                 Data::Prop {
                     method: *method,
@@ -524,7 +529,7 @@ fn fold_computed(n: &N, cx: &Cx) -> Option<N> {
         }
         Data::Field { key, value, static_, private } => {
             let key = lift_key(key, cx)?;
-            Some(atom(
+            Some(edit(
                 n,
                 Data::Field {
                     key,
@@ -600,9 +605,13 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
     let mut body = Rc::clone(body);
     // `is_empty(self.alternative)` clears an empty else before the option check.
     let mut alt = alt.clone().filter(|a| !is_empty_stmt(a));
+    // keep: `self.alternative = null` (index.js 1099), and the edits below up to the nested
+    // `if` (index.js 1143-1146, 1223-1233). Once that is merged, `self` is a new node
+    // (index.js 1206) and `remade` is set.
     if !cx.opts.conditionals {
-        return alt_changed(&orig_alt, &alt).then(|| if_node(n, cond, body, alt));
+        return alt_changed(&orig_alt, &alt).then(|| edit(n, Data::If { cond, body, alt }));
     }
+    let mut remade = false;
     if !cx.opts.dead_code {
         if let Some(lit) = eval_if_cond(&cond, cx) {
             let made = fold(&lit_node(&cond, lit, cx), cx);
@@ -682,11 +691,13 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
         if let Data::If { cond: inner_cond, body: inner_body, alt: None } = &body.data {
             cond = binary(n, "&&", cond, Rc::clone(inner_cond));
             body = Rc::clone(inner_body);
+            remade = true;
         }
     }
+    let if_out = |cond, body, alt| if remade { if_node(n, cond, body, alt) } else { edit(n, Data::If { cond, body, alt }) };
     if aborts(&body) {
         if let Some(alt_stmt) = alt.take() {
-            let iff = if_node(n, cond, body, None);
+            let iff = if_out(cond, body, None);
             return Some(finish_block(n, vec![iff, alt_stmt], cx));
         }
     }
@@ -694,13 +705,13 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
         let orig_body = body;
         body = alt.take().unwrap();
         cond = if negated_is_best { Rc::clone(&negated) } else { negate_expr(&cond, cx) };
-        let iff = if_node(n, cond, body, None);
+        let iff = if_out(cond, body, None);
         return Some(finish_block(n, vec![iff, orig_body], cx));
     }
     if Rc::ptr_eq(&cond, &orig_cond) && Rc::ptr_eq(&body, &orig_body) && !alt_changed(&orig_alt, &alt) {
         None
     } else {
-        Some(if_node(n, cond, body, alt))
+        Some(if_out(cond, body, alt))
     }
 }
 
@@ -959,6 +970,12 @@ fn strip_var_inits(span: &N, defs: &[N]) -> Option<N> {
         let Data::VarDef { name, .. } = &def.data else {
             continue;
         };
+        // keep: `remove_initializers` sets `def.value = null` on a plain name (tb 180); a
+        // destructuring gives new definitions (tb 184), and the `var` is new (tb 191).
+        if matches!(name.data, Data::Symbol { .. }) {
+            out.push(edit(def, Data::VarDef { name: Rc::clone(name), value: None }));
+            continue;
+        }
         let mut syms = Vec::new();
         binding_symbols(name, &mut syms);
         for sym in syms {
@@ -1295,7 +1312,8 @@ fn drop_empty_string(n: &N) -> Option<N> {
     }
     if let Data::Binary { op: lop, left: ll, right: lr } = &left.data {
         if lop == "+" && empty(ll) && is_string(right) {
-            return Some(binary(n, "+", Rc::clone(lr), Rc::clone(right)));
+            // keep: `self.left = self.left.right; return self` (index.js 2454).
+            return Some(edit(n, Data::Binary { op: op.clone(), left: Rc::clone(lr), right: Rc::clone(right) }));
         }
     }
     None
@@ -1349,7 +1367,8 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
                 value.push_str(&add);
                 raw.push_str(&add);
                 *units = None;
-                return Some(atom(left, Data::Template { segments: segs }));
+                // keep: terser edits the template's segments and returns it (index.js 2636-2662).
+                return Some(edit(left, Data::Template { segments: segs }));
             }
         }
     }
@@ -1362,7 +1381,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
                 *value = format!("{add}{value}");
                 *raw = format!("{add}{raw}");
                 *units = None;
-                return Some(atom(right, Data::Template { segments: segs }));
+                return Some(edit(right, Data::Template { segments: segs }));
             }
         }
     }
@@ -1374,7 +1393,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
             raw.push_str(rr);
             *units = None;
             segs.extend(rs.iter().skip(1).cloned());
-            return Some(atom(left, Data::Template { segments: segs }));
+            return Some(edit(left, Data::Template { segments: segs }));
         }
     }
     None
@@ -1395,7 +1414,8 @@ fn apply_lhs(n: &N, cx: &Cx) -> N {
     if blocked {
         Rc::clone(n)
     } else {
-        binary(n, op, Rc::clone(right), Rc::clone(left))
+        // keep: `reverse()` swaps `self.left` / `self.right` (index.js 2263-2268).
+        edit(n, Data::Binary { op: op.clone(), left: Rc::clone(right), right: Rc::clone(left) })
     }
 }
 
@@ -1697,7 +1717,8 @@ fn bitwise_ops(n: &N, cx: &Cx) -> Option<Result<N, N>> {
                 return Rc::clone(&cur);
             }
         }
-        binary(&cur, op, Rc::clone(left), Rc::clone(right))
+        // keep: `x | x` and the shifts by 0 edit `self.left` / `self.operator` (index.js 2817-2845).
+        edit(&cur, Data::Binary { op: op.into(), left: Rc::clone(left), right: Rc::clone(right) })
     };
     let zero = if is_zero(&right) { Some((&right, &left)) } else if is_zero(&left) { Some((&left, &right)) } else { None };
     if let Some((zero_side, other)) = zero {
@@ -1772,7 +1793,8 @@ fn unsafe_comp_reverse(n: &N, cx: &Cx) -> Option<N> {
     if !reversible(left, right, cx) {
         return None;
     }
-    Some(binary(n, flipped, Rc::clone(right), Rc::clone(left)))
+    // keep: `reverse(">")` (index.js 2443-2446).
+    Some(edit(n, Data::Binary { op: flipped.into(), left: Rc::clone(right), right: Rc::clone(left) }))
 }
 
 fn reversible(left: &N, right: &N, cx: &Cx) -> bool {
@@ -1802,7 +1824,9 @@ fn reassoc_lazy(n: &N) -> Option<N> {
         cur_left = binary(n, op, cur_left, Rc::clone(rl));
         cur_right = Rc::clone(rr);
     }
-    Some(binary(n, op, cur_left, cur_right))
+    // keep: `self.left = make_node(..); self.right = ..; return self.transform(..)`
+    // (index.js 2925-2931). terser spans the new left on `self.left`, the port on `n`.
+    Some(edit(n, Data::Binary { op: op.clone(), left: cur_left, right: cur_right }))
 }
 
 /// terser `inference.js` `AST_Binary.negate`, used from `AST_UnaryPrefix` `!`.
@@ -2105,7 +2129,10 @@ fn fold_compare(n: &N, cx: &Cx) -> Option<N> {
     if op_s == *op && Rc::ptr_eq(&left_n, left) && Rc::ptr_eq(&right_n, right) {
         None
     } else {
-        Some(binary(n, &op_s, left_n, right_n))
+        // keep: the comparison edits `self.operator` / `self.left` / `self.right` in place
+        // (index.js 2271-2333). Its new `null` / `void 0` are spanned on `n` here, on the
+        // replaced operand in terser.
+        Some(edit(n, Data::Binary { op: op_s, left: left_n, right: right_n }))
     }
 }
 
@@ -2407,10 +2434,8 @@ fn changed_sub(span: &N, expr: &N, prop: &N, optional: bool, orig_prop: &N) -> O
     if Rc::ptr_eq(prop, orig_prop) {
         return None;
     }
-    Some(atom(
-        span,
-        Data::Sub { expr: Rc::clone(expr), prop: Rc::clone(prop), optional },
-    ))
+    // keep: `self.property = best_of_expression(..)` (def_optimize(AST_Sub)).
+    Some(edit(span, Data::Sub { expr: Rc::clone(expr), prop: Rc::clone(prop), optional }))
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Dot)`.
@@ -3217,7 +3242,8 @@ fn negate_iife(n: &N) -> Option<N> {
     if !is_iife_call(body) {
         return None;
     }
-    Some(simple(n, unary(n, "!", Rc::clone(body))))
+    // keep: the statement's `body` is replaced by `descend`; the negation is new (inline.js 462).
+    Some(edit(n, Data::Simple { body: unary(n, "!", Rc::clone(body)) }))
 }
 
 pub(crate) fn is_iife_call(n: &N) -> bool {
@@ -3316,7 +3342,8 @@ fn rewrite_completion(n: &N, insert: bool, cx: Option<&Cx>, scope_ptr: usize) ->
             if Rc::ptr_eq(&body2, body) && alt_same {
                 Rc::clone(n)
             } else {
-                if_node(n, Rc::clone(cond), body2, alt2)
+                // keep: `process_expression` edits in place (index.js 606-617).
+                edit(n, Data::If { cond: Rc::clone(cond), body: body2, alt: alt2 })
             }
         }
         Data::With { expr, body } => {
@@ -3324,7 +3351,7 @@ fn rewrite_completion(n: &N, insert: bool, cx: Option<&Cx>, scope_ptr: usize) ->
             if Rc::ptr_eq(&body2, body) {
                 Rc::clone(n)
             } else {
-                atom(n, Data::With { expr: Rc::clone(expr), body: body2 })
+                edit(n, Data::With { expr: Rc::clone(expr), body: body2 })
             }
         }
         _ => Rc::clone(n),
@@ -3349,12 +3376,13 @@ fn rewrite_last(span: &N, body: &[N], insert: bool, cx: Option<&Cx>, scope_ptr: 
     replace_stmt_list(span, next)
 }
 
+/// keep: `node.body[index] = ..` (index.js 608).
 fn replace_stmt_list(span: &N, body: Vec<N>) -> N {
     match &span.data {
-        Data::Toplevel { .. } => atom(span, Data::Toplevel { body }),
-        Data::Block { .. } => atom(span, Data::Block { body }),
-        Data::StaticBlock { .. } => atom(span, Data::StaticBlock { body }),
-        Data::Func { kind, name, args, async_, generator, .. } => atom(
+        Data::Toplevel { .. } => edit(span, Data::Toplevel { body }),
+        Data::Block { .. } => edit(span, Data::Block { body }),
+        Data::StaticBlock { .. } => edit(span, Data::StaticBlock { body }),
+        Data::Func { kind, name, args, async_, generator, .. } => edit(
             span,
             Data::Func {
                 kind: *kind,
