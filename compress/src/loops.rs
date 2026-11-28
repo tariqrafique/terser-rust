@@ -140,7 +140,8 @@ fn optimize_for(n: &N, cx: &Cx) -> Option<N> {
         return None;
     }
     let _ = &mut body;
-    Some(for_node(n, init, cond, step, body))
+    // keep: `self.init = ..` / `self.condition = null` (index.js 1065-1111).
+    Some(eval::edit(n, Data::For { init, cond, step, body }))
 }
 
 /// terser `if_break_in_loop`.
@@ -194,7 +195,8 @@ fn if_break(
     let cond = again_cond.take().unwrap();
     let body = std::mem::replace(&mut again_body, eval::empty(span));
     let _ = again_init;
-    Some(for_node(span, init.clone(), Some(cond), step.clone(), body))
+    // keep: `self.condition = ..; self.body = ..` (index.js 1018-1058).
+    Some(eval::edit(span, Data::For { init: init.clone(), cond: Some(cond), step: step.clone(), body }))
 }
 
 fn and_cond(span: &N, cond: &Option<N>, right: N) -> N {
@@ -283,6 +285,7 @@ fn smaller_constant(orig: &N, lit: Lit, cx: &Cx) -> N {
     }
 }
 
+/// new: `make_node(AST_For, self, ..)` from a `while` / `do` (index.js 964, 970).
 fn for_node(span: &N, init: Option<N>, cond: Option<N>, step: Option<N>, body: N) -> N {
     eval::atom(span, Data::For { init, cond, step, body })
 }
@@ -394,7 +397,8 @@ fn optimize_try(n: &N, cx: &Cx) -> Option<N> {
     if !changed {
         return None;
     }
-    Some(eval::atom(
+    // keep: `self.bfinally = null` (def_optimize(AST_Try)).
+    Some(eval::edit(
         n,
         Data::Try { body: Rc::clone(body), catch: catch.clone(), finally },
     ))
@@ -582,13 +586,15 @@ fn arm_of(n: &N, id: u32) -> Option<Arm> {
     }
 }
 
+/// keep: def_optimize(AST_Switch) edits each branch's `body` in place (index.js 1349, 1454,
+/// 1581); `arm.span` is the branch.
 fn arm_node(arm: &Arm) -> N {
     match &arm.expr {
-        Some(expr) => eval::atom(
+        Some(expr) => eval::edit(
             &arm.span,
             Data::Case { expr: Rc::clone(expr), body: arm.body.clone() },
         ),
-        None => eval::atom(&arm.span, Data::Default { body: arm.body.clone() }),
+        None => eval::edit(&arm.span, Data::Default { body: arm.body.clone() }),
     }
 }
 
@@ -1061,8 +1067,10 @@ fn flatten_evictable(stmts: Vec<N>) -> Vec<N> {
     out
 }
 
+/// keep: `self.expression = ..` and `self.body = body` (index.js 1247, 1292); the folded
+/// default re-optimizes `self` (index.js 1485).
 fn switch_node(span: &N, expr: N, body: Vec<N>) -> N {
-    eval::atom(span, Data::Switch { expr, body })
+    eval::edit(span, Data::Switch { expr, body })
 }
 
 fn stmt_kids(n: &N) -> Vec<N> {

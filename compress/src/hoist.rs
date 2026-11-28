@@ -68,7 +68,8 @@ fn hoist_declarations(n: &N, hoist_funs: bool, mut hoist_vars: bool) -> N {
                                 body.remove(i);
                             } else {
                                 let expr = if rest.len() == 1 { rest.into_iter().next().unwrap() } else { seq_node(expr, rest) };
-                                body[i] = simple(&body[i], expr);
+                                // keep: `self.body[i].body = make_sequence(..)` (index.js 855).
+                                body[i] = edit(&body[i], Data::Simple { body: expr });
                             }
                             continue;
                         }
@@ -111,7 +112,8 @@ fn take_assign(expr: &N, slots: &mut Vec<Slot>) -> bool {
     let Some(idx) = slots.iter().position(|s| s.name == name && !s.filled) else { return false };
     let mut slot = slots.remove(idx);
     slot.filled = true;
-    slot.def = vardef(&slot.def, left, Some(Rc::clone(right)));
+    // keep: `def.value = expr.right` on the cloned definition (index.js 838, 852).
+    slot.def = edit(&slot.def, Data::VarDef { name: Rc::clone(left), value: Some(Rc::clone(right)) });
     slots.push(slot);
     true
 }
@@ -155,15 +157,16 @@ fn rewrite(n: &N, hoist_vars: bool, hoist_funs: bool, direct: bool, dirs: &mut V
                 None => None,
             };
             let body = rewrite(body, hoist_vars, hoist_funs, false, dirs, funs, slots);
-            finish(n, Data::For { init, cond: cond.clone(), step: step.clone(), body })
+            // keep: the transformer's `descend` (index.js 767-807).
+            edit(n, Data::For { init, cond: cond.clone(), step: step.clone(), body })
         }
         Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
             let init = rewrite(init, hoist_vars, hoist_funs, false, dirs, funs, slots);
             let init = if let Data::Simple { body } = &init.data { Rc::clone(body) } else { init };
             let body = rewrite(body, hoist_vars, hoist_funs, false, dirs, funs, slots);
             match &n.data {
-                Data::ForOf { await_, .. } => finish(n, Data::ForOf { init, object: Rc::clone(object), body, await_: *await_ }),
-                _ => finish(n, Data::ForIn { init, object: Rc::clone(object), body }),
+                Data::ForOf { await_, .. } => edit(n, Data::ForOf { init, object: Rc::clone(object), body, await_: *await_ }),
+                _ => edit(n, Data::ForIn { init, object: Rc::clone(object), body }),
             }
         }
         other => finish_children(n, other, |c, direct_child| rewrite(c, hoist_vars, hoist_funs, direct_child, dirs, funs, slots)),
@@ -207,7 +210,7 @@ fn count_node(n: &N, count: &mut i32) {
 /// terser `index.js` `hoist_properties`.
 fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: Option<&str>, table: Option<&SymTable>) -> N {
     let Some(table) = table else { return Rc::clone(n) };
-    let Some(&scope) = table.node_scope.get(&syms::ptr(n)) else { return Rc::clone(n) };
+    let Some(&scope) = table.scope_of(n).as_ref() else { return Rc::clone(n) };
     let mut plan: HashMap<usize, HashMap<String, String>> = HashMap::new();
     let mut used = visible_names(table, scope);
     collect_props(n, n, table, scope, toplevel_vars, top_retain, &mut used, &mut plan);
@@ -224,7 +227,7 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
     if let Data::Defs { kind: DefKind::Var | DefKind::Let | DefKind::Const, defs, .. } = &n.data {
         for def in defs {
             let Data::VarDef { name, value: Some(value) } = &def.data else { continue };
-            let Some(id) = table.lookup(&syms::ptr(name)) else { continue };
+            let Some(id) = table.def_of(name) else { continue };
             let d = &table.defs[id];
             let exposed = d.exported || d.export_listed || (d.global && if d.is_defun { false } else { !toplevel_vars });
             if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain == Some(d.name.as_str()) {
@@ -308,7 +311,7 @@ fn prop_of(table: &SymTable, n: &N, id: usize) -> bool {
 }
 
 fn is_ref_of(table: &SymTable, n: &N, id: usize) -> bool {
-    table.lookup(&syms::ptr(n)) == Some(id)
+    table.def_of(n) == Some(id)
 }
 
 fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, String>>) -> N {
@@ -318,7 +321,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             let mut changed = false;
             for def in defs {
                 if let Data::VarDef { name, value: Some(value) } = &def.data {
-                    if let Some(id) = table.lookup(&syms::ptr(name)) {
+                    if let Some(id) = table.def_of(name) {
                         if let Some(keys) = plan.get(&id) {
                             if let Data::Object { props } = &value.data {
                                 for prop in props {
@@ -341,10 +344,11 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             if !changed {
                 return Rc::clone(n);
             }
-            finish(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
+            // keep: `MAP.splice` into the definitions list, in place.
+            edit(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
         }
         Data::Dot { expr, prop, .. } if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(prop)) => {
-            let id = table.lookup(&syms::ptr(expr)).unwrap();
+            let id = table.def_of(expr).unwrap();
             let fresh = expr_plan(table, expr, plan).unwrap().get(prop).unwrap();
             let r = sym_ref_named(n, fresh);
             CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
@@ -353,7 +357,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
         Data::Sub { expr, prop, .. } => {
             if let Data::String { value, .. } = &prop.data {
                 if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(value)) {
-                    let id = table.lookup(&syms::ptr(expr)).unwrap();
+                    let id = table.def_of(expr).unwrap();
                     let fresh = expr_plan(table, expr, plan).unwrap().get(value).unwrap();
                     let r = sym_ref_named(n, fresh);
                     CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
@@ -367,7 +371,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
 }
 
 fn expr_plan<'a>(table: &SymTable, expr: &N, plan: &'a HashMap<usize, HashMap<String, String>>) -> Option<&'a HashMap<String, String>> {
-    let id = table.lookup(&syms::ptr(expr))?;
+    let id = table.def_of(expr)?;
     plan.get(&id)
 }
 
@@ -475,19 +479,26 @@ fn scope_body(n: &N) -> Option<&[N]> {
     }
 }
 
+/// keep: `self.body = dirs.concat(hoisted, self.body)` (index.js 875).
 fn with_body(n: &N, body: Vec<N>) -> N {
     match &n.data {
-        Data::Toplevel { .. } => finish(n, Data::Toplevel { body }),
-        Data::StaticBlock { .. } => finish(n, Data::StaticBlock { body }),
-        Data::Func { kind, name, args, async_, generator, .. } => finish(n, Data::Func {
+        Data::Toplevel { .. } => edit(n, Data::Toplevel { body }),
+        Data::StaticBlock { .. } => edit(n, Data::StaticBlock { body }),
+        Data::Func { kind, name, args, async_, generator, .. } => edit(n, Data::Func {
             kind: *kind, name: name.clone(), args: args.clone(), body, async_: *async_, generator: *generator,
         }),
         _ => Rc::clone(n),
     }
 }
 
+/// new: terser `make_node(X, span, ..)`.
 fn finish(span: &N, data: Data) -> N {
-    Rc::new(Node { start: span.start.clone(), end: span.end.clone(), data })
+    Node::make(span, data)
+}
+
+/// keep: an in-place edit of `n`.
+fn edit(n: &N, data: Data) -> N {
+    n.rebuild(data)
 }
 
 fn finish_children(n: &N, data: &Data, mut map: impl FnMut(&N, bool) -> N) -> N {

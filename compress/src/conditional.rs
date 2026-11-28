@@ -28,7 +28,8 @@ fn opt_cond(n: &N, cx: &Cx, depth: u32) -> Option<N> {
     if let Data::Seq { exprs } = &cond.data {
         if exprs.len() >= 2 {
             let last = Rc::clone(exprs.last().unwrap());
-            let inner = cond_node(n, last, Rc::clone(cons), Rc::clone(alt));
+            // keep: `self.condition = expressions.pop(); expressions.push(self)` (index.js 3235).
+            let inner = n.rebuild(Data::Cond { cond: last, cons: Rc::clone(cons), alt: Rc::clone(alt) });
             let mut parts: Vec<N> = exprs[..exprs.len() - 1].iter().cloned().collect();
             parts.push(inner);
             return Some(make_seq(n, parts));
@@ -199,7 +200,8 @@ fn optimize_sequence(n: N, cx: &Cx, depth: u32) -> N {
             reopt(bound, cx, depth + 1)
         };
     }
-    atom(n.span_node(), Data::Seq { exprs: kept })
+    // keep: `self.expressions = expressions` (def_optimize(AST_Sequence)).
+    n.rebuild(Data::Seq { exprs: kept })
 }
 
 trait SpanNode {
@@ -402,7 +404,7 @@ fn is_nullish_value(n: &N, cx: &Cx) -> bool {
     }
     if let Data::Symbol { kind: SymKind::Ref, .. } = &n.data {
         if let Some(table) = &cx.syms {
-            if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
+            if let Some(id) = table.def_of(n) {
                 if let Some(fixed) = &table.defs[id].fixed {
                     return matches!(fixed.data, Data::Null) || is_undefined(fixed, cx);
                 }
@@ -528,8 +530,8 @@ fn same_def(a: &N, b: &N, cx: &Cx) -> bool {
         return false;
     };
     match (
-        table.lookup(&crate::syms::ptr(a)),
-        table.lookup(&crate::syms::ptr(b)),
+        table.def_of(a),
+        table.def_of(b),
     ) {
         (Some(x), Some(y)) => x == y,
         _ => false,
@@ -609,7 +611,7 @@ fn key_side(key: &Key, cx: &Cx) -> bool {
 
 fn symbol_side(n: &N, name: &str, cx: &Cx) -> bool {
     if let Some(table) = &cx.syms {
-        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
+        if let Some(id) = table.def_of(n) {
             if !table.defs[id].undeclared {
                 return false;
             }
@@ -965,9 +967,5 @@ fn make_seq(span: &N, exprs: Vec<N>) -> N {
 }
 
 fn atom(span: &N, data: Data) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data,
-    })
+    Node::make(span, data)
 }
