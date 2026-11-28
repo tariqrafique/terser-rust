@@ -2112,8 +2112,8 @@ fn is_boolean(n: &N) -> bool {
 pub(crate) fn is_number(n: &N) -> bool {
     match &n.data {
         Data::Number { .. } => true,
-        Data::Unary { op, expr, prefix: true } => {
-            matches!(op.as_str(), "+" | "-" | "~") && is_number(expr)
+        Data::Unary { op, expr, .. } => {
+            matches!(op.as_str(), "+" | "-" | "~" | "++" | "--") && is_number(expr)
         }
         Data::Binary { op, left, right } => {
             if op == "+" {
@@ -2124,6 +2124,12 @@ pub(crate) fn is_number(n: &N) -> bool {
                 false
             }
         }
+        Data::Assign { op, right, .. } => {
+            (op == "=" || matches!(op.strip_suffix('='), Some("-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" | ">>>")))
+                && is_number(right)
+        }
+        Data::Seq { exprs } => exprs.last().is_some_and(is_number),
+        Data::Cond { cons, alt, .. } => is_number(cons) && is_number(alt),
         _ => false,
     }
 }
