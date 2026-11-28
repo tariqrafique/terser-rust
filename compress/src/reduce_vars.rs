@@ -642,7 +642,10 @@ fn reset_def(tw: &mut Tw, id: usize) {
     d.replaced.set(0);
     // terser `reset_def`: a funarg named `arguments` in a function that uses
     // `arguments` is not fixed. A `function arguments(){}` shares that binding.
-    if d.pinned || (d.name == "arguments" && (d.is_defun || d.funarg)) {
+    // terser `def.orig[0] instanceof AST_SymbolFunarg && def.scope.uses_arguments`.
+    let funarg_args = d.funarg && tw.table.scope_uses_arguments.get(d.scope).copied().unwrap_or(false);
+    let d = &mut tw.table.defs[id];
+    if d.pinned || funarg_args || (d.name == "arguments" && (d.is_defun || d.funarg)) {
         d.fixed = None;
     } else if d.is_const || !exposed {
         // terser scope.js defines a `var` with `init` null, so it resets to

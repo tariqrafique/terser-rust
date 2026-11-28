@@ -109,6 +109,8 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool, cx: Option<
 }
 
 struct Use<'a> {
+    /// Pass 1's `tw.has_directive("use strict")` at the node being scanned.
+    strict: std::cell::Cell<bool>,
     /// Depth of nested scopes pass 3 is in (terser `scope !== self`).
     nested: std::cell::Cell<u32>,
     /// The compressor, inside a compress pass.
@@ -144,6 +146,7 @@ fn passes(stmts: &[N], original: &[N], params: &[N], table: &SymTable, scope_id:
         return stmts.to_vec();
     }
     let mut u = Use {
+        strict: Default::default(),
         nested: Default::default(),
         cx,
         in_use: HashSet::new(),
@@ -179,6 +182,14 @@ fn passes(stmts: &[N], original: &[N], params: &[N], table: &SymTable, scope_id:
         }
         *u.var_defs.borrow_mut() = by_id;
     }
+    // Pass 1 starts at `self` with no directives above it: `has_directive("use strict")`
+    // sees `self`'s own and those inside it.
+    u.strict.set(strict_body(stmts));
+    if lambdas && !u.strict.get() {
+        if let Some(s) = scope_id {
+            uses_arguments_params(params, s, table, &mut u);
+        }
+    }
     for stmt in stmts {
         scan_ref_scoped(stmt, table, &mut u, true);
     }
@@ -207,18 +218,6 @@ fn passes(stmts: &[N], original: &[N], params: &[N], table: &SymTable, scope_id:
             let inits = u.inits.get(&id).cloned().unwrap_or_default();
             for init in &inits {
                 scan_ref_scoped(init, table, &mut u, false);
-            }
-        }
-    }
-    // A non-strict function that reads `arguments` uses every parameter.
-    if mentions_arguments(stmts) {
-        if let Some(scope_id) = scope_id {
-            if let Some(ids) = table.scope_defs.get(&scope_id) {
-                for id in ids {
-                    if table.defs[*id].funarg {
-                        u.in_use.insert(*id);
-                    }
-                }
             }
         }
     }
@@ -301,6 +300,7 @@ fn has_iife(n: &N) -> bool {
 /// Passes 1 and 2 of `drop_unused` over `nodes`, for `in_use_ids` only.
 fn scan_in_use(nodes: &[N], table: &SymTable) -> HashSet<usize> {
     let mut u = Use {
+        strict: Default::default(),
         nested: Default::default(),
         cx: None,
         in_use: HashSet::new(),
@@ -349,11 +349,6 @@ fn trim_params(func: &N, table: &SymTable, in_use: &HashSet<usize>) -> Option<N>
     // `!node.name || node.name.unreferenced()`: a name still here after the name drop
     // (du 251-259) is read.
     if !matches!(kind, ast::FuncKind::Expr | ast::FuncKind::Arrow) || name.is_some() || lambda_pinned(body) {
-        return None;
-    }
-    // drop-unused.js pass 1: a non-arrow lambda that reads `arguments` uses every
-    // parameter (outside "use strict"; the port checks the lambda's own directives).
-    if !matches!(kind, ast::FuncKind::Arrow) && uses_arguments(body) && !strict_body(body) {
         return None;
     }
     let mut params = args.clone();
@@ -416,23 +411,6 @@ fn pinned(n: &N) -> bool {
     hit
 }
 
-/// terser `uses_arguments`: `arguments` read in the lambda or in an arrow inside it.
-fn uses_arguments(body: &[N]) -> bool {
-    fn rec(n: &N) -> bool {
-        match &n.data {
-            Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" => true,
-            Data::Func { kind, .. } if !matches!(kind, ast::FuncKind::Arrow) => false,
-            Data::Class { .. } => false,
-            _ => {
-                let mut hit = false;
-                ast::walk_children(n, &mut |c| hit = hit || rec(c));
-                hit
-            }
-        }
-    }
-    body.iter().any(rec)
-}
-
 fn strict_body(body: &[N]) -> bool {
     body.iter()
         .map_while(|s| match &s.data {
@@ -453,6 +431,22 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
             }
         }
         return;
+    }
+    if let Data::Func { args, body, .. } = &n.data {
+        // du 148: a lambda that uses `arguments` outside strict mode uses its
+        // parameters (pass 1 only).
+        let strict = u.strict.get() || strict_body(body);
+        if record_inits && !strict {
+            if let Some(s) = table.scope_of(n) {
+                uses_arguments_params(args, s, table, u);
+            }
+        }
+        if !(record_inits && matches!(n.data, Data::Func { kind: ast::FuncKind::Decl, .. })) {
+            let saved = u.strict.replace(strict);
+            ast::walk_children(n, &mut |c| scan_ref_scoped(c, table, u, record_inits));
+            u.strict.set(saved);
+            return;
+        }
     }
     match &n.data {
         // drop-unused.js `scan_ref_scoped`: a function declaration's body is
@@ -1088,19 +1082,18 @@ fn mark_names(n: &N, table: &SymTable, u: &mut Use) {
     ast::walk_children(n, &mut |c| mark_names(c, table, u));
 }
 
-fn mentions_arguments(stmts: &[N]) -> bool {
-    fn rec(n: &N) -> bool {
-        match &n.data {
-            Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" => true,
-            Data::Func { .. } => false,
-            _ => {
-                let mut hit = false;
-                ast::walk_children(n, &mut |c| hit |= rec(c));
-                hit
+/// `node.uses_arguments`: the plain parameters (`AST_SymbolDeclaration`) are in use.
+fn uses_arguments_params(args: &[N], scope: usize, table: &SymTable, u: &mut Use) {
+    if !table.scope_uses_arguments.get(scope).copied().unwrap_or(false) {
+        return;
+    }
+    for a in args {
+        if matches!(a.data, Data::Symbol { .. }) {
+            if let Some(id) = def_id(table, a) {
+                u.in_use.insert(id);
             }
         }
     }
-    stmts.iter().any(rec)
 }
 
 fn contains_with(stmts: &[N]) -> bool {

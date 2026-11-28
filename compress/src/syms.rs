@@ -93,6 +93,10 @@ pub struct SymTable {
     pub fn_of: Vec<usize>,
     /// `scope.pinned()` for each scope id. Direct `eval` or `with` sets it.
     pub scope_pinned: Vec<bool>,
+    /// terser `AST_Lambda.uses_arguments` for each scope id: a reference named
+    /// `arguments` resolves to a definition of that function (its own `arguments`,
+    /// from it or an arrow inside, or a parameter or `var` of that name).
+    pub scope_uses_arguments: Vec<bool>,
     /// Function and class nodes currently stored in `fixed`, by id, so a compressed
     /// replacement can follow them. Built at the end of `reduce_vars::analyze`.
     pub fixed_of_node: ast::IdMap<Vec<usize>>,
@@ -131,6 +135,7 @@ struct Scope {
     /// defines `arguments` on it.
     lambda: bool,
     pinned: bool,
+    uses_arguments: bool,
     names: HashMap<String, usize>,
 }
 
@@ -143,6 +148,7 @@ pub fn bind(root: &N) -> SymTable {
         func: true,
         lambda: false,
         pinned: false,
+        uses_arguments: false,
         names: HashMap::new(),
     }];
     let mut table = SymTable {
@@ -154,6 +160,7 @@ pub fn bind(root: &N) -> SymTable {
         scope_parent: Vec::new(),
         fn_of: Vec::new(),
         scope_pinned: Vec::new(),
+        scope_uses_arguments: Vec::new(),
         fixed_of_node: ast::IdMap::default(),
         inlined_scopes: RefCell::new(HashSet::new()),
         injected_vars: RefCell::new(HashMap::new()),
@@ -171,6 +178,7 @@ pub fn bind(root: &N) -> SymTable {
     table.scope_parent = scopes.iter().map(|s| s.parent).collect();
     table.fn_of = scopes.iter().map(|s| s.fn_scope).collect();
     table.scope_pinned = scopes.iter().map(|s| s.pinned).collect();
+    table.scope_uses_arguments = scopes.iter().map(|s| s.uses_arguments).collect();
     table
 }
 
@@ -343,7 +351,13 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
         }
         Data::Symbol { name, kind: SymKind::Ref, .. } => {
             table.ref_scope.borrow_mut().insert(n.id(), scope);
-            if let Some(lambda) = (name == "arguments" && resolve(scopes, scope, name).is_none()).then(|| arguments_scope(scopes, scope)).flatten() {
+            // The nearest non-arrow function has its own `arguments`, so an outer
+            // binding of that name is not reached from inside it.
+            let own_arguments = (name == "arguments")
+                .then(|| arguments_scope(scopes, scope))
+                .flatten()
+                .filter(|&lambda| resolve_upto(scopes, scope, name, lambda).is_none());
+            if let Some(lambda) = own_arguments {
                 // terser `AST_Lambda.init_scope_vars`: every non-arrow function
                 // defines `arguments` (an `AST_SymbolFunarg`), so a reference in
                 // it, or in an arrow inside it, is declared. Defined here on the
@@ -353,6 +367,16 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 define(table, scopes, 0, name.clone(), n, SymKind::Ref, None, true);
             } else if let Some(id) = resolve(scopes, scope, name) {
                 table.bind_def(n, id);
+            }
+            // scope.js: `sym.scope instanceof AST_Lambda && name == "arguments"` sets
+            // `uses_arguments` on that function.
+            if name == "arguments" {
+                if let Some(id) = table.def_of(n) {
+                    let s = table.defs[id].scope;
+                    if s != 0 && scopes[s].func {
+                        scopes[s].uses_arguments = true;
+                    }
+                }
             }
         }
         Data::Export { is_default, names, value, definition, module_name, .. } => {
@@ -572,6 +596,7 @@ fn push_func(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         func: true,
         lambda: false,
         pinned: false,
+        uses_arguments: false,
         names: HashMap::new(),
     });
     id
@@ -586,6 +611,7 @@ fn push_block(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         func: false,
         lambda: false,
         pinned: false,
+        uses_arguments: false,
         names: HashMap::new(),
     });
     id
@@ -671,6 +697,19 @@ fn pin_fn(table: &mut SymTable, scopes: &mut [Scope], scope: usize) {
         if chain.contains(&def.fn_scope) {
             def.pinned = true;
         }
+    }
+}
+
+/// `resolve` from `scope` up to and including `stop`.
+fn resolve_upto(scopes: &[Scope], mut scope: usize, name: &str, stop: usize) -> Option<usize> {
+    loop {
+        if let Some(id) = scopes[scope].names.get(name) {
+            return Some(*id);
+        }
+        if scope == stop {
+            return None;
+        }
+        scope = scopes[scope].parent?;
     }
 }
 
