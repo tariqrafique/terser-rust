@@ -67,7 +67,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return None;
     }
     let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
-    let id = table.lookup(&syms::ptr(n))?;
+    let id = table.def_of(n)?;
     let (scope, mut single, assignments, references, name_len, exposed_now) = {
         let def = &table.defs[id];
         if def.suppress_fixed.get() || def.fixed.is_none() {
@@ -123,12 +123,10 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         if (is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope))
             || matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. })
         {
-            let copy = ast::deep_clone(&fixed);
-            table.alias_copy(&fixed, &copy);
+            let copy = table.clone_deep(&fixed);
             let out = expr_value(&copy);
-            if let Some(sc) = table.scope_lookup(&syms::ptr(&fixed)) {
-                table.alias_scope.borrow_mut().insert(syms::ptr(&out), (sc, Rc::clone(&out)));
-            }
+            // `make_node(AST_Function, fixed, fixed)` copies the scope (il 247-250).
+            table.copy_binding(&copy, &out);
             return Some(out);
         }
         return Some(expr_value(&fixed));
@@ -189,7 +187,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
 /// of a reference, or `None` when it has none or it does not evaluate.
 pub fn fixed_eval(n: &N, table: &SymTable) -> Option<crate::eval::Lit> {
     let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
-    let id = table.lookup(&syms::ptr(n))?;
+    let id = table.def_of(n)?;
     let def = &table.defs[id];
     if def.suppress_fixed.get() {
         return None;
@@ -230,7 +228,7 @@ fn walk(n: &N, tw: &mut Tw) {
     match &n.data {
         Data::Toplevel { body } => {
             // terser `reduce-vars.js` `AST_Toplevel`: reset variables on the root frame.
-            if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
+            if let Some(&scope) = tw.table.scope_of(n).as_ref() {
                 reset_variables(tw, scope);
             }
             for stmt in body {
@@ -243,7 +241,7 @@ fn walk(n: &N, tw: &mut Tw) {
             // `reset_block_variables`). Our body is the statement list on the function,
             // so the body's `let`/`const` live on this scope and are reset here.
             push(tw);
-            if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
+            if let Some(&scope) = tw.table.scope_of(n).as_ref() {
                 reset_variables(tw, scope);
             }
             // terser `reduce-vars.js` `mark_lambda`: IIFE parameters become fixed values.
@@ -264,7 +262,7 @@ fn walk(n: &N, tw: &mut Tw) {
             pop(tw);
         }
         Data::Block { body } | Data::StaticBlock { body } => {
-            if let Some(&scope) = tw.table.node_scope.get(&syms::ptr(n)) {
+            if let Some(&scope) = tw.table.scope_of(n).as_ref() {
                 reset_block_variables(tw, scope);
             }
             for stmt in body {
@@ -425,7 +423,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
                 if safe {
                     tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = Some(Rc::clone(right));
-                    tw.table.defs[id].references.push(syms::ptr(left));
+                    tw.table.defs[id].references.push(left.id());
                     mark(tw, id, false);
                     walk(right, tw);
                     mark(tw, id, true);
@@ -461,7 +459,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 tw.table.defs[id].assignments = tw.table.defs[id].assignments.saturating_add(1);
                 if safe {
                     if let Some(fixed) = tw.table.defs[id].fixed.clone() {
-                        tw.table.defs[id].references.push(syms::ptr(expr));
+                        tw.table.defs[id].references.push(expr.id());
                         let bin_op = if op == "++" { "+" } else { "-" };
                         let value = span_node(
                             n,
@@ -569,7 +567,7 @@ fn walk_children(n: &N, tw: &mut Tw) {
             if let (Some(names), None) = (names, module_name) {
                 for m in names {
                     let Data::NameMap { name, .. } = &m.data else { continue };
-                    if let Some(id) = tw.table.lookup(&syms::ptr(name)) {
+                    if let Some(id) = tw.table.def_of(name) {
                         on_ref(tw, id, name);
                     }
                 }
@@ -680,8 +678,8 @@ fn safe_to_read(tw: &mut Tw, id: usize) -> bool {
         if d.funarg || d.name == "arguments" {
             return false;
         }
-        let zero = Rc::new(Node { start: None, end: None, data: Data::Number { value: 0.0, raw: "0".into() } });
-        d.fixed = Some(Rc::new(Node { start: None, end: None, data: Data::Unary { op: "void".into(), expr: zero, prefix: true } }));
+        let zero = Node::new(Data::Number { value: 0.0, raw: "0".into() });
+        d.fixed = Some(Node::new(Data::Unary { op: "void".into(), expr: zero, prefix: true }));
         d.fixed_null = false;
     }
     true
@@ -736,7 +734,7 @@ fn ref_once(tw: &Tw, id: usize) -> bool {
 
 /// terser `reduce-vars.js` `AST_SymbolRef`.
 fn on_ref(tw: &mut Tw, id: usize, node: &N) {
-    tw.table.defs[id].references.push(syms::ptr(node));
+    tw.table.defs[id].references.push(node.id());
     let mut fixed_value = None;
     if (tw.table.defs[id].fixed.is_none() && !tw.table.defs[id].fixed_null) || !safe_to_read(tw, id) {
         tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
@@ -873,7 +871,7 @@ fn in_unbound_block_scope(tw: &Tw, level: usize, id: usize) -> bool {
     let Some(start) = tw.parents.len().checked_sub(1 + level) else { return false };
     for i in (1..=start).rev() {
         let (child, parent) = (&tw.parents[i], &tw.parents[i - 1]);
-        if tw.table.node_scope.contains_key(&syms::ptr(child)) {
+        if tw.table.scope_of(child).is_some() {
             return false;
         }
         match &parent.data {
@@ -890,14 +888,14 @@ fn in_unbound_block_scope(tw: &Tw, level: usize, id: usize) -> bool {
 fn declares_lexical(table: &SymTable, init: &N, id: usize) -> bool {
     let Data::Defs { kind, defs, .. } = &init.data else { return false };
     !matches!(kind, ast::DefKind::Var)
-        && defs.iter().any(|d| matches!(&d.data, Data::VarDef { name, .. } if table.node_def.get(&syms::ptr(name)) == Some(&id)))
+        && defs.iter().any(|d| matches!(&d.data, Data::VarDef { name, .. } if table.def_of(name) == Some(id)))
 }
 
 fn ref_scope(tw: &Tw, level: usize) -> Option<usize> {
     let len = tw.parents.len();
     let start = len.checked_sub(1 + level)?;
     for parent in tw.parents[..=start].iter().rev() {
-        if let Some(&id) = tw.table.node_scope.get(&syms::ptr(parent)) {
+        if let Some(&id) = tw.table.scope_of(parent).as_ref() {
             return Some(id);
         }
     }
@@ -1136,7 +1134,7 @@ fn suppress(n: &N, tw: &mut Tw) {
             if let Some(id) = def_of(tw, n) {
                 tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
                 if matches!(n.data, Data::Symbol { kind: SymKind::Ref, .. }) {
-                    tw.table.defs[id].references.push(syms::ptr(n));
+                    tw.table.defs[id].references.push(n.id());
                 }
             }
         }
@@ -1296,7 +1294,7 @@ fn contains_break(n: &N) -> bool {
 }
 
 fn def_of(tw: &Tw, n: &N) -> Option<usize> {
-    tw.table.lookup(&syms::ptr(n))
+    tw.table.def_of(n)
 }
 
 fn sym_ref(n: &N) -> Option<()> {
@@ -1395,8 +1393,7 @@ fn func_scope_pinned(table: &SymTable, func: &N) -> bool {
         return true;
     }
     table
-        .node_scope
-        .get(&syms::ptr(func))
+        .scope_of(func).as_ref()
         .copied()
         .and_then(|s| table.scope_pinned.get(s).copied())
         .unwrap_or(false)
@@ -1420,10 +1417,10 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     if sym_str(named).as_deref() != Some(name) {
         return false;
     }
-    if table.lookup(&syms::ptr(named)) == Some(id) {
+    if table.def_of(named) == Some(id) {
         return true;
     }
-    match table.node_scope.get(&syms::ptr(node)).copied() {
+    match table.scope_of(node).as_ref().copied() {
         Some(scope) => scope == table.defs[id].scope,
         // A function expression built from the declaration (`expr_value`):
         // terser points its recursive refs at the new lambda name.
@@ -1435,7 +1432,7 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
 fn nearest_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
     // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
     // pointer is not in `node_scope`.
-    parents.iter().rev().skip(1).find_map(|n| table.scope_lookup(&syms::ptr(n))).or(Some(0))
+    parents.iter().rev().skip(1).find_map(|n| table.scope_of(n)).or(Some(0))
 }
 
 /// terser `AST_SymbolRef.scope` of the reference at the end of `parents` to `id`: the
@@ -1446,7 +1443,7 @@ fn symbol_scope(table: &SymTable, parents: &[N], id: usize) -> Option<usize> {
     let def = &table.defs[id];
     let block_decl = def.block_scoped || def.lexical || matches!(def.init.as_ref().map(|i| &i.data), Some(Data::Class { stmt: true, .. }));
     for n in parents.iter().rev().skip(1) {
-        let Some(scope) = table.scope_lookup(&syms::ptr(n)) else { continue };
+        let Some(scope) = table.scope_of(n) else { continue };
         if block_decl || matches!(n.data, Data::Func { .. } | Data::Class { .. } | Data::Toplevel { .. }) {
             return Some(scope);
         }
@@ -1490,7 +1487,10 @@ fn retain_top(at: &At, func: &N) -> bool {
 }
 
 fn scope_is_inlined(table: &SymTable, func: &N) -> bool {
-    table.scope_lookup(&syms::ptr(func)).is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
+    table
+        .scope_of(func).as_ref()
+        .copied()
+        .is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
 }
 
 fn mark_inlined(table: &SymTable, mut scope: Option<usize>) {
@@ -1573,12 +1573,12 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
         Data::Func { name: Some(n), .. } | Data::Class { name: Some(n), .. } => n,
         _ => return false,
     };
-    if let Some(id) = table.lookup(&syms::ptr(name_node)) {
+    if let Some(id) = table.def_of(name_node) {
         if table.defs[id].recursive_refs > 0 {
             return true;
         }
     }
-    let Some(scope) = table.scope_lookup(&syms::ptr(func)) else { return false };
+    let Some(&scope) = table.scope_of(func).as_ref() else { return false };
     table.scope_defs.get(&scope).is_some_and(|ids| {
         ids.iter().any(|&id| table.defs[id].name == name && table.defs[id].recursive_refs > 0)
     })
@@ -1586,7 +1586,7 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
 
 /// terser `lib/compress/inline.js` `scope_encloses_variables_in_this_scope`.
 fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
-    let Some(func_scope) = table.scope_lookup(&syms::ptr(func)) else { return true };
+    let Some(&func_scope) = table.scope_of(func).as_ref() else { return true };
     let nested = nested_scopes(func, table);
     let mut conflict = false;
     each_node(func, &mut |node| {
@@ -1594,7 +1594,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
             return;
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
-        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
+        let Some(id) = table.def_of(node) else { return };
         if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
             return;
         }
@@ -1610,7 +1610,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
 fn nested_scopes(func: &N, table: &SymTable) -> std::collections::HashSet<usize> {
     let mut nested = std::collections::HashSet::new();
     each_node(func, &mut |node| {
-        if let Some(sc) = table.scope_lookup(&syms::ptr(node)) {
+        if let Some(sc) = table.scope_of(node) {
             nested.insert(sc);
         }
     });
@@ -1705,7 +1705,7 @@ fn join_expr(a: CExpr, b: CExpr) -> CExpr {
 
 /// terser `inference.js` `all_refs_local`.
 fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
-    let Some(func_scope) = table.scope_lookup(&syms::ptr(func)) else { return CExpr::No };
+    let Some(&func_scope) = table.scope_of(func).as_ref() else { return CExpr::No };
     if table.inlined_scopes.borrow().contains(&func_scope) {
         return CExpr::No;
     }
@@ -1725,7 +1725,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
             return;
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
-        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
+        let Some(id) = table.def_of(node) else { return };
         // Locals and names defined in a nested function are not free references.
         if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
             return;
@@ -1844,8 +1844,10 @@ fn num_node(value: f64) -> N {
     Node::new(Data::Number { value, raw: if value == 0.0 { "0".into() } else { String::new() } })
 }
 
+/// new: terser `make_node(X, span, ..)` (il 297). The `Defun` to `Function` rewrite is terser's
+/// shallow copy `make_node(AST_Function, fixed, fixed)` (il 247-250); the port deep-clones the declaration first.
 fn span_node(span: &N, data: Data) -> N {
-    Rc::new(Node { start: span.start.clone(), end: span.end.clone(), data })
+    Node::make(span, data)
 }
 
 /// Every node under `n`, pre-order, in the order of terser's `walk(node, cb)` helper.

@@ -17,7 +17,8 @@
 //! - `Catch` and `Finally` hold their statements in a `Block` node, where terser's `AST_Catch` and
 //!   `AST_Finally` are blocks themselves. (`Try`'s `Block` is terser's `AST_TryBlock`.)
 
-use crate::{Data, DefKind, FuncKind, Key, MethodKind, N, Node, Seg, SymKind};
+use crate::{Data, DefKind, FuncKind, Key, MethodKind, N, Node, NodeId, Seg, SymKind};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// The children of `n` in terser's `_walk` order (what a `TreeWalker` visits). Same as
@@ -55,9 +56,15 @@ pub fn walk(n: &N, f: &mut dyn FnMut(&N) -> bool) {
 
 /// The children of `n` in terser's `def_transform` order (what a `TreeTransformer` descends
 /// into), read only. [`map_children`] rebuilds in the same order. Each arm names the terser
-/// node types the variant stands for.
+/// node types the variant stands for. This is also NODE_IDS.md's `for_each_child`: it walks the
+/// children without allocating.
 pub fn transform_children(n: &N, f: &mut dyn FnMut(&N)) {
-    let o = |x: &Option<N>, f: &mut dyn FnMut(&N)| {
+    data_children(&n.data, f)
+}
+
+/// [`transform_children`] of a node's data, before it is a node.
+pub fn data_children(data: &Data, f: &mut dyn FnMut(&N)) {
+    let o =|x: &Option<N>, f: &mut dyn FnMut(&N)| {
         if let Some(v) = x {
             f(v)
         }
@@ -68,7 +75,7 @@ pub fn transform_children(n: &N, f: &mut dyn FnMut(&N)) {
             f(e)
         }
     };
-    match &n.data {
+    match data {
         // AST_Toplevel; AST_BlockStatement (AST_TryBlock as `Try.body`, the statement list of
         // AST_Catch / AST_Finally as their `body`)
         Data::Toplevel { body } | Data::Block { body } => l(body, f),
@@ -278,15 +285,21 @@ pub fn transform_children(n: &N, f: &mut dyn FnMut(&N)) {
 
 /// Rebuild `n` with every child replaced by `f(child)`, in [`transform_children`] order (terser's
 /// `def_transform`). Scalar fields are copied, and so are the `attributes` of an `import` /
-/// `export`, which terser does not transform. The result is a new node even when no child changed.
+/// `export`, which terser does not transform. The result is a new node even when no child changed,
+/// with `n`'s id: `descend` edits the node in place.
 pub fn map_children(n: &N, f: &mut dyn FnMut(&N) -> N) -> N {
-    let o = |x: &Option<N>, f: &mut dyn FnMut(&N) -> N| x.as_ref().map(|v| f(v));
+    n.rebuild(map_data(n, f))
+}
+
+/// The data of [`map_children`], before it is a node.
+fn map_data(n: &N, f: &mut dyn FnMut(&N) -> N) -> Data {
+    let o =|x: &Option<N>, f: &mut dyn FnMut(&N) -> N| x.as_ref().map(|v| f(v));
     let l = |xs: &[N], f: &mut dyn FnMut(&N) -> N| xs.iter().map(|v| f(v)).collect::<Vec<N>>();
     let key = |k: &Key, f: &mut dyn FnMut(&N) -> N| match k {
         Key::Computed(e) => Key::Computed(f(e)),
         other => other.clone(),
     };
-    let data = match &n.data {
+    match &n.data {
         Data::Toplevel { body } => Data::Toplevel { body: l(body, f) },
         Data::Simple { body } => Data::Simple { body: f(body) },
         Data::Block { body } => Data::Block { body: l(body, f) },
@@ -390,13 +403,48 @@ pub fn map_children(n: &N, f: &mut dyn FnMut(&N) -> N) -> N {
         | Data::RegExp { .. }
         | Data::Hole
         | Data::ImportMeta => n.data.clone(),
-    };
-    Rc::new(Node { start: n.start.clone(), end: n.end.clone(), data })
+    }
 }
 
-/// terser `AST_Node.clone(true)`: every node is new.
+/// terser `AST_Node.clone(true)`: every node is new (a new id, the same span).
 pub fn deep_clone(n: &N) -> N {
-    map_children(n, &mut |c| deep_clone(c))
+    deep_clone_with(n, &mut |_, _| {})
+}
+
+/// [`deep_clone`] that reports every `(original, copy)` pair, children before their parent, so
+/// a side table can carry the original's entries over (terser's `clone(true)` keeps `thedef`).
+pub fn deep_clone_with(n: &N, f: &mut dyn FnMut(&N, &N)) -> N {
+    let data = map_data(n, &mut |c| deep_clone_with(c, f));
+    let copy = Node::make(n, data);
+    f(n, &copy);
+    copy
+}
+
+/// Ids that appear on two different nodes in the tree under `root`: the port's version of terser
+/// putting one object in two places (a node rebuilt with [`Node::rebuild`] while its old version
+/// stays in the tree). The same `Rc` shared in two places is not reported. Each entry is the id
+/// and terser's type names of the two nodes.
+pub fn check_ids(root: &N) -> Vec<(NodeId, &'static str, &'static str)> {
+    // Every node is held by `root`, so the addresses are unique for the whole walk.
+    let mut seen: HashMap<NodeId, (*const Node, &'static str)> = HashMap::new();
+    let mut visited: HashSet<*const Node> = HashSet::new();
+    let mut out = Vec::new();
+    let mut stack: Vec<N> = vec![Rc::clone(root)];
+    while let Some(n) = stack.pop() {
+        let p = Rc::as_ptr(&n);
+        if !visited.insert(p) {
+            continue;
+        }
+        match seen.get(&n.id()) {
+            Some(&(q, ty)) if q != p => out.push((n.id(), ty, terser_type(&n))),
+            Some(_) => {}
+            None => {
+                seen.insert(n.id(), (p, terser_type(&n)));
+            }
+        }
+        transform_children(&n, &mut |c| stack.push(Rc::clone(c)));
+    }
+    out
 }
 
 /// terser's `node.TYPE` for `n`. A `Block` is `BlockStatement` here; as `Try.body` terser has an
