@@ -668,6 +668,20 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             }
         }
     }
+    // drop-unused.js `tt` `AST_LabeledStatement` with an `AST_For` body: what the loop's
+    // init left in front of the loop goes in front of the label.
+    if let Data::Labeled { label, body } = &n.data {
+        if matches!(body.data, Data::For { .. }) {
+            let mut tmp = Vec::new();
+            rewrite_stmt(body, table, u, scope_id, drop_vars, drop_funcs, &mut tmp);
+            if let Some(last) = tmp.pop() {
+                out.extend(tmp);
+                let same = Rc::ptr_eq(&last, body);
+                out.push(if same { Rc::clone(n) } else { renode(n, Data::Labeled { label: Rc::clone(label), body: last }) });
+            }
+            return;
+        }
+    }
     // drop-unused.js: an unused `class` declaration goes when it has no side effects.
     if drop_funcs {
         if let Data::Class { stmt: true, name: Some(name), .. } = &n.data {
