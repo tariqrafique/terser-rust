@@ -7,6 +7,7 @@ use ast::{Data, FuncKind, Key, N, Node, Seg, SymKind};
 use std::rc::Rc;
 
 use crate::Cx;
+use crate::syms::SymTable;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Lit {
@@ -287,7 +288,7 @@ fn optimize_template(n: &N, cx: &Cx) -> Option<N> {
         }
         // `segment.evaluate(compressor)` (a string longer than the segment's size stays), then
         // `(result + "").length <= segment.size() + "${}".length`.
-        let lit = eval(expr).filter(|lit| match lit {
+        let lit = eval_raw(expr, cx).filter(|lit| match lit {
             Lit::Str(s) => utf16_len(s) + 2 <= crate::size::size_in(expr, std::slice::from_ref(n), true),
             _ => true,
         });
@@ -608,7 +609,7 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     if matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::Null | Data::RegExp { .. }) {
         return None;
     }
-    finish_constant(n, eval(n)?, cx)
+    finish_constant(n, eval_raw(n, cx)?, cx)
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Conditional)`.
@@ -616,9 +617,21 @@ fn fold_cond(n: &N, cx: &Cx) -> Option<N> {
     crate::conditional::optimize(n, cx)
 }
 
-pub(crate) fn known_truth(n: &N) -> Option<bool> {
-    let lit = eval(n)?;
-    if !is_pure(n) {
+pub(crate) fn known_truth(n: &N, cx: &Cx) -> Option<bool> {
+    let lit = eval(n, cx)?;
+    // A reference is a read of its fixed value when it evaluates (`AST_SymbolRef._eval`).
+    fn pure(n: &N, cx: &Cx) -> bool {
+        match &n.data {
+            Data::Symbol { kind: SymKind::Ref, .. } => eval(n, cx).is_some(),
+            Data::Unary { op, expr, prefix: true } => matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") && pure(expr, cx),
+            Data::Binary { op, left, right } => !is_assign(op) && pure(left, cx) && pure(right, cx),
+            Data::Cond { cond, cons, alt } => pure(cond, cx) && pure(cons, cx) && pure(alt, cx),
+            Data::Seq { exprs } => exprs.iter().all(|e| pure(e, cx)),
+            Data::Array { elements } => elements.iter().all(|e| pure(e, cx)),
+            _ => is_pure(n),
+        }
+    }
+    if !pure(n, cx) {
         return None;
     }
     Some(lit.truthy())
@@ -815,14 +828,7 @@ pub(crate) fn eval_if_cond(n: &N, cx: &Cx) -> Option<Lit> {
     if !cx.opts.evaluate {
         return None;
     }
-    let lit = eval(n)?;
-    if let Lit::Str(s) = &lit {
-        // `this.size(compressor)`: mangled names count 1.
-        if !s.is_empty() && utf16_len(s) + 2 > crate::size::size_in(n, &[], true) {
-            return None;
-        }
-    }
-    Some(lit)
+    eval(n, cx)
 }
 
 fn dead_if(span: &N, cond: &N, body: &N, alt: Option<&N>, truthy: bool, cx: &Cx) -> N {
@@ -1230,7 +1236,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
     let lit_str = |l: Lit| -> String { js_str(&l) };
     // `foo${bar}baz` + 1 => `foo${bar}baz1`
     if let Data::Template { segments } = &left.data {
-        if let Some(r) = eval(right) {
+        if let Some(r) = eval(right, cx) {
             let mut segs = segments.clone();
             if let Some(Seg::Cooked { value, raw, units }) = segs.last_mut() {
                 let add = lit_str(r);
@@ -1244,7 +1250,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
     }
     // 1 + `foo${bar}baz` => `1foo${bar}baz`
     if let Data::Template { segments } = &right.data {
-        if let Some(l) = eval(left) {
+        if let Some(l) = eval(left, cx) {
             let mut segs = segments.clone();
             if let Some(Seg::Cooked { value, raw, units }) = segs.first_mut() {
                 let add = lit_str(l);
@@ -1386,13 +1392,13 @@ fn eval_logical(n: &N, cx: &Cx) -> Option<N> {
 }
 
 fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
-    if let Some(ll) = eval(left) {
+    if let Some(ll) = eval(left, cx) {
         if !ll.truthy() {
             return Some(maintain_this(cx, Rc::clone(left)));
         }
         return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
     }
-    if let Some(rr) = eval(right) {
+    if let Some(rr) = eval(right, cx) {
         if !rr.truthy() {
             if in_boolean_context(cx) {
                 return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 0.0)], cx));
@@ -1404,7 +1410,7 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
     // `(x || false) && y` => `x ? y : false`
     if let Data::Binary { op, left: ll, right: lr } = &left.data {
         if op == "||" {
-            if let Some(v) = eval(lr) {
+            if let Some(v) = eval(lr, cx) {
                 if !v.truthy() {
                     let node = atom(
                         span,
@@ -1423,13 +1429,13 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
 }
 
 fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
-    if let Some(ll) = eval(left) {
+    if let Some(ll) = eval(left, cx) {
         if !ll.truthy() {
             return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
         }
         return Some(maintain_this(cx, Rc::clone(left)));
     }
-    if let Some(rr) = eval(right) {
+    if let Some(rr) = eval(right, cx) {
         if !rr.truthy() {
             if left_of(cx, "||") || in_boolean_context(cx) {
                 return Some(maintain_this(cx, Rc::clone(left)));
@@ -1441,7 +1447,7 @@ fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
     // `(x && true) || y` => `x ? true : y`
     if let Data::Binary { op, left: ll, right: lr } = &left.data {
         if op == "&&" {
-            if let Some(v) = eval(lr) {
+            if let Some(v) = eval(lr, cx) {
                 if v.truthy() {
                     let node = atom(
                         span,
@@ -1464,7 +1470,7 @@ fn eval_nullish(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
     if is_nullish_node(left, cx) {
         return Some(Rc::clone(right));
     }
-    if let Some(ll) = eval(left) {
+    if let Some(ll) = eval(left, cx) {
         return Some(if matches!(ll, Lit::Null | Lit::Undef) {
             Rc::clone(right)
         } else {
@@ -1472,7 +1478,7 @@ fn eval_nullish(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
         });
     }
     if in_boolean_context(cx) {
-        if let Some(rr) = eval(right) {
+        if let Some(rr) = eval(right, cx) {
             if !rr.truthy() {
                 return Some(Rc::clone(left));
             }
@@ -1519,7 +1525,7 @@ fn bitwise_ops(n: &N, cx: &Cx) -> Option<Result<N, N>> {
     if !matches!(op.as_str(), "<<" | ">>" | "&" | "|" | "^") {
         return None;
     }
-    let num_of = |x: &N| match eval(x) {
+    let num_of = |x: &N| match eval(x, cx) {
         Some(Lit::Num(v)) => Some(v),
         _ => None,
     };
@@ -1718,7 +1724,7 @@ fn fold_cmp_bits(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> 
     if is_32_bit(left) && is_32_bit(right) {
         // Constant comparisons belong to evaluate. `0 == 0` => `!0` here
         // leaves a switch-built `if` unchanged, so `fold_if` never runs.
-        if eval(left).is_some() && eval(right).is_some() {
+        if eval(left, cx).is_some() && eval(right, cx).is_some() {
             return None;
         }
         if num_is_zero(left) {
@@ -2216,7 +2222,7 @@ fn fold_sub(n: &N, cx: &Cx, depth: u8) -> Option<N> {
     let mut evaluated = false;
     let mut property = String::new();
     if cx.opts.properties && cx.opts.evaluate {
-        if let Some(lit) = eval(prop) {
+        if let Some(lit) = eval(prop, cx) {
             let key = normalize_prop_key(lit);
             let constant = lit_node(prop, prop_key_lit(&key), cx);
             prop_node = crate::size::best_of_expression(prop, &constant);
@@ -2591,16 +2597,11 @@ fn make_seq(span: &N, exprs: Vec<N>) -> N {
 
 /// terser `lib/compress/evaluate.js` `def_eval(AST_PropAccess)` for `.length`.
 fn eval_length(span: &N, expr: &N, cx: &Cx) -> Option<N> {
-    if let Some(Lit::Str(s)) = eval(expr) {
+    // `this.expression._eval(compressor, depth + 1)`: a reference evaluates through its
+    // fixed value (`AST_SymbolRef._eval`).
+    if let Some(Lit::Str(s)) = eval_raw(expr, cx) {
         let len = js_str_len(&s, string_units(expr));
         return Some(prefer(span, lit_node(span, Lit::Num(len), cx), cx));
-    }
-    // A reference evaluates through its fixed value (`AST_SymbolRef._eval`).
-    if let Some(table) = cx.syms.as_ref().filter(|_| cx.opts.reduce_vars) {
-        if let Some(Lit::Str(s)) = crate::reduce_vars::fixed_eval(expr, table) {
-            let len = js_str_len(&s, None);
-            return Some(prefer(span, lit_node(span, Lit::Num(len), cx), cx));
-        }
     }
     let Data::Array { elements } = &expr.data else {
         return None;
@@ -3268,7 +3269,7 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
     }
 }
 
-fn eval(n: &N) -> Option<Lit> {
+fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
     match &n.data {
         Data::Number { value, .. } => Some(Lit::Num(*value)),
         Data::String { value, .. } => Some(Lit::Str(value.clone())),
@@ -3277,7 +3278,7 @@ fn eval(n: &N) -> Option<Lit> {
         Data::Null => Some(Lit::Null),
         Data::Infinity => Some(Lit::Num(f64::INFINITY)),
         Data::Unary { op, expr, prefix: true } => {
-            let inner = eval(expr)?;
+            let inner = eval_in(expr, table)?;
             match op.as_str() {
                 "!" => Some(Lit::Bool(!inner.truthy())),
                 "void" => Some(Lit::Undef),
@@ -3291,57 +3292,105 @@ fn eval(n: &N) -> Option<Lit> {
         }
         Data::Binary { op, left, right } => {
             if op == "&&" || op == "||" || op == "??" {
-                let l = eval(left)?;
+                let l = eval_in(left, table)?;
                 return match op.as_str() {
                     "&&" => {
                         if !l.truthy() {
                             Some(l)
                         } else {
-                            eval(right)
+                            eval_in(right, table)
                         }
                     }
                     "||" => {
                         if l.truthy() {
                             Some(l)
                         } else {
-                            eval(right)
+                            eval_in(right, table)
                         }
                     }
                     _ => {
                         if matches!(l, Lit::Null | Lit::Undef) {
-                            eval(right)
+                            eval_in(right, table)
                         } else {
                             Some(l)
                         }
                     }
                 };
             }
-            let l = eval(left)?;
-            let r = eval(right)?;
+            let l = eval_in(left, table)?;
+            let r = eval_in(right, table)?;
             eval_bin(op, l, r)
         }
         Data::Cond { cond, cons, alt } => {
-            let c = eval(cond)?;
-            if c.truthy() { eval(cons) } else { eval(alt) }
+            let c = eval_in(cond, table)?;
+            if c.truthy() { eval_in(cons, table) } else { eval_in(alt, table) }
         }
         // terser `evaluate.js` `AST_PropAccess`: `.length` of an evaluated array or string.
         Data::Dot { expr, prop, optional: false, private: false, .. } if prop == "length" => match &expr.data {
             Data::String { value, .. } => Some(Lit::Num(utf16_len(value) as f64)),
             Data::Array { elements } => {
                 for e in elements {
-                    eval(e)?;
+                    eval_in(e, table)?;
                 }
                 Some(Lit::Num(elements.len() as f64))
             }
+            // `this.expression._eval(compressor, depth + 1)`: a reference to a string.
+            Data::Symbol { kind: SymKind::Ref, .. } => match eval_in(expr, table)? {
+                Lit::Str(s) => Some(Lit::Num(utf16_len(&s) as f64)),
+                _ => None,
+            },
             _ => None,
         },
+        Data::Symbol { kind: SymKind::Ref, .. } => eval_ref(n, table?),
         _ => None,
     }
 }
 
-/// terser `AST_Node.evaluate` for a `reduce_vars` fixed value.
-pub(crate) fn eval_lit(n: &N) -> Option<Lit> {
-    eval(n)
+thread_local! {
+    /// terser `evaluate.js` `reentrant_ref_eval`: the references being evaluated.
+    static REENTRANT_REF_EVAL: std::cell::RefCell<Vec<ast::NodeId>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// terser `evaluate.js` `def_eval(AST_SymbolRef)`: the reference's `fixed_value()`, evaluated.
+/// A value of `typeof "object"` (the `escaped` depth test) cannot come out of `eval_in`.
+fn eval_ref(n: &N, table: &SymTable) -> Option<Lit> {
+    let id = table.def_of(n)?;
+    let def = table.defs.get(id)?;
+    if def.suppress_fixed.get() || table.unfixed_ref(n) {
+        return None;
+    }
+    let fixed = def.fixed.as_ref()?;
+    let nid = n.id();
+    if REENTRANT_REF_EVAL.with(|set| set.borrow().contains(&nid)) {
+        return None;
+    }
+    REENTRANT_REF_EVAL.with(|set| set.borrow_mut().push(nid));
+    let value = eval_in(fixed, Some(table));
+    REENTRANT_REF_EVAL.with(|set| set.borrow_mut().pop());
+    value
+}
+
+/// terser `AST_Node._eval`, with references evaluated through their fixed values
+/// (`reduce_vars`).
+fn eval_raw(n: &N, cx: &Cx) -> Option<Lit> {
+    eval_in(n, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars))
+}
+
+/// terser `AST_Node.evaluate(compressor)`: `_eval`, except that a string longer than
+/// the node (`val.length + 2 > this.size(compressor)`, mangled names 1) is no value.
+fn eval(n: &N, cx: &Cx) -> Option<Lit> {
+    eval_lit(n, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars), &cx.parents)
+}
+
+/// terser `AST_Node.evaluate(compressor)` with the compressor's stack `stack`.
+pub(crate) fn eval_lit(n: &N, table: Option<&SymTable>, stack: &[N]) -> Option<Lit> {
+    let lit = eval_in(n, table)?;
+    if let Lit::Str(s) = &lit {
+        if utf16_len(s) + 2 > crate::size::size_in(n, stack, true) {
+            return None;
+        }
+    }
+    Some(lit)
 }
 
 impl Lit {
@@ -3591,7 +3640,7 @@ pub(crate) fn prefix_constant(n: &N, skip_expr: &N, cx: &Cx) -> Option<N> {
     if op == "-" && matches!(skip_expr.data, Data::Number { .. } | Data::Infinity | Data::BigInt { .. }) {
         return None;
     }
-    let lit = if op == "typeof" { eval_typeof(expr, cx)? } else { apply_unary(op, eval(expr)?)? };
+    let lit = if op == "typeof" { eval_typeof(expr, cx)? } else { apply_unary(op, eval_raw(expr, cx)?)? };
     finish_constant(n, lit, cx)
 }
 
@@ -3600,7 +3649,7 @@ pub(crate) fn best_constant(n: &N, cx: &Cx) -> Option<N> {
     if !cx.opts.evaluate {
         return None;
     }
-    finish_constant(n, eval(n)?, cx)
+    finish_constant(n, eval_raw(n, cx)?, cx)
 }
 
 fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
@@ -3643,7 +3692,7 @@ fn eval_typeof(expr: &N, cx: &Cx) -> Option<Lit> {
     if matches!(expr.data, Data::RegExp { .. }) {
         return None;
     }
-    let lit = eval(expr)?;
+    let lit = eval_raw(expr, cx)?;
     Some(Lit::Str(match &lit {
         Lit::Num(_) => "number",
         Lit::Str(_) => "string",
