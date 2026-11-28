@@ -730,22 +730,19 @@ fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
     if !is_new && func_expr_unreferenced(expr, cx) {
         // terser `this.clone()`: the call is a new node even when
         // `process_expression` leaves the function as it was.
+        // `process_expression` edits the function in place (it keeps its id and flags).
         let rewritten = crate::eval::process_expression(expr, false, Some(cx));
-        crate::keep_squeezed(cx, expr, &rewritten);
         let Data::Call { args, optional, is_new, .. } = &n.data else {
             return Some(Rc::clone(n));
         };
-        return Some(made_fresh(
-            cx,
-            atom(
-                n,
-                Data::Call {
-                    expr: rewritten,
-                    args: args.clone(),
-                    optional: *optional,
-                    is_new: *is_new,
-                },
-            ),
+        return Some(atom(
+            n,
+            Data::Call {
+                expr: rewritten,
+                args: args.clone(),
+                optional: *optional,
+                is_new: *is_new,
+            },
         ));
     }
     Some(Rc::clone(n))
@@ -816,7 +813,7 @@ fn drop_binary(n: &N, op: &str, left: &N, right: &N, cx: &Cx, first: bool) -> Op
         if Rc::ptr_eq(&right_d, right) {
             return Some(Rc::clone(n));
         }
-        return Some(made_fresh(cx, binary(n, op, Rc::clone(left), right_d)));
+        return Some(binary(n, op, Rc::clone(left), right_d));
     }
     match drop_side_effect_free(left, cx, first) {
         None => drop_side_effect_free(&right_d, cx, first),
@@ -836,14 +833,7 @@ fn drop_sequence(n: &N, exprs: &[N], cx: &Cx) -> Option<N> {
     if let Some(tail) = tail {
         kept.push(tail);
     }
-    seq_from_parts(n, kept).map(|made| made_fresh(cx, made))
-}
-
-/// terser `make_node` / `clone()` in `drop_side_effect_free`: a node with no
-/// flags, so the descend after the scope's `drop_unused` optimizes it.
-pub(crate) fn made_fresh(cx: &Cx, n: N) -> N {
-    cx.fresh.borrow_mut().insert(Rc::as_ptr(&n) as usize, Rc::clone(&n));
-    n
+    seq_from_parts(n, kept)
 }
 
 fn drop_cond(n: &N, cond: &N, cons: &N, alt: &N, cx: &Cx) -> Option<N> {

@@ -182,9 +182,7 @@ fn trim(span: &N, exprs: Vec<N>, cx: &Cx, preserve: bool) -> N {
 }
 
 fn reopt(n: N, cx: &Cx) -> N {
-    let ptr = Rc::as_ptr(&n) as usize;
-    let flagged = cx.optimized.contains(&ptr) || cx.squeezed.contains(&ptr);
-    crate::audit_flags(cx, "reopt", &n, flagged, true, true);
+    let flagged = cx.is_optimized(&n) || cx.is_squeezed(&n);
     if flagged {
         return n;
     }

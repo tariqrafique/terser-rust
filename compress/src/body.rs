@@ -40,7 +40,6 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         }
         if cx.opts.collapse_vars {
             if let Some(scope) = collapse_scope(&stmts, cx) {
-                let before = stmts.clone();
                 crate::tighten::set_injected(cx.injected_refs.borrow().clone());
                 // Function-statement names visible here, innermost declaration wins.
                 {
@@ -118,11 +117,6 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                 if changed {
                     st.changed = true;
                     collapsed = true;
-                    // terser's collapse edits nodes in place, so their
-                    // `SQUEEZED` / `OPTIMIZED` flags stay.
-                    let block_old = ast::Node::new(Data::Block { body: before });
-                    let block_new = ast::Node::new(Data::Block { body: stmts.clone() });
-                    crate::transfer_flags(&block_old, &block_new, cx);
                 }
             }
         }
@@ -161,7 +155,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
                     Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } | Data::Class { .. } => break,
                     Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } => in_loop = true,
                     Data::Try { body, .. } => {
-                        if cx.parents.get(i + 1).is_some_and(|c| Rc::ptr_eq(c, body)) {
+                        if cx.parents.get(i + 1).is_some_and(|c| c.id() == body.id()) {
                             in_try = true;
                         }
                     }
@@ -233,7 +227,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
 
 /// This body is a lambda's `pre_tighten` (`Cx.foreign_lambda`).
 fn foreign(cx: &Cx) -> bool {
-    cx.foreign_lambda != 0 && self_node(cx).is_some_and(|s| Rc::as_ptr(&s) as usize == cx.foreign_lambda)
+    cx.foreign_lambda.is_some() && self_node(cx).is_some_and(|s| Some(s.id()) == cx.foreign_lambda)
 }
 
 fn self_node(cx: &Cx) -> Option<N> {
@@ -577,7 +571,7 @@ fn can_merge_flow(ab: &N, stmts: &[N], i: usize, in_lambda: bool, self_n: Option
         Data::Return { value } => in_lambda && is_return_void(value),
         Data::Continue { .. } => {
             let Some(me) = self_n else { return false };
-            crate::loops::loop_target(ab, &cx.parents).is_some_and(|lct| Rc::ptr_eq(&loop_body(lct), me))
+            crate::loops::loop_target(ab, &cx.parents).is_some_and(|lct| loop_body(lct).id() == me.id())
         }
         Data::Break { .. } => {
             let Some(me) = self_n else { return false };
@@ -652,10 +646,8 @@ fn sequencesize(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
         // terser `make_sequence` and `make_node(AST_SimpleStatement)`: new
         // nodes with no flags, so the descend after the scope's `drop_unused`
         // optimizes them (and an `a||(b||c)` an if-return put in the sequence).
-        let many = exprs.len() > 1;
         let body = make_sequence(&first, exprs);
-        let body = if many { crate::unary::made_fresh(cx, body) } else { body };
-        out.push(crate::unary::made_fresh(cx, eval::simple(&body, body.clone())));
+        out.push(eval::simple(&body, body.clone()));
     };
     for stat in stmts.iter() {
         match &stat.data {
@@ -815,7 +807,6 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                                 alt: a,
                             },
                         );
-                        cx.fresh.borrow_mut().insert(Rc::as_ptr(&made) as usize, Rc::clone(&made));
                         out.push(made);
                         prev = None;
                         st.changed = true;

@@ -434,10 +434,9 @@ fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
         ) {
             // terser `fixed.optimize(compressor)`: a lambda that was not yet
             // optimized gets its one `tighten_body` now.
-            let optimized = cx.optimized.contains(&(Rc::as_ptr(&value) as usize));
-            crate::audit_flags(cx, "fixed_optimized", &value, optimized, false, true);
+            let optimized = cx.is_optimized(&value);
             if matches!(value.data, Data::Func { .. }) && !optimized {
-                cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
+                cx.pre_tighten.borrow_mut().insert(value.id());
             }
             return Some(value);
         }
@@ -693,7 +692,7 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
             // assignment it builds must not run `AST_Assign.optimize` later,
             // or `x = (y, 2)` is lifted to `y, x = 2`.
             if matches!(expr.data, Data::Assign { .. }) {
-                crate::seal(cx, &expr);
+                cx.set_optimized(&expr);
             }
             return Some(simple_opt(n, expr, cx));
         }
@@ -713,11 +712,10 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
             } else {
                 binary(n, "&&", Rc::clone(&cond), expr)
             };
-            let expr = crate::unary::made_fresh(cx, expr);
             return Some(simple_opt(n, expr, cx));
         }
         (StmtClass::Empty, StmtClass::Expr(expr)) => {
-            let expr = crate::unary::made_fresh(cx, binary(n, "||", Rc::clone(&cond), expr));
+            let expr = binary(n, "||", Rc::clone(&cond), expr);
             return Some(simple_opt(n, expr, cx));
         }
         _ => {}
@@ -765,7 +763,6 @@ fn stmt_kind(n: &N) -> StmtClass {
     match &n.data {
         Data::Empty => StmtClass::Empty,
         Data::Block { body } if body.iter().all(|s| matches!(s.data, Data::Empty)) => StmtClass::Empty,
-        Data::Block { body } if body.len() == 1 => stmt_kind(&body[0]),
         Data::Simple { body } => StmtClass::Expr(Rc::clone(body)),
         _ => StmtClass::Other,
     }
@@ -912,7 +909,7 @@ fn exit_conditional(span: &N, cond: &N, left: ExitPair, right: ExitPair, cx: &Cx
     // `.transform(compressor)`: `def_optimize` flags the conditional's result
     // `OPTIMIZED`, so a later descend does not optimize it again (a `!a&&(!b&&c)`
     // stays right-nested).
-    crate::seal(cx, &value);
+    cx.set_optimized(&value);
     match left.kind {
         ExitKind::Return => {
             let value = if is_undefined_like(&value) { None } else { Some(value) };
@@ -1171,7 +1168,7 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             None => {}
         }
     }
-    if let Some(next) = reassoc_lazy(&cur) {
+    if let Some(next) = reassoc_lazy(&cur, cx) {
         cur = next;
     }
     if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
@@ -1307,8 +1304,8 @@ fn maintain_this(cx: &Cx, val: N) -> N {
     let self_n = &cx.stack[len - 1];
     let parent = &cx.stack[len - 2];
     let needs = match &parent.data {
-        Data::Unary { op, expr, prefix: true } if op == "delete" && Rc::ptr_eq(expr, self_n) => true,
-        Data::Call { expr, .. } if Rc::ptr_eq(expr, self_n) => match &val.data {
+        Data::Unary { op, expr, prefix: true } if op == "delete" && expr.id() == self_n.id() => true,
+        Data::Call { expr, .. } if expr.id() == self_n.id() => match &val.data {
             Data::Chain { .. } | Data::Dot { .. } | Data::Sub { .. } => true,
             Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "eval" => true,
             _ => false,
@@ -1345,12 +1342,12 @@ fn in_boolean_context(cx: &Cx) -> bool {
 
 fn bool_producer(parent: &N, self_n: &N) -> bool {
     match &parent.data {
-        Data::Simple { body } => Rc::ptr_eq(body, self_n),
+        Data::Simple { body } => body.id() == self_n.id(),
         Data::Cond { cond, .. } | Data::Do { cond, .. } | Data::While { cond, .. } | Data::If { cond, .. } => {
-            Rc::ptr_eq(cond, self_n)
+            cond.id() == self_n.id()
         }
-        Data::For { cond: Some(cond), .. } => Rc::ptr_eq(cond, self_n),
-        Data::Unary { op, expr, prefix: true } if op == "!" => Rc::ptr_eq(expr, self_n),
+        Data::For { cond: Some(cond), .. } => cond.id() == self_n.id(),
+        Data::Unary { op, expr, prefix: true } if op == "!" => expr.id() == self_n.id(),
         _ => false,
     }
 }
@@ -1359,7 +1356,7 @@ fn bool_continues(parent: &N, self_n: &N) -> bool {
     match &parent.data {
         Data::Binary { op, .. } if op == "&&" || op == "||" => true,
         Data::Cond { .. } => true,
-        Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, self_n)),
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| e.id() == self_n.id()),
         _ => false,
     }
 }
@@ -1371,7 +1368,7 @@ fn left_of(cx: &Cx, op: &str) -> bool {
     }
     let self_n = &cx.stack[len - 1];
     match &cx.stack[len - 2].data {
-        Data::Binary { op: pop, left, .. } => pop == op && Rc::ptr_eq(left, self_n),
+        Data::Binary { op: pop, left, .. } => pop == op && left.id() == self_n.id(),
         _ => false,
     }
 }
@@ -1674,7 +1671,7 @@ fn reversible(left: &N, right: &N, cx: &Cx) -> bool {
 }
 
 /// `x && (y && z)` => `(x && y) && z`, and the same for `||` and `??`.
-fn reassoc_lazy(n: &N) -> Option<N> {
+fn reassoc_lazy(n: &N, cx: &Cx) -> Option<N> {
     let Data::Binary { op, left, right } = &n.data else {
         return None;
     };
@@ -1687,13 +1684,22 @@ fn reassoc_lazy(n: &N) -> Option<N> {
     if rop != op {
         return None;
     }
-    let mut cur_left = binary(n, op, Rc::clone(left), Rc::clone(rl));
+    // The new left is `make_node(AST_Binary, ..)`, which `self.transform(compressor)`
+    // optimizes (`bar||(baz||baa)` is reassociated in turn); each round of the loop is
+    // `self.transform`'s optimize of `self` again.
+    let new_left = |l: N, r: N| {
+        let made = binary(n, op, l, r);
+        let out = fold(&made, cx);
+        cx.transformed(&made, &out);
+        out
+    };
+    let mut cur_left = new_left(Rc::clone(left), Rc::clone(rl));
     let mut cur_right = Rc::clone(rr);
     while let Data::Binary { op: rop, left: rl, right: rr } = &cur_right.data {
         if rop != op {
             break;
         }
-        cur_left = binary(n, op, cur_left, Rc::clone(rl));
+        cur_left = new_left(cur_left, Rc::clone(rl));
         cur_right = Rc::clone(rr);
     }
     // keep: `self.left = make_node(..); self.right = ..; return self.transform(..)`
@@ -2978,41 +2984,6 @@ fn is_basic_ident(value: &str) -> bool {
 
 
 
-pub(crate) fn only_pure_decls(body: &[N], cx: &Cx) -> bool {
-    !body.is_empty() && body.iter().all(|s| pure_decl(s, cx))
-}
-
-fn pure_decl(n: &N, cx: &Cx) -> bool {
-    match &n.data {
-        Data::Empty => true,
-        Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const, defs, .. } => defs.iter().all(|d| match &d.data {
-            // A destructuring pattern throws when the value is not iterable
-            // or not an object, so the declaration is not pure even when the
-            // initializer's read is.
-            Data::VarDef { name, value: None } => matches!(name.data, Data::Symbol { .. }),
-            Data::VarDef { name, value: Some(v) } => {
-                matches!(name.data, Data::Symbol { .. }) && statement_pure(v, cx)
-            }
-            _ => false,
-        }),
-        Data::Class { extends: None, props, .. } => props.iter().all(|p| match &p.data {
-            Data::Prop { key, value, .. } => pure_key(key, cx) && matches!(value.data, Data::Func { .. }),
-            Data::Field { key, value, .. } => {
-                pure_key(key, cx) && value.as_ref().map(|v| statement_pure(v, cx)).unwrap_or(true)
-            }
-            _ => false,
-        }),
-        _ => false,
-    }
-}
-
-fn pure_key(key: &Key, cx: &Cx) -> bool {
-    match key {
-        Key::Computed(expr) => statement_pure(expr, cx),
-        _ => true,
-    }
-}
-
 /// terser `drop-side-effect-free.js` `drop_side_effect_free(AST_Unary)` for `void`,
 /// from `def_optimize(AST_SimpleStatement)` with `first_in_statement`.
 fn unwrap_void_statement(n: &N, cx: &Cx) -> Option<N> {
@@ -3182,7 +3153,7 @@ fn statement_from_drop(span: &N, body: &N, cx: &Cx) -> Option<N> {
     match crate::unary::drop_side_effect_free(body, cx, true) {
         None => Some(empty(span)),
         Some(node) if Rc::ptr_eq(&node, body) => None,
-        Some(node) => Some(crate::unary::made_fresh(cx, simple(span, node))),
+        Some(node) => Some(simple(span, node)),
     }
 }
 

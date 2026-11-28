@@ -6,7 +6,6 @@
 //! prints exactly like the input tree.
 
 mod assign;
-mod audit;
 mod body;
 mod call;
 mod conditional;
@@ -507,7 +506,6 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if expression {
         tree = process_expression(&tree, false);
     }
-    audit::flush();
     tree
 }
 
@@ -592,23 +590,14 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         locals: vec![HashSet::new()],
         consts: vec![HashMap::new()],
         syms: None,
-        squeezed: HashSet::new(),
-        squeezed_ids: ast::IdSet::default(),
-        optimized_ids: RefCell::new(ast::IdSet::default()),
-        redescend: 0,
-        optimized: HashSet::new(),
-        sealed: RefCell::new(Vec::new()),
-        seal: RefCell::new(HashSet::new()),
-        seal_keep: RefCell::new(Vec::new()),
-        flag_keep: Vec::new(),
+        squeezed: RefCell::new(ast::IdSet::default()),
+        optimized: RefCell::new(ast::IdSet::default()),
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
-        pre_tighten: RefCell::new(HashMap::new()),
-        foreign_lambda: 0,
-        fresh: RefCell::new(HashMap::new()),
-        late_squeezed: RefCell::new(HashMap::new()),
+        pre_tighten: RefCell::new(ast::IdSet::default()),
+        foreign_lambda: None,
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
     };
@@ -693,34 +682,22 @@ struct Cx {
     consts: Vec<HashMap<String, N>>,
     syms: Option<syms::SymTable>,
     /// terser `SQUEEZED` (`index.js` `Compressor.before`): `before` returns the node.
-    squeezed: HashSet<usize>,
-    /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` by id, set only where terser sets
-    /// the flag, never by the pointer carry-overs. Nothing decides by them yet.
-    squeezed_ids: ast::IdSet,
-    optimized_ids: RefCell<ast::IdSet>,
-    /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
-    redescend: u32,
-    /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
-    optimized: HashSet<usize>,
-    /// Nodes `def_optimize` already returned, so a later `before` must not run
-    /// their optimizer again. Terser sets `OPTIMIZED` on that object and then
-    /// mutates its children in place. An assignment built by
-    /// `AST_Conditional` is the case that matters here: `x = (y ? 2 : 2)`
-    /// becomes `x = (y, 2)` and is not lifted to `y, x = 2`.
-    sealed: RefCell<Vec<N>>,
-    /// Switch-built `if` nodes. Terser sets `OPTIMIZED` on them inside `def_optimize(AST_Switch)`,
-    /// so the second descend does not turn `if (c) s` into `c && s`.
-    seal: RefCell<HashSet<usize>>,
-    seal_keep: RefCell<Vec<N>>,
-    /// Keeps flagged nodes alive so a recycled address cannot inherit another node's flag.
-    flag_keep: Vec<N>,
+    /// Flags are keyed by node id, so a rebuild that keeps the id (terser's in-place
+    /// edit) keeps them; ids are never reused, so nothing has to be kept alive.
+    squeezed: RefCell<ast::IdSet>,
+    /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run
+    /// again. Set by `transform` on what `optimize` returned, and by an optimizer on a node
+    /// it made and optimized itself (`make_node(..).optimize(compressor)`, `set_optimized`):
+    /// an assignment built by `AST_Conditional` (`x = (y ? 2 : 2)` becomes `x = (y, 2)` and
+    /// is not lifted to `y, x = 2`), a switch-built `if` (not turned into `c && s` later).
+    optimized: RefCell<ast::IdSet>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
     stack: Vec<N>,
     /// terser `TreeWalker.stack`. Last node is `self()`, the one before it is `parent()`.
     parents: Vec<N>,
     /// terser `flatten_fn` splices `var` declarations into the scope body after
-    /// the statement holding the inlined call. Keyed by that statement's pointer.
-    pending_vars: RefCell<Vec<(usize, N)>>,
+    /// the statement holding the inlined call. Keyed by that statement's id.
+    pending_vars: RefCell<Vec<(ast::NodeId, N)>>,
     /// Name sets computed from an ancestor scope node while it is on the stack
     /// (its bindings, its free references). The node is kept so its address
     /// cannot be reused.
@@ -728,20 +705,14 @@ struct Cx {
     /// Nodes terser `.optimize()`s once where they are made (an inlined lambda
     /// copy): `tighten_body` runs on them before their children are descended,
     /// and never again (`OPTIMIZED`).
-    pre_tighten: RefCell<HashMap<usize, N>>,
+    pre_tighten: RefCell<ast::IdSet>,
     /// The lambda whose `pre_tighten` is running. terser calls its
     /// `.optimize()` from the reference or call it replaces, so the lambda is
     /// not on the stack: `find_scope()` is the enclosing scope and
     /// `compressor.self()` is not a lambda.
-    foreign_lambda: usize,
-    /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
-    /// descend after `drop_unused` still optimizes them.
-    fresh: RefCell<HashMap<usize, N>>,
-    /// Nodes rebuilt from a `SQUEEZED` node by an optimizer that only holds
-    /// `&Cx` (terser edits that node in place, so the flag stays).
-    late_squeezed: RefCell<HashMap<usize, N>>,
-    /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
-    injected: RefCell<HashMap<usize, HashSet<String>>>,
+    foreign_lambda: Option<ast::NodeId>,
+    /// Names `flatten_fn` has added to a scope's `variables`, by scope.
+    injected: RefCell<HashMap<ScopeKey, HashSet<String>>>,
     /// terser `def.references.length` of an injected name: the parameter's
     /// reads in the inlined body plus the injected assignment.
     injected_refs: RefCell<HashMap<String, usize>>,
@@ -888,16 +859,28 @@ impl Cx {
         !known || self.lookup(value) != Some(ptr)
     }
 
-    /// Mark `n` so a later `transform` does not run `def_optimize` on it again.
-    pub(crate) fn seal_optimized(&self, n: &N) {
-        self.optimized_ids.borrow_mut().insert(n.id());
-        self.seal.borrow_mut().insert(Rc::as_ptr(n) as usize);
-        self.seal_keep.borrow_mut().push(Rc::clone(n));
+    /// terser `set_flag(opt, OPTIMIZED)`: a later `transform` does not run `def_optimize` on
+    /// `n` again.
+    pub(crate) fn set_optimized(&self, n: &N) {
+        self.optimized.borrow_mut().insert(n.id());
     }
 
-    /// An audit decision's label: `@redescend` inside the descend after `drop_unused`.
-    fn stage(&self, decision: &'static str) -> String {
-        if self.redescend > 0 { format!("{decision}@redescend") } else { decision.to_string() }
+    fn is_optimized(&self, n: &N) -> bool {
+        self.optimized.borrow().contains(&n.id())
+    }
+
+    fn is_squeezed(&self, n: &N) -> bool {
+        self.squeezed.borrow().contains(&n.id())
+    }
+
+    /// The flags of terser's `made.transform(compressor)` when `made`'s children are already
+    /// transformed (SQUEEZED or OPTIMIZED): `out`, what optimizing `made` returned, is
+    /// `OPTIMIZED`, and `SQUEEZED` when it is `made` itself.
+    pub(crate) fn transformed(&self, made: &N, out: &N) {
+        self.set_optimized(out);
+        if out.id() == made.id() {
+            self.squeezed.borrow_mut().insert(out.id());
+        }
     }
 
     /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
@@ -925,8 +908,8 @@ impl Cx {
                 return false;
             }
             let inside = match &node.data {
-                Data::For { init, .. } => !init.as_ref().is_some_and(|init| Rc::ptr_eq(init, child)),
-                Data::ForIn { object, .. } | Data::ForOf { object, .. } => !Rc::ptr_eq(object, child),
+                Data::For { init, .. } => !init.as_ref().is_some_and(|init| init.id() == child.id()),
+                Data::ForIn { object, .. } | Data::ForOf { object, .. } => object.id() != child.id(),
                 Data::While { .. } | Data::Do { .. } => true,
                 _ => false,
             };
@@ -980,7 +963,7 @@ impl Cx {
             return false;
         };
         self.parents.iter().rev().skip(1).any(|p| {
-            matches!(&p.data, Data::Prop { key: ast::Key::Computed(key), .. } if Rc::ptr_eq(key, self_node))
+            matches!(&p.data, Data::Prop { key: ast::Key::Computed(key), .. } if key.id() == self_node.id())
         })
     }
 
@@ -991,8 +974,16 @@ impl Cx {
         let Data::Call { expr, is_new: false, .. } = &parent.data else {
             return false;
         };
-        Rc::ptr_eq(expr, node) || self.parents.last().is_some_and(|top| Rc::ptr_eq(expr, top))
+        expr.id() == node.id() || self.parents.last().is_some_and(|top| expr.id() == top.id())
     }
+}
+
+/// A scope for `Cx.injected`: its index in the symbol table, or the scope node's id when
+/// the table does not know it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum ScopeKey {
+    Index(usize),
+    Node(ast::NodeId),
 }
 
 enum Enter {
@@ -1098,12 +1089,8 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 /// switch that became `if (c) { stmt; }` is not then rewritten to `c && stmt`.
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
-    let orig_ptr = ptr;
     let orig = Rc::clone(n);
-    let entry = cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr);
-    if audit::on() {
-        audit::check(&cx.stage("entry"), n, entry, cx.squeezed_ids.contains(&n.id()));
-    }
+    let entry = cx.is_squeezed(n);
     if entry {
         return Rc::clone(n);
     }
@@ -1117,10 +1104,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
                 table.define_hoisted(created);
             }
         }
-        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope
-        // and definitions; the flags still follow by pointer.
+        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope,
+        // definitions and flags; what `hoist` made is new and has none (terser `make_node`).
+        // A rebuilt `fixed` value is followed (terser's `fixed` reads the edited object).
         if !Rc::ptr_eq(&hoisted, n) {
-            transfer_flags(n, &hoisted, cx);
+            follow_rebuilt(cx, n, &hoisted);
         }
         &hoisted
     } else {
@@ -1141,14 +1129,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     }
     // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
     // part of it. A node made by an optimizer was already optimized there.
-    let already = cx.optimized.contains(&orig_ptr) || is_sealed(cx, n) || cx.seal.borrow().contains(&orig_ptr);
-    if audit::on() {
-        audit::check(&cx.stage("already"), n, already, cx.optimized_ids.borrow().contains(&n.id()));
-    }
-    let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
+    let already = cx.is_optimized(n);
+    let pre = cx.pre_tighten.borrow_mut().remove(&n.id());
     let pre_node;
     let n = if pre {
-        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(n.data, Data::Func { .. }) { orig_ptr } else { 0 });
+        let saved = std::mem::replace(&mut cx.foreign_lambda, matches!(n.data, Data::Func { .. }).then(|| n.id()));
         pre_node = after_descend(Rc::clone(n), n, cx);
         cx.foreign_lambda = saved;
         set_parent(cx, &pre_node);
@@ -1162,6 +1147,8 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.keep_block = false;
     // The stack top is the once-rewritten node during the second descend so
     // `parent.left === self` sees updated children, then the original for `fold`.
+    // The parent checks compare ids, so a rebuilt child matches; a child the first
+    // descend replaced (a new id) is only in `once`, which is why the top is swapped.
     cx.stack.push(Rc::clone(n));
     let once = map_children(n, cx);
     *cx.stack.last_mut().unwrap() = Rc::clone(&once);
@@ -1178,21 +1165,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // Trace: the node as terser's `optimize` receives it (tighten_body is part of it).
     let traced_in = if trace::opt_on() { Some(trace::code(&twice)) } else { None };
     let twice = if already || pre { twice } else { after_descend(twice, n, cx) };
-    let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
-    let sealed = is_sealed(cx, n);
-    let switch_sealed = cx.seal.borrow().contains(&twice_ptr) || cx.seal.borrow().contains(&ptr);
-    if audit::on() {
-        let skip = sealed || cx.optimized.contains(&twice_ptr) || switch_sealed;
-        audit::check(&cx.stage("skip_optimize"), &twice, skip, cx.optimized_ids.borrow().contains(&twice.id()));
-    }
-    let mut out = if sealed {
-        if !is_sealed(cx, &twice) {
-            seal(cx, &twice);
-        }
-        Rc::clone(&twice)
-    } else if cx.optimized.contains(&twice_ptr) || switch_sealed {
+    let skip = cx.is_optimized(&twice) || cx.is_optimized(n);
+    let mut out = if skip {
         Rc::clone(&twice)
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
@@ -1206,10 +1182,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // terser `.optimize(compressor)` on a node an optimizer just made (an
     // inlined lambda copy, a switch-built block): its `tighten_body` runs now,
     // on its children as they are.
-    if cx.pre_tighten.borrow_mut().remove(&(Rc::as_ptr(&out) as usize)).is_some() {
+    if cx.pre_tighten.borrow_mut().remove(&out.id()) {
         cx.parents.push(Rc::clone(&out));
         let entered = cx.enter(&out);
-        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(out.data, Data::Func { .. }) { Rc::as_ptr(&out) as usize } else { 0 });
+        let saved = std::mem::replace(&mut cx.foreign_lambda, matches!(out.data, Data::Func { .. }).then(|| out.id()));
         let tightened = after_descend(Rc::clone(&out), &out, cx);
         cx.foreign_lambda = saved;
         cx.leave(entered);
@@ -1224,19 +1200,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             trace::trace!("opt", t = trace::type_name(n), code = traced_in, out = traced_out);
         }
     }
-    // terser `opt === node`: a block that `tighten_body` reduced to its one
-    // statement returns that statement, a different node.
-    let same = Rc::ptr_eq(&out, &twice) && std::mem::discriminant(&out.data) == std::mem::discriminant(&n.data);
-    if audit::on() {
-        // terser `opt === node` (index.js 506).
-        audit::check(&cx.stage("same"), &twice, same, out.id() == twice.id());
-    }
+    // terser `opt === node` (index.js 506): the optimizer edited the node in place (a
+    // rebuild that keeps the id) or left it alone. A block that `tighten_body` reduced to
+    // its one statement returns that statement, a different node.
+    let same = out.id() == n.id();
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
-        // Nodes built by this optimize (a switch turned into `if`, then a comma
-        // pulled into its condition) are already in their final shape. Terser
-        // mutates them in place and leaves `OPTIMIZED` set, so the descend after
-        // `drop_unused` does not fold them again.
-        mark_tree_squeezed(&out, cx);
+        // `drop_unused` edits in place (its rebuilds keep the ids, so the flags); the
+        // descend after it walks what is not `SQUEEZED`: what it made, and what an
+        // optimizer replaced (`OPTIMIZED` only).
         let traced = if trace::on() { Some(trace::code(&out)) } else { None };
         let dropped = drop_unused::drop_unused_cx(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs, cx);
         if let Some(code) = traced {
@@ -1244,24 +1215,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             let after = if after == code { "=".to_string() } else { after };
             trace::trace!("drop_unused", t = trace::type_name(&out), code = code, out = after);
         }
-        transfer_flags(&out, &dropped, cx);
+        follow_rebuilt(cx, &out, &dropped);
         set_parent(cx, &dropped);
-        cx.redescend += 1;
         out = map_children(&dropped, cx);
-        cx.redescend -= 1;
         set_parent(cx, &out);
-        // The scope's `before` is finished. Squeezing it matches terser setting
-        // `SQUEEZED` on the same scope object after `drop_unused`.
-        mark_squeezed(cx, &out);
     }
-    mark_optimized(cx, &out);
+    cx.set_optimized(&out);
     if same {
         mark_squeezed(cx, &out);
-    } else if !cx.squeezed.contains(&(Rc::as_ptr(&out) as usize)) {
-        // terser: a replacement is `OPTIMIZED` but not `SQUEEZED`, so a later
-        // descend (the one after the enclosing scope's `drop_unused`) still
-        // walks its children.
-        cx.fresh.borrow_mut().insert(Rc::as_ptr(&out) as usize, Rc::clone(&out));
     }
     cx.stack.pop();
     cx.leave(entered);
@@ -1278,6 +1239,24 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     }
     retarget(cx, &orig, &out);
     out
+}
+
+/// The rebuild notification for `fixed` (terser's `fixed` reads the slot, so it sees an
+/// object edited in place): retarget it from each node in `old` that `new` holds rebuilt
+/// (same id, another node). Children are paired by id; a subtree that did not change is
+/// skipped. `transform` retargets what it optimizes itself; this covers `hoist` and
+/// `drop_unused`, which rebuild without going through it.
+fn follow_rebuilt(cx: &mut Cx, old: &N, new: &N) {
+    if Rc::ptr_eq(old, new) || old.id() != new.id() {
+        return;
+    }
+    retarget(cx, old, new);
+    let olds: ast::IdMap<&N> = child_refs(&old.data).into_iter().map(|c| (c.id(), c)).collect();
+    for c in child_refs(&new.data) {
+        if let Some(o) = olds.get(&c.id()) {
+            follow_rebuilt(cx, o, c);
+        }
+    }
 }
 
 fn retarget(cx: &mut Cx, orig: &N, out: &N) {
@@ -1299,77 +1278,6 @@ fn set_parent(cx: &mut Cx, n: &N) {
 
 fn was_scope(data: &Data) -> bool {
     matches!(data, Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. })
-}
-
-/// Copy `SQUEEZED` / `OPTIMIZED` from `old` onto `new` when `drop_unused` rebuilt
-/// the same shape. A different shape is a replacement and must be compressed.
-fn mark_tree_squeezed(n: &N, cx: &mut Cx) {
-    let fresh = cx.fresh.borrow_mut().remove(&(Rc::as_ptr(n) as usize)).is_some();
-    if !fresh {
-        carry_squeezed(cx, n);
-        carry_optimized(cx, n);
-    }
-    for child in child_refs(&n.data) {
-        mark_tree_squeezed(child, cx);
-    }
-}
-
-fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
-    if Rc::ptr_eq(old, new) {
-        return;
-    }
-    if std::mem::discriminant(&old.data) != std::mem::discriminant(&new.data) {
-        return;
-    }
-    let ptr = Rc::as_ptr(old) as usize;
-    if cx.fresh.borrow().contains_key(&ptr) {
-        cx.fresh.borrow_mut().insert(Rc::as_ptr(new) as usize, Rc::clone(new));
-    }
-    // A rebuilt function or class (hoist_props rewrote a reference in it) is
-    // the same `fixed` value. The source position guards against the greedy
-    // alignment pairing two different nodes.
-    if matches!(old.data, Data::Func { .. } | Data::Class { .. })
-        && old.start.as_ref().map(|t| t.pos) == new.start.as_ref().map(|t| t.pos)
-    {
-        retarget(cx, old, new);
-    }
-    if cx.squeezed.contains(&ptr) {
-        carry_squeezed(cx, new);
-    }
-    if cx.optimized.contains(&ptr) {
-        carry_optimized(cx, new);
-    }
-    let (left, right) = (child_refs(&old.data), child_refs(&new.data));
-    let same_shape = left.len() == right.len()
-        && left.iter().zip(right.iter()).all(|(a, b)| std::mem::discriminant(&a.data) == std::mem::discriminant(&b.data));
-    if same_shape {
-        for (a, b) in left.iter().zip(right.iter()) {
-            transfer_flags(a, b, cx);
-        }
-        return;
-    }
-    // `drop_unused` removed, split, or spliced statements. Pair each new child
-    // with the next old child of the same type, as terser keeps those objects.
-    // A spliced block's statements are candidates too.
-    let mut left_flat: Vec<&N> = Vec::new();
-    for a in &left {
-        left_flat.push(a);
-        if let Data::Block { body } = &a.data {
-            left_flat.extend(body.iter());
-        }
-    }
-    let left = left_flat;
-    let mut j = 0;
-    for b in &right {
-        let mut k = j;
-        while k < left.len() && std::mem::discriminant(&left[k].data) != std::mem::discriminant(&b.data) {
-            k += 1;
-        }
-        if k < left.len() {
-            transfer_flags(left[k], b, cx);
-            j = k + 1;
-        }
-    }
 }
 
 fn child_refs(data: &Data) -> Vec<&N> {
@@ -1463,56 +1371,8 @@ fn child_refs(data: &Data) -> Vec<&N> {
     out
 }
 
-fn seal(cx: &Cx, n: &N) {
-    cx.sealed.borrow_mut().push(Rc::clone(n));
-    cx.optimized_ids.borrow_mut().insert(n.id());
-}
-
-fn is_sealed(cx: &Cx, n: &N) -> bool {
-    let ptr = Rc::as_ptr(n) as usize;
-    cx.sealed.borrow().iter().any(|kept| Rc::as_ptr(kept) as usize == ptr)
-}
-
-fn mark_optimized(cx: &mut Cx, n: &N) {
-    carry_optimized(cx, n);
-    cx.optimized_ids.borrow_mut().insert(n.id());
-}
-
-/// `OPTIMIZED` by pointer only: a carry-over onto a rebuilt node.
-fn carry_optimized(cx: &mut Cx, n: &N) {
-    cx.optimized.insert(Rc::as_ptr(n) as usize);
-    cx.flag_keep.push(Rc::clone(n));
-}
-
-/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag (its scope follows its id).
-pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
-    if Rc::ptr_eq(from, to) {
-        return;
-    }
-    let p = Rc::as_ptr(from) as usize;
-    if cx.squeezed.contains(&p) || cx.late_squeezed.borrow().contains_key(&p) {
-        cx.late_squeezed.borrow_mut().insert(Rc::as_ptr(to) as usize, Rc::clone(to));
-    }
-}
-
-/// Shadow audit of a flag read outside `transform`: `by_ptr` is the pointer answer for
-/// "`n` is SQUEEZED (when `squeezed`) or OPTIMIZED (when `optimized`)".
-pub(crate) fn audit_flags(cx: &Cx, decision: &str, n: &N, by_ptr: bool, squeezed: bool, optimized: bool) {
-    if audit::on() {
-        let by_id = (squeezed && cx.squeezed_ids.contains(&n.id())) || (optimized && cx.optimized_ids.borrow().contains(&n.id()));
-        audit::check(decision, n, by_ptr, by_id);
-    }
-}
-
 fn mark_squeezed(cx: &mut Cx, n: &N) {
-    carry_squeezed(cx, n);
-    cx.squeezed_ids.insert(n.id());
-}
-
-/// `SQUEEZED` by pointer only: a carry-over onto a rebuilt node.
-fn carry_squeezed(cx: &mut Cx, n: &N) {
-    cx.squeezed.insert(Rc::as_ptr(n) as usize);
-    cx.flag_keep.push(Rc::clone(n));
+    cx.squeezed.borrow_mut().insert(n.id());
 }
 
 fn transform_block(n: &N, cx: &mut Cx) -> N {
@@ -1565,7 +1425,7 @@ fn map_list(list: &[N], cx: &mut Cx) -> (Vec<N>, bool) {
             changed = true;
         }
         out.push(m);
-        let key = Rc::as_ptr(n) as usize;
+        let key = n.id();
         let injected: Vec<N> = {
             let mut pending = cx.pending_vars.borrow_mut();
             let mut taken = Vec::new();
@@ -1667,7 +1527,7 @@ fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
         }
         Data::Block { body } => {
             let next = body::tighten_body(body.clone(), cx);
-            if !cx.keep_block && (next.is_empty() || eval::only_pure_decls(&next, cx)) {
+            if !cx.keep_block && next.is_empty() {
                 return empty(&n);
             }
             if !cx.keep_block && next.len() == 1 && can_evict(&next[0]) {
@@ -1723,252 +1583,6 @@ fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
     }
 }
 
-/// terser `tighten-body.js` `eliminate_spurious_blocks`, then the statement joins.
-pub(crate) fn tighten(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
-    let stmts = eliminate_spurious_blocks(stmts);
-    let stmts = if cx.opts.join_vars { join_vars(stmts) } else { stmts };
-    let stmts = if cx.opts.sequences_limit > 0 {
-        sequence_into_next(sequence_statements(stmts, cx.opts.sequences_limit))
-    } else {
-        stmts
-    };
-    let stmts = if cx.opts.join_vars { var_into_for(stmts) } else { stmts };
-    if cx.opts.if_return && cx.opts.conditionals {
-        if_return(stmts)
-    } else {
-        stmts
-    }
-}
-
-fn if_return(mut stmts: Vec<N>) -> Vec<N> {
-    for _ in 0..8 {
-        let (changed, next) = if_return_once(stmts);
-        stmts = next;
-        if !changed {
-            break;
-        }
-    }
-    stmts
-}
-
-fn if_return_once(stmts: Vec<N>) -> (bool, Vec<N>) {
-    let mut out = Vec::with_capacity(stmts.len());
-    let mut changed = false;
-    let mut i = 0;
-    while i < stmts.len() {
-        let stat = &stmts[i];
-        if let Data::If { cond, body, alt: None } = &stat.data {
-            if let Data::Return { value: Some(cons) } = &body.data {
-                if let Some(Data::Return { value: Some(alt) }) = stmts.get(i + 1).map(|n| &n.data) {
-                    out.push(return_cond(stat, Rc::clone(cond), Rc::clone(cons), Rc::clone(alt)));
-                    changed = true;
-                    i += 2;
-                    continue;
-                }
-            }
-        }
-        if let Data::If { cond, body, alt: Some(alt_stmt) } = &stat.data {
-            if let (Data::Return { value: cons }, Data::Return { value: alt }) = (&body.data, &alt_stmt.data) {
-                if cons.is_some() && alt.is_some() {
-                    out.push(return_cond(stat, Rc::clone(cond), cons.clone().unwrap(), alt.clone().unwrap()));
-                    changed = true;
-                    i += 1;
-                    continue;
-                }
-            }
-        }
-        out.push(Rc::clone(stat));
-        i += 1;
-    }
-    (changed, out)
-}
-
-fn return_cond(span: &N, cond: N, cons: N, alt: N) -> N {
-    Node::make(span, Data::Return { value: Some(Node::make(span, Data::Cond { cond, cons, alt })) })
-}
-
-fn var_into_for(stmts: Vec<N>) -> Vec<N> {
-    let mut out = Vec::new();
-    let mut prev: Option<N> = None;
-    for stat in stmts {
-        if let Some(prev_stmt) = prev.take() {
-            if let Data::For { init: None, cond, step, body } = &stat.data {
-                // keep: `stat.init = prev` (tb 1477).
-                let data = Data::For { init: Some(prev_stmt), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) };
-                out.push(stat.rebuild(data));
-                continue;
-            }
-            out.push(prev_stmt);
-        }
-        if matches!(stat.data, Data::Defs { kind: ast::DefKind::Var, .. }) {
-            prev = Some(stat);
-        } else {
-            out.push(stat);
-        }
-    }
-    if let Some(prev) = prev {
-        out.push(prev);
-    }
-    out
-}
-
-fn join_vars(stmts: Vec<N>) -> Vec<N> {
-    let mut out: Vec<N> = Vec::new();
-    for stat in stmts {
-        let merged = if let Data::Defs { kind, defs, await_ } = &stat.data {
-            if let Some(prev) = out.last_mut() {
-                let same = matches!(&prev.data, Data::Defs { kind: pk, await_: pa, .. } if pk == kind && pa == await_);
-                if same {
-                    // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1447).
-                    if Rc::get_mut(prev).is_none() {
-                        *prev = prev.rebuild(prev.data.clone());
-                    }
-                    if let Data::Defs { defs: prev_defs, .. } = &mut Rc::get_mut(prev).unwrap().data {
-                        prev_defs.extend(defs.iter().cloned());
-                    }
-                    true
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-        if !merged {
-            out.push(stat);
-        }
-    }
-    out
-}
-
-fn sequence_statements(stmts: Vec<N>, limit: i32) -> Vec<N> {
-    let mut out = Vec::new();
-    let mut seq: Vec<N> = Vec::new();
-    let flush = |out: &mut Vec<N>, seq: &mut Vec<N>| {
-        if seq.is_empty() {
-            return;
-        }
-        let exprs = std::mem::take(seq);
-        let body = if exprs.len() == 1 {
-            exprs.into_iter().next().unwrap()
-        } else {
-            let span = Rc::clone(&exprs[0]);
-            Node::make(&span, Data::Seq { exprs })
-        };
-        out.push(Node::make(&Rc::clone(&body), Data::Simple { body }));
-    };
-    for stat in stmts {
-        match &stat.data {
-            Data::Empty => {}
-            Data::Simple { body } => {
-                if seq.len() as i32 >= limit {
-                    flush(&mut out, &mut seq);
-                }
-                if !seq.is_empty() && eval::is_pure(body) {
-                    continue;
-                }
-                if let Data::Seq { exprs } = &body.data {
-                    seq.extend(exprs.iter().cloned());
-                } else {
-                    seq.push(Rc::clone(body));
-                }
-            }
-            Data::Defs { defs, .. } if defs.iter().all(|d| matches!(d.data, Data::VarDef { value: None, .. })) => {
-                out.push(stat);
-            }
-            Data::Func { kind: ast::FuncKind::Decl, .. } => out.push(stat),
-            _ => {
-                flush(&mut out, &mut seq);
-                out.push(stat);
-            }
-        }
-    }
-    flush(&mut out, &mut seq);
-    out
-}
-
-fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
-    let mut out = Vec::new();
-    let mut prev: Option<N> = None;
-    for stat in stmts {
-        if let Some(prev_stmt) = prev.take() {
-            let Data::Simple { body: left } = &prev_stmt.data else {
-                out.push(prev_stmt);
-                out.push(stat);
-                continue;
-            };
-            let left = Rc::clone(left);
-            if let Data::If { cond, body, alt } = &stat.data {
-                let cond = comma(left, Rc::clone(cond));
-                // keep: `sequencesize_2` sets `stat.condition` (tb 1343), and the same for the
-                // other statements below (tb 1317-1347).
-                out.push(stat.rebuild(Data::If { cond, body: Rc::clone(body), alt: alt.clone() }));
-                continue;
-            }
-            if let Data::Return { value } = &stat.data {
-                let right = value.clone().unwrap_or_else(|| eval_void(&stat));
-                out.push(stat.rebuild(Data::Return { value: Some(comma(left, right)) }));
-                continue;
-            }
-            if let Data::Switch { expr, body } = &stat.data {
-                out.push(stat.rebuild(Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() }));
-                continue;
-            }
-            if let Data::For { init, cond, step, body } = &stat.data {
-                if !init.as_ref().is_some_and(|i| matches!(i.data, Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, .. })) {
-                    let init = Some(match init {
-                        Some(init) => comma(left, Rc::clone(init)),
-                        None => left,
-                    });
-                    out.push(stat.rebuild(Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
-                    continue;
-                }
-            }
-            out.push(prev_stmt);
-        }
-        if matches!(stat.data, Data::Simple { .. }) {
-            prev = Some(stat);
-        } else {
-            out.push(stat);
-        }
-    }
-    if let Some(prev) = prev {
-        out.push(prev);
-    }
-    out
-}
-
-fn comma(left: N, right: N) -> N {
-    let mut exprs = match &left.data {
-        Data::Seq { exprs } => exprs.clone(),
-        _ => vec![Rc::clone(&left)],
-    };
-    match &right.data {
-        Data::Seq { exprs: more } => exprs.extend(more.iter().cloned()),
-        _ => exprs.push(right),
-    }
-    Node::make(&left, Data::Seq { exprs })
-}
-
-fn eliminate_spurious_blocks(stmts: Vec<N>) -> Vec<N> {
-    let mut out = Vec::new();
-    for stat in stmts {
-        if let Data::Block { body } = &stat.data {
-            if body.iter().all(can_evict) {
-                out.extend(eliminate_spurious_blocks(body.clone()));
-                continue;
-            }
-        }
-        if matches!(stat.data, Data::Empty) {
-            continue;
-        }
-        out.push(stat);
-    }
-    out
-}
-
 pub(crate) fn can_evict(n: &N) -> bool {
     !matches!(
         n.data,
@@ -1978,11 +1592,6 @@ pub(crate) fn can_evict(n: &N) -> bool {
             | Data::Import { .. }
             | Data::Export { .. }
     )
-}
-
-fn eval_void(span: &N) -> N {
-    let zero = Node::make(span, Data::Number { value: 0.0, raw: String::new() });
-    Node::make(span, Data::Unary { op: "void".into(), expr: zero, prefix: true })
 }
 
 fn map_children(n: &N, cx: &mut Cx) -> N {
@@ -2083,12 +1692,7 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
             let body_m = transform(body, cx);
             let (alt, c3) = map_opt(alt, cx);
             let c = !Rc::ptr_eq(&cond_m, cond) || !Rc::ptr_eq(&body_m, body) || c3;
-            let out = finish(n, Data::If { cond: cond_m, body: body_m, alt }, c);
-            // Terser mutates the sealed `if` in place, so `OPTIMIZED` survives a child update.
-            if c && cx.seal.borrow().contains(&(Rc::as_ptr(n) as usize)) {
-                cx.seal_optimized(&out);
-            }
-            out
+            finish(n, Data::If { cond: cond_m, body: body_m, alt }, c)
         }
         Data::Switch { expr, body } => {
             let expr_m = transform(expr, cx);

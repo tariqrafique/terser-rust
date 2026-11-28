@@ -80,6 +80,9 @@ pub struct SymTable {
     pub node_def: RefCell<ast::IdMap<usize>>,
     /// Scope node id to scope index, the same way.
     pub node_scope: RefCell<ast::IdMap<usize>>,
+    /// terser `AST_SymbolRef.scope`: the scope a reference was bound in. It stays with the
+    /// node (and its copies) when an optimizer moves it, until the next pass binds again.
+    pub ref_scope: RefCell<ast::IdMap<usize>>,
     pub scope_defs: HashMap<usize, Vec<usize>>,
     /// Parent scope id for each scope, indexed by scope id.
     pub scope_parent: Vec<Option<usize>>,
@@ -99,6 +102,8 @@ pub struct SymTable {
     /// `try` or `catch`): terser leaves their `sym.scope` on that block scope
     /// (`figure_out_scope` only moves references to the defun scope).
     pub block_vars: ast::IdSet,
+    /// Scope indexes of classes (block scopes in this table, scopes of their own in terser).
+    pub class_scopes: HashSet<usize>,
 }
 
 struct Scope {
@@ -123,6 +128,7 @@ pub fn bind(root: &N) -> SymTable {
         defs: Vec::new(),
         node_def: RefCell::new(ast::IdMap::default()),
         node_scope: RefCell::new(ast::IdMap::default()),
+        ref_scope: RefCell::new(ast::IdMap::default()),
         scope_defs: HashMap::new(),
         scope_parent: Vec::new(),
         fn_of: Vec::new(),
@@ -131,6 +137,7 @@ pub fn bind(root: &N) -> SymTable {
         inlined_scopes: RefCell::new(HashSet::new()),
         injected_vars: RefCell::new(HashMap::new()),
         block_vars: ast::IdSet::default(),
+        class_scopes: HashSet::new(),
     };
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
@@ -189,6 +196,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             }
             let id = push_block(scope, scopes);
             table.bind_scope(n, id);
+            table.class_scopes.insert(id);
             if let Some(name) = name {
                 if let Some(sym_name) = sym(name) {
                     let (dest, kind) = if *stmt {
@@ -295,6 +303,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             walk(expr, scope, scopes, table);
         }
         Data::Symbol { name, kind: SymKind::Ref, .. } => {
+            table.ref_scope.borrow_mut().insert(n.id(), scope);
             if resolve(scopes, scope, name).is_none() {
                 define(table, scopes, 0, name.clone(), n, SymKind::Ref, None, true);
             } else if let Some(id) = resolve(scopes, scope, name) {
@@ -700,6 +709,15 @@ impl SymTable {
         if let Some(s) = self.scope_of(from) {
             self.bind_scope(to, s);
         }
+        let rs = self.ref_scope.borrow().get(&from.id()).copied();
+        if let Some(s) = rs {
+            self.ref_scope.borrow_mut().insert(to.id(), s);
+        }
+    }
+
+    /// terser `self.scope` of a reference: where it was bound.
+    pub fn ref_scope_of(&self, n: &N) -> Option<usize> {
+        self.ref_scope.borrow().get(&n.id()).copied()
     }
 
     /// terser `clone(true)`: new nodes that keep their definitions and scopes.
@@ -724,7 +742,8 @@ pub fn retarget_fixed(table: &mut SymTable, old: &N, new_node: &N) {
     let Some(ids) = table.fixed_of_node.remove(&old.id()) else { return };
     for id in &ids {
         if let Some(def) = table.defs.get_mut(*id) {
-            if def.fixed.as_ref().is_some_and(|f| Rc::ptr_eq(f, old)) {
+            // By id: `fixed` may hold an earlier rebuild of `old` (terser's same object).
+            if def.fixed.as_ref().is_some_and(|f| f.id() == old.id()) {
                 def.fixed = Some(Rc::clone(new_node));
             }
         }
