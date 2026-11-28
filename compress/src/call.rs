@@ -604,6 +604,15 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         }
         i -= 1;
         let node = &stack[i];
+        // `scope.block_scope.variables`: every `let` / `const` of the block
+        // scope as the pass started, all cases of a `switch` included.
+        if !matches!(node.data, Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. } | Data::Class { .. }) {
+            if let Some(table) = &cx.syms {
+                if let Some(defs) = table.scope_of(node).and_then(|id| table.scope_defs.get(&id)) {
+                    block_scoped.extend(defs.iter().map(|&d| table.defs[d].name.clone()));
+                }
+            }
+        }
         match &node.data {
             Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. } => break i,
             Data::Class { .. } => return None,
@@ -648,7 +657,7 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         Some(table) => {
             // The chain is the tree's current ancestry (`add_child_scope`
             // reparents an inlined lambda), ending at the toplevel.
-            let ids = stack[..=scope_idx].iter().filter_map(|n| table.scope_lookup(&(Rc::as_ptr(n) as usize)));
+            let ids = stack[..=scope_idx].iter().filter_map(|n| table.scope_of(n));
             for id in ids.chain(std::iter::once(0)) {
                 if let Some(defs) = table.scope_defs.get(&id) {
                     taken.extend(defs.iter().map(|&d| table.defs[d].name.clone()));
