@@ -643,12 +643,32 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
     for frame in &cx.locals {
         taken.extend(frame.iter().cloned());
     }
-    let free = cx.cached_names(scope, 1, |sc| {
-        let mut set = HashSet::new();
-        free_refs(sc, &mut set);
-        set
-    });
-    taken.extend(free.iter().cloned());
+    match &cx.syms {
+        // terser `conflicting_def` walks `parent_scope` from the defun scope:
+        // each scope's `variables` (as `figure_out_scope` left them at the start
+        // of the pass) and `enclosed`. A scope's `enclosed` only adds definitions
+        // of that scope or an outer one, so beyond the chain's own variables it
+        // adds only the globals, which the binder keeps on the toplevel scope. A
+        // `let` / `const` in a nested block is in neither.
+        Some(table) => {
+            // The chain is the tree's current ancestry (`add_child_scope`
+            // reparents an inlined lambda), ending at the toplevel.
+            let ids = stack[..=scope_idx].iter().filter_map(|n| table.scope_lookup(&(Rc::as_ptr(n) as usize)));
+            for id in ids.chain(std::iter::once(0)) {
+                if let Some(defs) = table.scope_defs.get(&id) {
+                    taken.extend(defs.iter().map(|&d| table.defs[d].name.clone()));
+                }
+            }
+        }
+        None => {
+            let free = cx.cached_names(scope, 1, |sc| {
+                let mut set = HashSet::new();
+                free_refs(sc, &mut set);
+                set
+            });
+            taken.extend(free.iter().cloned());
+        }
+    }
     let mut scope_vars: HashSet<String> = HashSet::new();
     match &scope.data {
         Data::Func { args, body, .. } => {
@@ -772,8 +792,8 @@ fn hoisted_names(body: &[N], out: &mut HashSet<String>) {
     lexical_names(body, out);
 }
 
-/// Names read in `scope` that are not bound by a function nested in it
-/// (terser `enclosed`).
+/// Names read in `scope` that are not bound by a function or block scope
+/// nested in it (terser `enclosed`). Only used without a symbol table.
 fn free_refs(scope: &N, out: &mut HashSet<String>) {
     fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut HashSet<String>) {
         match &n.data {
@@ -798,6 +818,29 @@ fn free_refs(scope: &N, out: &mut HashSet<String>) {
                 for s in body {
                     rec(s, bound, out);
                 }
+                bound.pop();
+            }
+            // Block scopes: their `let` / `const` / class names (and a catch
+            // parameter) are not in the enclosing scope's `enclosed`.
+            Data::Block { .. } | Data::StaticBlock { .. } | Data::Switch { .. } | Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::Catch { .. } => {
+                let mut own = HashSet::new();
+                match &n.data {
+                    Data::Block { body } | Data::StaticBlock { body } => lexical_names(body, &mut own),
+                    Data::Switch { body, .. } => {
+                        for arm in body {
+                            if let Data::Case { body, .. } | Data::Default { body } = &arm.data {
+                                lexical_names(body, &mut own);
+                            }
+                        }
+                    }
+                    Data::For { init: Some(init), .. } | Data::ForIn { init, .. } | Data::ForOf { init, .. } => {
+                        lexical_names(std::slice::from_ref(init), &mut own)
+                    }
+                    Data::Catch { arg: Some(arg), .. } => binding_names(arg, &mut own),
+                    _ => {}
+                }
+                bound.push(own);
+                kids_any(&n.data, |c| { rec(c, bound, out); false }, true);
                 bound.pop();
             }
             other => {
