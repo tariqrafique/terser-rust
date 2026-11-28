@@ -72,3 +72,102 @@ Same method: the 297 failing inputs, mangling off, outputs split at `;`, `{` and
 Lower counts, repros only: R12 (fixed), an unused argument becomes `pt(0)` in terser and `pt()` in the port (also `setAriaRelationship(0,0,0,options)` kept as names by the port). R13 (fixed), `class A{}A.v=1;` is dropped by terser; the port prints `(class{}).v=1;` (in reductions only). R14 (fixed), `const t=void p.forEach(…);g(t)` is collapsed by terser, not by the port.
 
 Independent of the inlining work: R1, R3, R7, R10 (each in one function), R2a (collapse). R2b, R4, R5, R6, R8, R9 and R11 touch inlining, flatten or the optimize-once rules.
+
+## Round 3 (2026-11-28, branch at f87f6ef)
+
+On f87f6ef (R2 and the node-id flag steps merged), 41 of 779 inputs fail in this run (same comparison as `tools/rollup-check.py`; the branch's own count was 44, so compare the lists if the 3 matter). 14 of the 41 match with mangling off, and 27 differ with mangling off too. The regions of each input (split at `;`, `{` and `}`) were taken twice:
+- mangling off: `tools/terser.mjs` vs `try`.
+- mangle-aware: `tools/terser-aware.mjs` vs `try_aware`, which is the compressor of a mangled build printed with the original names.
+
+That gives 72 regions with mangling off (30 distinct) and 147 mangle-aware. Every region has a cluster below. The repros are in `tools/repros.sh T`. They were reduced by hand from the inputs and checked against them.
+
+- The mangler is not the cause. On the 183 inputs failing at f37b8b6, terser and the port agreed on all 183 when each mangled terser's own compressed output (compress off). But terser re-mangling that output never gives the expected output. The reason is that terser's compressor counts a mangleable symbol as one character (`size.js` `AST_Symbol._size`), so a mangled build compresses differently from a mangling-off build. The 14 inputs that differ only with mangling on are such a compressor decision (T1), not mangler bookkeeping: `def.references`, unreferenced names and `keep_fnames` did not show up. For these inputs, compare `try_aware` with `terser-aware.mjs`, not the mangling-off outputs.
+- Wrong code: none. Only formattedName's output reads globals that terser's does not (`Date`, `isNaN`, ...). That is dead localization code the port keeps, because of T4.
+- R2 and R6: the R2 fix also fixed the round-3 candidates that had R2's shape (`()=>re(elm,tok,l)` after an outer flatten is R2g). The open R6b (`iife_drops_params`) appears in none of the 41 inputs. T5 below is a new optimize-once case.
+
+| Id | Inputs | Only this | What (terser vs port) | Suspected cause |
+| --- | --- | --- | --- | --- |
+| T1 | 18 | 14 | A symbol with a constant fixed value is not evaluated where it stays a symbol. `const MINUTE=6e4;[MINUTE*60,…]` gives terser `36e5` and the port `60*n`. With mangling on, the short mangled name makes inlining `MINUTE` too expensive, so only evaluation through the fixed value folds it. With `var ff="Large"` used elsewhere, `ff==="Large"` gives terser `!0`, with mangling off too. In the inputs: `HOUR=60*MINUTE` (relativeDateTime ×3), `matches[INDEX_TIME+1]` with `INDEX_TIME=14` (the i18n date parser, 10 inputs), `"Large"===formFactor` (7). | terser `evaluate.js` `def_eval(AST_SymbolRef)` evaluates `fixed_value()`. The port's `eval.rs` `eval` has no `Symbol` arm, so `fold_value` / `finish_constant` fold only after the symbol is inlined. `fixed_of` (eval.rs) already finds the fixed value. A fix needs terser's guards too: `reentrant_ref_eval`, and the `escaped` depth for objects. |
+| T2 | 6 | 6 | `const lo=r.f.v,la=r.f.w;return{lo,la}` is not collapsed (terser `return{lo:r.f.v,la:r.f.w}`) when a flatten in another function injected `var lo` there (`function il(lo){…}` inlined into `v`). The same happens with `category`/`name` in iconUtils. Inputs: outputField and the record view recipes (4), iconUtils (2). | `call.rs` flatten records `cx.injected_refs` by name only (`name -> reads + writes`). `tighten.rs` reads it as `INJECTED`, looked up by `cand.name` in every scope (lines ~589, 797, 866, 1152, 1207). terser's injected var belongs to its host scope only. Key it by scope (the `injected_vars` scope id) or by definition. |
+| T3 | 6 | 6 | `let m=1;m+=2;f(m)`: terser `f(3)`, the port `f(m)`. In the modal family, `errorMsg+=' …';console.error(errorMsg)` gets the joined string. Inputs: modalBase, modal, interactiveDialogBase, alert, confirm, prompt. | For a compound assignment, terser `reduce-vars.js` `AST_Assign` sets `fixed` to a function that builds `AST_Binary(op, old fixed, right)`, and `inline_into_symbolref` evaluates it. The port gives a compound assignment no fixed value (or does not evaluate it). Same family as T1. |
+| T4 | 4 | 2 | In `let P=gd()`, `gd` returns an inlined `ca($A)` that holds a method `t(name){…}`, and the toplevel has `var name`. terser flattens `gd` to `let P=…;var $A`; the port keeps `function gd(){…;var $A}let P=gd()`. Inputs: internalLocalizationService, internationalizationLibrary, inputName, formattedName (where the kept `gd` also keeps a dead `localizationService` with the date code, hence the extra globals). | The flatten checks in `call.rs` (`can_inject_symbols` / `free_refs`) on a callee that holds an inlined copy: the copy's method parameter `name` (now an arrow parameter) is taken for a reference to the toplevel `name`. Without the toplevel `var name`, or with `gd` written out by hand, both sides flatten. |
+| T5 | 7 | 3 | The port re-optimizes a recursive defun inlined as a named function expression (the R10 path). `function b(c){if(c){const f=g(b)}}h(b)` gives terser `h(function b(c){if(c){g(b)}})` and the port `c&&g(b)`. At the toplevel, terser gives `(function cd(){…})()` and the port `!function cd(){…}()`. Inputs: tree, treeRecipes, tree-CQtLlsOp (`{buildTree.bind(this)…}`), and the four inputs with DOMPurify's `createDOMPurify` (purifyLib, formattedRichText, formattedRichTextRenderer, toast: `if(childNodes&&parentNode){for…}`, `…}else;`). | R6 family (optimize-once). terser makes this copy in `inline_into_symbolref` when `recursive_refs > 0` (inline.js ~250). The copy keeps the flags of the defun, which is already optimized, so the descend after `drop_unused` does not optimize its `if` again, and `negate_iife` does not see a fresh IIFE. The port optimizes the copy's body again. |
+| T6 | 2 | 0 | In `const f=gd(s,p);return f(v)`, `gd` is inlined as `function(l="e",o={}){…}` and the enclosing function has a dead `const o=p\|\|{}`. terser keeps `const f=…`; the port collapses it. Inputs: formattedDateTime, primitiveCellFactory. | `tighten.rs` `inner_shadow` (terser `shadows` in collapse). terser collects lvalues by name, including the parameter `o` of the lambda nested in the value. At the replacement site, `o` resolves to the outer `const o`, a different definition, so terser stops. The outer `o` is unused and dropped later in the pass, and the port's check probably skips it. Same code as R2a. |
+| T7 | 2 | 1 | Reference counts of an inlined copy's own locals. (a) In a copy of a copy (`ff` inlined into `fm`, which is inlined into `h`), terser's `get_lhs` fails for `const lb=v?"x":"y"` (more than one reference), and the port collapses it into the call (configProvider, `label`/`unitString`). (b) When `function gm(n){const o=s[n];if(!o){}return o}` is inlined into another scope, terser collapses `o` and flattens to `s[c]`, but the port's collapse gets no lhs (wireServiceMocks, `getMockObjectInfo`). | terser's cross-scope inline is `fixed.clone(true, toplevel)` followed by `figure_out_scope` on the copy. The copy's locals get fresh definitions and reference counts from the copy, so in (b) the dropped `if(!o)` read no longer counts. A second clone adds its references to the ones the first clone made (a). The port's copy keeps the original's counts (`SymbolDef.clone_refs`, R5, covers outside names only). |
+| T8 | 4 | 0 | `let cfg=arguments[0];p(cfg)` is not collapsed (terser `p(arguments[0])`). Found in DOMPurify `setConfig` (the four DOMPurify inputs). | `tighten.rs` collapse refuses a value that reads `arguments`. terser stops only for a parameter name of a function that uses `arguments`, and for `arguments` itself as an lhs. |
+| T9 | 4 | 0 | `!(a)&&(!(b)&&!c&&d)`, from an if-return chain: terser `!(a)&&!(b)&&!c&&d`, the port `!(a\|\|b\|\|c)&&d`. Repro: `function ck(p){if(p.n&&!H)return!1;if(p.m&&!T)return!1;if(A)return!1;return C}` flattened into a caller. Found in DOMPurify `_checkValidNamespace` (the four DOMPurify inputs). | `eval.rs` `fold_binary` → `reassoc_lazy` (terser index.js ~2917, `x&&(y&&z)` → `(x&&y)&&z`). terser transforms the new left `!(a)&&(!(b)&&!c)` with the old binary on the stack, so its boolean negation (`!(parent instanceof AST_Binary)`) does not fire. The port optimizes the new left without a binary parent and negates it. |
+| T10 | 3 | 0 | A template literal that contains a symbol is not collapsed: `const r=\`a${u}\`;return new R(r,1)` (terser `new R(\`a${u}\`,1)`). Found in the DOMPurify config, `uriAllowListString` / `allowedUriRegString` (formattedRichText, formattedRichTextRenderer, toast). | `tighten.rs` collapse treats a template with expressions as having side effects (a `toString` call). terser `AST_TemplateString.has_side_effects` is only the side effects of the segments. |
+| T11 | 1 | 0 | `const AG={a:{G:1}};P(AG.a.G)`: terser hoists to `const AG_a={G:1}`; the port does not. The reference is a property read on the hoisted property. Found in wireServiceMocks (`ACTIONS_GLOBAL.actions…`). | `hoist.rs` refuses a reference whose parent is a property access on `AG.a`, not just `AG.a` itself. terser only needs every reference to be an `AST_Dot` on the symbol with a known key, and not an lhs. |
+
+Which inputs pass after which fixes, cumulative (an input passes once every one of its regions is fixed, the mangle-aware regions included):
+
+| After | Passing (of 41) |
+| --- | --- |
+| T1 | 14 |
+| + T2 | 20 |
+| + T3 | 26 |
+| + T4 | 30 |
+| + T5 | 33 |
+| + T6 | 35 |
+| + T7 | 36 (configProvider; wireServiceMocks also needs T11) |
+| + T8, T9, T10 | 40 (the four DOMPurify inputs need T5, T8, T9, and all but purifyLib also need T10) |
+| + T11 | 41 |
+
+Independent of the inlining work (one function each):
+- T1 and T3: evaluation through fixed values (`eval.rs` / `reduce_vars.rs`).
+- T2: the `INJECTED` key in `tighten.rs`.
+- T6: `tighten.rs` `inner_shadow`.
+- T8 and T10: the collapse value checks.
+- T9: `fold_binary` reassociation.
+- T11: `hoist.rs`.
+
+Inlining and optimize-once:
+- T4: the flatten checks on a copy.
+- T5: R6 family.
+- T7: the copy's reference counts, next to R5's `clone_refs`.
+
+Per input: regions with mangling off / mangle-aware, and their clusters.
+
+| Input | Size | Off / aware | Clusters |
+| --- | --- | --- | --- |
+| lbc-recipes/c/configProvider | 327751 | 2 / 2 | T7a |
+| lbc-recipes/c/relativeDateTime | 345837 | 0 / 1 | T1 |
+| lbc/lightning/purifyLib | 362019 | 6 / 6 | T5 T8 T9 |
+| lbc/lightning/iconUtils | 373485 | 2 / 2 | T2 |
+| lbc-recipes/c/relativeDateTimeRecipes | 377103 | 0 / 1 | T1 |
+| lbc-recipes/c/tree | 385926 | 1 / 1 | T5 |
+| lbc-recipes/c/inputLocationRecipes | 388092 | 2 / 2 | T2 |
+| lbc-recipes/c/outputField | 408022 | 2 / 2 | T2 |
+| lbc/lightning/i18nService | 409949 | 0 / 3 | T1 |
+| lbc-recipes/c/treeRecipes | 412370 | 1 / 1 | T5 |
+| lbc-recipes/c/recordViewHolder | 426407 | 2 / 2 | T2 |
+| lbc/lightning/internalLocalizationService | 428577 | 2 / 2 | T4 |
+| lbc-recipes/c/mockRecordViewHolder | 428859 | 2 / 2 | T2 |
+| lbc/lightning/relativeDateTime | 430406 | 0 / 1 | T1 |
+| lbc/lightning/formattedName | 432806 | 3 / 3 | T4 |
+| lbc/lightning/formattedTime | 448794 | 0 / 3 | T1 |
+| lbc-recipes/c/recordViewFormRecipes | 451524 | 2 / 2 | T2 |
+| lbc/lightning/formattedDateTime | 453288 | 2 / 5 | T1 T6 |
+| lbc/lightning/formattedRichTextRenderer | 463725 | 7 / 7 | T5 T8 T9 T10 |
+| lbc/lightning/internationalizationLibrary | 492968 | 2 / 5 | T1 T4 |
+| lbc/lightning/formattedRichText | 500523 | 8 / 8 | T5 T8 T9 T10 |
+| lbc/lightning/tree (tree-CQtLlsOp) | 591312 | 1 / 1 | T5 |
+| lbc-recipes/c/wireServiceMocks | 648220 | 7 / 7 | T7b T11 |
+| lbc/lightning/modalBase | 667643 | 1 / 1 | T3 |
+| lbc/lightning/modal | 688990 | 1 / 1 | T3 |
+| lbc/lightning/interactiveDialogBase | 727753 | 1 / 1 | T3 |
+| lbc/lightning/alert | 748916 | 1 / 1 | T3 |
+| lbc/lightning/confirm | 749002 | 1 / 1 | T3 |
+| lbc/lightning/prompt | 804767 | 1 / 1 | T3 |
+| lbc/lightning/primitiveInputSimple | 889873 | 0 / 3 | T1 |
+| lbc/lightning/toast | 979362 | 8 / 8 | T5 T8 T9 T10 |
+| lbc/lightning/datepicker | 1040247 | 0 / 3 | T1 |
+| lbc/lightning/timepicker | 1125856 | 0 / 3 | T1 |
+| lbc/lightning/primitiveCellFactory | 1294388 | 2 / 5 | T1 T6 |
+| lbc/lightning/datetimepicker | 1458020 | 0 / 3 | T1 |
+| lbc/lightning/input | 2044514 | 0 / 7 | T1 |
+| lbc/lightning/primitiveDatatableIeditTypeFactory | 2055308 | 0 / 7 | T1 |
+| lbc/lightning/primitiveDatatableIeditPanel | 2117879 | 0 / 7 | T1 |
+| lbc/lightning/inputLocation | 2210757 | 0 / 7 | T1 |
+| lbc/lightning/inputName | 2389095 | 2 / 10 | T1 T4 |
+| lbc/lightning/inputAddress | 2543344 | 0 / 9 | T1 |

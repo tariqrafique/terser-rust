@@ -1,16 +1,20 @@
 #!/bin/bash
 # repros.sh [PATTERN] : the lwc-rollup triage repros (compress/TRIAGE.md), terser (T) vs the port (R),
-# lwc-rollup options with mangling off. Uses target/fast/examples/try. PATTERN filters by id (grep -E).
+# lwc-rollup options with mangling off (rm_ entries: on). Uses target/fast/examples/try. PATTERN filters by id (grep -E).
 cd "$(dirname "$0")/.."
 O='{"compress":true,"mangle":false,"sourceMap":false,"format":{"wrap_func_args":false},"module":true}'
 PAT="${1:-.}"
 same=0; diff=0
 r(){
   echo "$1" | grep -qE "$PAT" || return 0
-  T="$(printf '%s' "$2" | node tools/terser.mjs "$O")"
-  R="$(printf '%s' "$2" | target/fast/examples/try "$O")"
+  local o="${3:-$O}"
+  T="$(printf '%s' "$2" | node tools/terser.mjs "$o")"
+  R="$(printf '%s' "$2" | target/fast/examples/try "$o")"
   if [ "$T" = "$R" ]; then same=$((same+1)); echo "SAME $1"; else diff=$((diff+1)); echo "DIFF $1"; echo "  T: $T"; echo "  R: $R"; fi
 }
+# rm_: the same with mangling on (the full lwc-rollup options), for decisions that use mangled sizes.
+M='{"compress":true,"mangle":true,"sourceMap":false,"format":{"wrap_func_args":false},"module":true}'
+rm_(){ r "$1" "$2" "$M"; }
 r C1a-inlined-flag-const 'let impl = () => { g() };
 const san = () => impl();
 export function shc(){ return san(); }'
@@ -105,4 +109,20 @@ r R11b-block-let-shadows-arrow-param 'export function co(t,w){const a=t.reduce(i
 r R12-unused-arg-placeholder 'function pt(r){ge(r)}function ge(r){h()}export function pq(){m.forEach((t,r)=>pt(r,t))}'
 r R13-unused-class-prop-assign 'class A{}A.v=1;'
 r R14-void-const-not-collapsed 'function tk(v){let esc=false;v.forEach(c=>{if(!esc)h()})}function ge(p){const t=tk(p);g(t)}export function g(o){x=ge(o)}'
+# Round 3 (compress/TRIAGE.md "Round 3"); T1a needs mangling on.
+rm_ T1a-eval-through-const-mangled 'export function gt(d){const MINUTE=6e4;return [MINUTE*60, MINUTE, MINUTE]}'
+r T1b-eval-compare-through-var 'var ff="Large";export function a(){return ff==="Large"}export function b(){return g(ff)}export function c(){return h(ff)}'
+r T2a-injected-name-blocks-collapse 'function gt(name){return P.g(name)}export const gb=c=>gt(c);export const cs=n=>{const a=gc(n);const name=gn(n);return[a,name]};'
+r T2b-injected-name-blocks-collapse-object 'function il(lo){return n(lo)&&m(lo)}export function v(){const k=il(this.lo)}export const gc=r=>{const lo=r.f.v;const la=r.f.w;return{lo,la}};'
+r T3-compound-assign-fixed-value 'export function e(){let m=1;m+=2;f(m)}'
+r T4-flatten-blocked-by-copied-method-param 'var name=1;function ca($A){return{t(name){return $A.t(name)}}}function gd(){return ca(w.$A)}let P=gd();export{P,name}'
+r T5a-recursive-defun-copy-reoptimized 'export function p(d){function b(c){if(c){const f=g(b)}}h(b)}'
+r T5b-recursive-defun-copy-negated 'function cd(){if(a){const p=g();if(p){h(cd)}}}var pu=cd();'
+r T6-dead-outer-name-vs-lambda-param-collapse 'function gd(l="e",o={}){c.get(l).has(o)}export function df(p){const o=p||{};return v=>{const f=gd(s,p);return f(v)}}'
+r T7a-copy-of-copy-ref-count 'function fl(s){g(arguments)}export function h(l){return fm(l,x,u)}function fm(l,v,u){return ff(v,u)}function ff(v,u){const a=m(v);const lb=v?"x":"y";return fl(lb,a)}'
+r T7b-copy-stale-ref-count 'function gm(n){const o=s[n];if(!o){}return o}export function go(c){return gm(c)}'
+r T8-arguments-value-not-collapsed 'export function c(){let cfg=arguments[0];p(cfg)}'
+r T9-reassoc-left-negated 'function ck(p){if(p.n&&!H)return!1;if(p.m&&!T)return!1;if(A)return!1;return C}export function k(x){return ck(x)}'
+r T10-template-value-not-collapsed 'export function f(u){const r=`a${u}`;return new R(r,1)}'
+r T11-hoist-props-nested-object 'const AG={a:{G:1}};export function ga(){return P(AG.a.G)}'
 echo "$same same, $diff differ"
