@@ -256,6 +256,14 @@ pub(crate) fn set_declared_refs(map: HashMap<usize, bool>) {
     DECLARED_REFS.with(|d| *d.borrow_mut() = map);
 }
 
+/// terser `get_lhs` `is_ref_of(lhs, AST_SymbolLet)` (and `Const`, `Using`) by
+/// name, for a target the symbol table does not know: `block_names` holds
+/// every `let` / `const` here and in nested blocks and functions. A target
+/// the table knows is answered by its definition (`lexical_target`).
+fn lexical_by_name(n: &N, name: &str, block_names: &HashSet<String>) -> bool {
+    block_names.contains(name) && !DECLARED_REFS.with(|d| d.borrow().contains_key(&ptr(n)))
+}
+
 /// Whether the reference `n` (named `name`) is declared: its definition when
 /// the table has one, else a binding of the name in `declared`. An empty set
 /// is `lhs_bad`'s query with no bindings at all and stays by name.
@@ -574,7 +582,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // terser `get_lhs` takes any declared symbol (a free one has
                         // side effects and is skipped).
                         let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
-                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || is_declared(left, name, env.declared) || injected) {
+                        if !lexical_by_name(left, name, block_names) && !read_only && !lexical_target(left) && (env.locals.contains(name) || is_declared(left, name, env.declared) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -698,7 +706,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
             }
             Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
                 if let Some(name) = ref_name(expr) {
-                    if !block_names.contains(name) && !lexical_target(expr) && env.locals.contains(name) {
+                    if !lexical_by_name(expr, name, block_names) && !lexical_target(expr) && env.locals.contains(name) {
                         out.push(Cand {
                             path: path.clone(),
                             kind: if *prefix { Kind::Pre } else { Kind::Post },
