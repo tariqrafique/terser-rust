@@ -1509,7 +1509,9 @@ fn map_list(list: &[N], cx: &mut Cx) -> (Vec<N>, bool) {
             });
             taken
         };
-        for var in injected {
+        // terser `flatten_fn` splices each `var` in right after the statement,
+        // so a later flatten's `var` comes before an earlier one's.
+        for var in injected.into_iter().rev() {
             changed = true;
             out.push(var);
         }
