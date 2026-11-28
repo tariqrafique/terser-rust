@@ -100,15 +100,16 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         single = false;
     }
     // A class is not inlined into another scope (`inline.js`).
-    if matches!(fixed.data, Data::Class { .. }) && symbol_scope(table, at.parents) != Some(scope) {
+    if matches!(fixed.data, Data::Class { .. }) && symbol_scope(table, at.parents, id) != Some(scope) {
         return None;
     }
     if single && is_lambda_or_class(&fixed) {
         single = lambda_inline_ok(table, at, id, &fixed);
     }
     if single && is_lambda_or_class(&fixed) {
-        let sym_scope = symbol_scope(table, at.parents);
-        let conflict = sym_scope.is_some_and(|s| scope_encloses_conflict(table, s, &fixed));
+        let sym_scope = symbol_scope(table, at.parents, id);
+        // `scope_encloses_variables_in_this_scope(nearest_scope, fixed)`
+        let conflict = nearest_scope(table, at.parents).is_some_and(|s| scope_encloses_conflict(table, s, &fixed));
         let direct_call = parent.is_some_and(|p| call_targets(p, n));
         let recursive_name = named_recursive(table, &fixed);
         single = (sym_scope == Some(scope) && !conflict) || (direct_call && !conflict && !recursive_name);
@@ -116,9 +117,10 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     if single {
         let def = &table.defs[id];
         def.replaced.set(def.replaced.get().saturating_add(1));
-        // terser `fixed.clone(true)` when the lambda moves to another scope:
-        // fresh nodes (no optimizer flags) that keep their definitions.
-        if (is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope))
+        // terser `fixed.clone(true)` when the lambda moves to another scope
+        // (`fixed.parent_scope !== nearest_scope`): fresh nodes (no optimizer
+        // flags) that keep their definitions.
+        if (is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope))
             || matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. })
         {
             let copy = ast::deep_clone(&fixed);
@@ -1429,10 +1431,29 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     }
 }
 
-fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
+/// terser `compressor.find_scope()`: the nearest scope, block scopes included.
+fn nearest_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
     // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
     // pointer is not in `node_scope`.
     parents.iter().rev().skip(1).find_map(|n| table.scope_lookup(&syms::ptr(n))).or(Some(0))
+}
+
+/// terser `AST_SymbolRef.scope` of the reference at the end of `parents` to `id`: the
+/// nearest scope, moved out of block scopes to the defun scope unless the name is a
+/// block declaration (`figure_out_scope`: `let`, `const`, `using`, a class
+/// declaration or a catch parameter).
+fn symbol_scope(table: &SymTable, parents: &[N], id: usize) -> Option<usize> {
+    let def = &table.defs[id];
+    let block_decl = def.block_scoped || def.lexical || matches!(def.init.as_ref().map(|i| &i.data), Some(Data::Class { stmt: true, .. }));
+    for n in parents.iter().rev().skip(1) {
+        let Some(scope) = table.scope_lookup(&syms::ptr(n)) else { continue };
+        if block_decl || matches!(n.data, Data::Func { .. } | Data::Class { .. } | Data::Toplevel { .. }) {
+            return Some(scope);
+        }
+    }
+    // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
+    // pointer is not in `node_scope`.
+    Some(0)
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref` lambda and class checks.
@@ -1444,7 +1465,7 @@ fn lambda_inline_ok(table: &SymTable, at: &At, id: usize, fixed: &N) -> bool {
         let def = &table.defs[id];
         (def.scope, def.escaped, def.funarg)
     };
-    let sym_scope = symbol_scope(table, at.parents);
+    let sym_scope = symbol_scope(table, at.parents, id);
     let cross = sym_scope != Some(def_scope);
     if cross && (escaped == 1 || scope_is_inlined(table, fixed) || within_array_or_object(at.parents) || !at.reduce_funcs) {
         return false;
