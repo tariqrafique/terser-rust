@@ -881,7 +881,10 @@ fn apply_candidate(
     // terser `is_lhs_local` reads `lvalues` before the lhs name is inserted.
     let value_reads_lhs = lvalues.contains_key(&cand.name);
     let compound = cand.kind == Kind::Assign && cand.op != "=";
-    let lhs_local = (env.locals.contains(&cand.name) || injected_name)
+    // terser `is_lhs_local`: an injected var's definition is in the function
+    // it came from, so it is never local here.
+    let lhs_local = env.locals.contains(&cand.name)
+        && !injected_name
         && !(env.in_loop
             && (value_reads_lhs || matches!(cand.kind, Kind::Post | Kind::Pre) || compound));
     // The lhs itself is an lvalue that later writes must not cross.
@@ -1166,7 +1169,9 @@ fn may_modify(name: &str, st: &Scan<'_>) -> bool {
     if DEFUNS.with(|d| d.borrow().contains(name)) {
         return false;
     }
-    !st.locals.contains(name) || st.escaped.contains(name)
+    // A var `flatten_fn` injected keeps the definition (and scope) of the
+    // parameter or var it came from: `def.scope` is another function.
+    !st.locals.contains(name) || st.escaped.contains(name) || INJECTED.with(|i| i.borrow().contains_key(name))
 }
 
 fn scan_switch(expr: &N, body: &[N], st: &mut Scan<'_>) {
