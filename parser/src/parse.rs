@@ -191,7 +191,7 @@ impl Parser {
         let mut e = self.tz.snap(end);
         self.tz.freeze_tok(&mut s);
         self.tz.freeze_tok(&mut e);
-        Rc::new(Node { start: Some(s), end: Some(e), data })
+        Node::spanned(Some(s), Some(e), data)
     }
 
     fn can_asi(&self) -> bool {
@@ -2164,18 +2164,14 @@ impl Parser {
             }
             Data::Assign { left, right, .. } => {
                 let left = self.to_destructuring(left)?;
-                Ok(Rc::new(Node {
-                    start: node.start.clone(),
-                    end: node.end.clone(),
-                    data: Data::DefaultAssign { left, right },
-                }))
+                Ok(Node::make(&node, Data::DefaultAssign { left, right }))
             }
             Data::Spread { expr } => {
                 let expr = self.to_destructuring(expr)?;
                 let start = self.token;
                 Ok(self.mk(Data::Spread { expr }, start, start))
             }
-            other => Ok(Rc::new(Node { start: node.start.clone(), end: node.end.clone(), data: other })),
+            other => Ok(Node::make(&node, other)),
         }
     }
 
@@ -2535,7 +2531,7 @@ fn retag_param(node: N) -> N {
         Data::Assign { left, right, .. } => Data::DefaultAssign { left: retag_param(left), right },
         other => other,
     };
-    Rc::new(Node { start: node.start.clone(), end: node.end.clone(), data })
+    Node::make(&node, data)
 }
 
 fn js_key(n: f64) -> String {

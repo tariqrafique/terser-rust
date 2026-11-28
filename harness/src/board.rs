@@ -386,7 +386,7 @@ fn selected(case: &Case, set_name: &str, args: &Args, failed: Option<&HashSet<St
 fn evaluate(job: &Job, timeout: Duration, full: bool) -> Outcome {
     let input = job.input.clone();
     let options = job.options.clone();
-    let result = eval_with_timeout(timeout, move || match minify(&input, &options) {
+    let result = eval_named(Some(job.id.clone()), timeout, move || match minify(&input, &options) {
         Ok(output) => output.code.into_bytes(),
         Err(error) => canonical_error(error.name(), &error.to_string(), error.line(), error.col()),
     });
@@ -436,16 +436,34 @@ fn evaluate(job: &Job, timeout: Duration, full: bool) -> Outcome {
     }
 }
 
+#[cfg(test)]
 fn eval_with_timeout<T, F>(timeout: Duration, f: F) -> Result<T, EvalFail>
 where
     T: Send + 'static,
     F: FnOnce() -> T + Send + 'static,
 {
+    eval_named(None, timeout, f)
+}
+
+/// Run `f` on its own thread, named `name` (the case id, so panics and the compressor's
+/// diagnostics on stderr say which case they come from).
+fn eval_named<T, F>(name: Option<String>, timeout: Duration, f: F) -> Result<T, EvalFail>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
+    let mut builder = thread::Builder::new();
+    if let Some(name) = name {
+        builder = builder.name(name);
+    }
+    let spawned = builder.spawn(move || {
         let result = catch_unwind(AssertUnwindSafe(f));
         let _ = tx.send(result);
     });
+    if spawned.is_err() {
+        return Err(EvalFail::Panic("spawn failed".into()));
+    }
     match rx.recv_timeout(timeout) {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(payload)) => Err(EvalFail::Panic(panic_message(payload))),

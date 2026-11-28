@@ -172,12 +172,20 @@ fn trim(span: &N, exprs: Vec<N>, cx: &Cx, preserve: bool) -> N {
         }
         return reopt(bound, cx);
     }
-    eval::atom(span, Data::Seq { exprs: kept })
+    if preserve {
+        // keep: `self.expressions = expressions` (index.js 2061).
+        eval::edit(span, Data::Seq { exprs: kept })
+    } else {
+        // new: the sequence `make_sequence` made, optimized where it is made.
+        eval::atom(span, Data::Seq { exprs: kept })
+    }
 }
 
 fn reopt(n: N, cx: &Cx) -> N {
     let ptr = Rc::as_ptr(&n) as usize;
-    if cx.optimized.contains(&ptr) || cx.squeezed.contains(&ptr) {
+    let flagged = cx.optimized.contains(&ptr) || cx.squeezed.contains(&ptr);
+    crate::audit_flags(cx, "reopt", &n, flagged, true, true);
+    if flagged {
         return n;
     }
     let Some(_guard) = enter() else {
