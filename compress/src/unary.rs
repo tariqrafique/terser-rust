@@ -699,8 +699,8 @@ fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
     if !is_new && func_expr_unreferenced(expr, cx) {
         // terser `this.clone()`: the call is a new node even when
         // `process_expression` leaves the function as it was.
+        // `process_expression` edits the function in place (it keeps its id and flags).
         let rewritten = crate::eval::process_expression(expr, false, Some(cx));
-        crate::keep_squeezed(cx, expr, &rewritten);
         let Data::Call { args, optional, is_new, .. } = &n.data else {
             return Some(Rc::clone(n));
         };

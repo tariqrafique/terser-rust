@@ -603,7 +603,6 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pre_tighten: RefCell::new(ast::IdSet::default()),
         foreign_lambda: 0,
         fresh: RefCell::new(ast::IdSet::default()),
-        late_squeezed: RefCell::new(ast::IdSet::default()),
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
     };
@@ -692,8 +691,8 @@ struct Cx {
     /// edit) keeps them; ids are never reused, so nothing has to be kept alive.
     squeezed: ast::IdSet,
     /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` set only where terser sets the
-    /// flag, never by the carry-overs onto new nodes (`carry_squeezed`, `carry_optimized`,
-    /// `keep_squeezed`). Nothing decides by them.
+    /// flag, never by the carry-overs onto new nodes (`carry_squeezed`, `carry_optimized`).
+    /// Nothing decides by them.
     squeezed_ids: ast::IdSet,
     optimized_ids: RefCell<ast::IdSet>,
     /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
@@ -727,9 +726,6 @@ struct Cx {
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<ast::IdSet>,
-    /// Nodes rebuilt from a `SQUEEZED` node by an optimizer that only holds
-    /// `&Cx` (terser edits that node in place, so the flag stays).
-    late_squeezed: RefCell<ast::IdSet>,
     /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
     injected: RefCell<HashMap<usize, HashSet<String>>>,
     /// terser `def.references.length` of an injected name: the parameter's
@@ -1094,7 +1090,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
     let orig_ptr = ptr;
     let orig = Rc::clone(n);
-    let entry = cx.squeezed.contains(&n.id()) || cx.late_squeezed.borrow().contains(&n.id());
+    let entry = cx.squeezed.contains(&n.id());
     if audit::on() {
         audit::check(&cx.stage("entry"), n, entry, cx.squeezed_ids.contains(&n.id()));
     }
@@ -1451,16 +1447,6 @@ fn child_refs(data: &Data) -> Vec<&N> {
 /// `OPTIMIZED` without the audit's set: a carry-over onto a new node.
 fn carry_optimized(cx: &mut Cx, n: &N) {
     cx.optimized.borrow_mut().insert(n.id());
-}
-
-/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag (its scope follows its id).
-pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
-    if Rc::ptr_eq(from, to) {
-        return;
-    }
-    if cx.squeezed.contains(&from.id()) || cx.late_squeezed.borrow().contains(&from.id()) {
-        cx.late_squeezed.borrow_mut().insert(to.id());
-    }
 }
 
 /// Shadow audit of a flag read outside `transform`: `by_ptr` is the pointer answer for

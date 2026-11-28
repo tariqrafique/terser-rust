@@ -3,7 +3,7 @@
 //! The compressor's `SQUEEZED` / `OPTIMIZED` flags are keyed by pointer, and every rebuild
 //! has to carry them over. The audit keeps id-keyed copies beside them (in `Cx`), set only
 //! where terser sets a flag (not by the pointer carry-overs: `transfer_flags`,
-//! `keep_squeezed`, `mark_tree_squeezed`), and compares the two answers at each decision.
+//! `mark_tree_squeezed`), and compares the two answers at each decision.
 //! Decisions stay pointer-based. (Step 3 audited the symbol table's definition and scope
 //! lookups the same way; step 4 keyed the table by id, so there is one answer.)
 //!
