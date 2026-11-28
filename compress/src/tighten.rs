@@ -2318,6 +2318,10 @@ fn lvalues_of(value: &N) -> HashMap<String, bool> {
         if let Data::Func { args, body, .. } = &n.data {
             args.iter().for_each(|c| rec(c, stack, out));
             body.iter().for_each(|c| rec(c, stack, out));
+        } else if let Data::Call { expr, args, .. } = &n.data {
+            // `AST_Call._walk` visits the arguments before the callee.
+            args.iter().for_each(|c| rec(c, stack, out));
+            rec(expr, stack, out);
         } else {
             each_child(&n.data, |c| rec(c, stack, out));
         }
@@ -2358,10 +2362,19 @@ fn inner_lvalue_names(value: &N) -> HashSet<String> {
             false
         };
         stack.push(Rc::clone(n));
-        let _ = ast::map_children(n, &mut |c| {
-            rec(c, bound, last, stack);
-            Rc::clone(c)
-        });
+        if let Data::Call { expr, args, .. } = &n.data {
+            // `AST_Call._walk` visits the arguments before the callee, so an
+            // inlined function's own names are the last entries.
+            for a in args {
+                rec(a, bound, last, stack);
+            }
+            rec(expr, bound, last, stack);
+        } else {
+            let _ = ast::map_children(n, &mut |c| {
+                rec(c, bound, last, stack);
+                Rc::clone(c)
+            });
+        }
         stack.pop();
         if pushed {
             bound.pop();
