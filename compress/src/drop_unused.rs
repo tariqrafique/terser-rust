@@ -89,9 +89,9 @@ fn nested() -> bool {
 
 fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
     match &n.data {
-        Data::Toplevel { body } => {
-            let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
-            node(n, Data::Toplevel { body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
+        Data::Toplevel { body: original } => {
+            let body: Vec<N> = original.iter().map(|s| scope(s, table, true, true)).collect();
+            node(n, Data::Toplevel { body: passes(&body, original, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let original = body;
@@ -111,7 +111,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
                 _ => name.clone(),
             };
-            let body = if is_root { passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, true) } else { body };
+            let body = if is_root { passes(&body, original, table, table.node_scope.get(&ptr(n)).copied(), true, true) } else { body };
             node(n, Data::Func {
                 kind: *kind,
                 name,
@@ -121,11 +121,11 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 generator: *generator,
             })
         }
-        Data::Block { body } => {
-            let body: Vec<N> = body.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
+        Data::Block { body: original } => {
+            let body: Vec<N> = original.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
             let body = if let (Some(&id), false) = (table.node_scope.get(&ptr(n)), nested()) {
                 let _ = id;
-                passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, drop_funcs)
+                passes(&body, original, table, table.node_scope.get(&ptr(n)).copied(), true, drop_funcs)
             } else {
                 body
             };
@@ -147,12 +147,16 @@ struct Use {
     /// position in `sym.orig`.
     var_defs: std::cell::RefCell<HashMap<usize, Vec<usize>>>,
     orig_index: HashMap<usize, usize>,
+    /// Scope ids of the loops and `switch`es in this scope body (terser block
+    /// scopes that are not `AST_Scope`): their `let` / `const` belong to this pass.
+    loop_scopes: HashSet<usize>,
     /// terser `sym.eliminated`.
     eliminated: std::cell::RefCell<HashMap<usize, usize>>,
 }
 
 /// Passes 1–3 of `AST_Scope.drop_unused`.
-fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool) -> Vec<N> {
+/// `original` is the body before nested scopes were rewritten: its loop nodes still have their scope ids.
+fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool) -> Vec<N> {
     // `self.pinned()`: `with` keeps every name.
     if contains_with(stmts) {
         return stmts.to_vec();
@@ -165,6 +169,7 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
         var_defs: Default::default(),
         orig_index: HashMap::new(),
         eliminated: Default::default(),
+        loop_scopes: loop_scopes(original, table),
     };
     {
         let mut by_id: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -301,12 +306,43 @@ fn assign_as_unused<'a>(n: &'a N, table: &SymTable) -> Option<&'a N> {
     }
 }
 
-fn owned(table: &SymTable, n: &N, scope_id: Option<usize>) -> Option<usize> {
+fn owned(table: &SymTable, u: &Use, n: &N, scope_id: Option<usize>) -> Option<usize> {
     let id = def_id(table, n)?;
-    if scope_id.is_some_and(|s| table.defs[id].scope != s) {
-        return None;
+    if let Some(s) = scope_id {
+        // A loop's or a `switch`'s `let` is this scope's to drop.
+        let mut sc = table.defs[id].scope;
+        while sc != s && u.loop_scopes.contains(&sc) {
+            match table.scope_parent.get(sc).copied().flatten() {
+                Some(p) => sc = p,
+                None => break,
+            }
+        }
+        if sc != s {
+            return None;
+        }
     }
     Some(id)
+}
+
+/// Scope ids of the loops and `switch`es under `stmts`, outside nested functions and classes.
+fn loop_scopes(stmts: &[N], table: &SymTable) -> HashSet<usize> {
+    fn rec(n: &N, table: &SymTable, out: &mut HashSet<usize>) {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } => return,
+            Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } | Data::Switch { .. } => {
+                if let Some(id) = table.scope_lookup(&ptr(n)) {
+                    out.insert(id);
+                }
+            }
+            _ => {}
+        }
+        ast::walk_children(n, &mut |c| rec(c, table, out));
+    }
+    let mut out = HashSet::new();
+    for s in stmts {
+        rec(s, table, &mut out);
+    }
+    out
 }
 
 fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool, out: &mut Vec<N>) {
@@ -334,7 +370,7 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                 }
             }
             let is_sym = matches!(name.data, Data::Symbol { .. });
-            let id = owned(table, name, scope_id);
+            let id = owned(table, u, name, scope_id);
             let in_use = !drop_vars || !is_sym || id.is_none_or(|id| u.in_use.contains(&id));
             if in_use {
                 if let (DefKind::Var, Some(id), true) = (kind, id, is_sym) {
@@ -431,14 +467,14 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
     // drop-unused.js: an unused `class` declaration goes when it has no side effects.
     if drop_funcs {
         if let Data::Class { stmt: true, name: Some(name), .. } = &n.data {
-            if class_pure(n) && owned(table, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
+            if class_pure(n) && owned(table, u, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
                 return;
             }
         }
     }
     if drop_funcs {
         if let Data::Func { name: Some(name), .. } = &n.data {
-            if owned(table, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
+            if owned(table, u, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
                 return;
             }
         }
@@ -474,7 +510,7 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         if let Data::Assign { op, left, right, logical } = &n.data {
             if !*logical && op == "=" {
                 // Only this scope's bindings (`self.variables.get(name) === def`).
-                if let Some(id) = owned(table, left, scope_id) {
+                if let Some(id) = owned(table, u, left, scope_id) {
                     if !u.in_use.contains(&id) {
                         let rhs = rewrite_expr(right, table, u, scope_id, drop_vars, false)?;
                         if !has_side_effects(&rhs) && discarded {

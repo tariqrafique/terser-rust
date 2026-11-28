@@ -192,6 +192,28 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 walk(stmt, id, scopes, table);
             }
         }
+        // terser `AST_IterationStatement.is_block_scope`: a `let` / `const`
+        // in the head belongs to the loop, not to the enclosing scope.
+        Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } => {
+            let id = push_block(scope, scopes);
+            table.node_scope.insert(ptr(n), id);
+            ast::walk_children(n, &mut |c| walk(c, id, scopes, table));
+        }
+        // `AST_Switch` is a block scope for its cases; the discriminant is
+        // in the enclosing scope.
+        Data::Switch { expr, body } => {
+            walk(expr, scope, scopes, table);
+            let id = push_block(scope, scopes);
+            table.node_scope.insert(ptr(n), id);
+            for arm in body {
+                if let Data::Case { body, .. } | Data::Default { body } = &arm.data {
+                    hoist_lexical(body, id, scopes, table);
+                }
+            }
+            for arm in body {
+                walk(arm, id, scopes, table);
+            }
+        }
         Data::Catch { arg, body } => {
             let id = push_block(scope, scopes);
             table.node_scope.insert(ptr(n), id);
