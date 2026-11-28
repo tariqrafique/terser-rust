@@ -1,6 +1,6 @@
 # Stable node ids: design
 
-This is the design for PLAN.md's "Stable node ids" step. Steps 1-4 of §4 are done; §6 has what landed, where the design was wrong, and the shadow audit's results.
+This is the design for PLAN.md's "Stable node ids" step. Steps 1-6 of §4 are done and step 7 in part; §6 has what landed, where the design was wrong, and the shadow audit's results.
 - terser edits a single tree in place.
 - The port rebuilds immutable `Rc<Node>`s and keys flags, scopes and definitions by pointer, so every rebuild has to carry them over.
 - Giving each node an id that survives rebuilds removes that whole class of bug.
@@ -302,7 +302,41 @@ Before step 4, the audit also compared definition and scope lookups; it found po
 - in `bundles/lodash`, a `Defun` whose pointer lookup found a different scope than its id: `node_scope` held pointers of freed nodes, so a new node at a reused address inherited a stale scope.
 None of these changed the board when step 4 removed them.
 
-**Not done (step 5 on).** Flags are still pointer-keyed with the keep-alives (`flag_keep`, `seal_keep`, `late_squeezed`, `fresh`, `pre_tighten`); `is_sealed` is still a linear scan; `injected` still uses the `| 1 << 60` key; drop_unused's own `bind` table is id-keyed now (it shares `SymTable`), its `Use` maps stay pointer-keyed.
+**Steps 5-7 (flags by id, `fixed` by id, cleanup).** Each sub-step is one commit with 0 newly failing on the board and 0 of 260 lwc-rollup inputs under 200 KB failing. The board went from 2382/2671 and lwc 332/339 to 2394 and 332 at 5a (+12), then, with two merges of the triage branch in between, to 2418/2671 and lwc 338/339 (+1 lwc at 5f).
+
+- **5a, keys.** `squeezed`, `optimized`, the sealed sets, `fresh`, `late_squeezed`, `pre_tighten` and `pending_vars` are keyed by id; `flag_keep`, `seal_keep` and every keep-alive are gone, `is_sealed` is a set lookup. The flip made 3 cases fail at first (and `functions/issue_2657` lost a `var`: with no keep-alives a freed statement's address was reused, so `pending_vars` spliced the `var` after a call argument). Each cause was a port optimizer that relied on being re-run, fixed to do what terser does:
+  - flatten copies its expressions (`expressions.map(exp => exp.clone(true))`, inline.js 673), so the next descend optimizes them again;
+  - a reference keeps the scope it was bound in (`SymTable.ref_scope`, terser's `self.scope`), so a reference flatten moved out of its function still counts as being in that function for single-use inlining (`properties/issue_3188_*`, `reduce_vars/issue_2799_1`);
+  - an inlined declaration is copied at its top only (`make_node(AST_Function, fixed, fixed)`, il 247-250), so its body keeps its flags; a self-recursive one is still copied whole (terser rebinds its inner references);
+  - `can_inject_symbols` refuses under a reference whose fixed value is a scope (`scope instanceof AST_SymbolRef`) and skips the lambda a `fixed.optimize()` is tightening, which is not on terser's stack (`issue_2657`);
+  - the switch builds its `if` from blocks (`make_node(AST_BlockStatement, branch, ..)`) and optimizes it where it is made; `stmt_kind` no longer looks into a one-statement block (terser's `AST_If` sees the block); the port-only statement joins for switch blocks (`lib.rs` `tighten` and its helpers) are gone;
+  - a concise method's key is lifted before it becomes an arrow property.
+- **5b.** `sealed` and the switch's `seal` set are plain `OPTIMIZED` (`Cx::set_optimized`).
+- **5c.** `late_squeezed` / `keep_squeezed` are gone: the function `process_expression` rebuilds keeps its id.
+- **5d.** No `transfer_flags` after hoist. Its `fixed` retargeting is `follow_rebuilt`, which pairs old and new nodes by id.
+- **5e.** `same = out.id() == n.id()` (`opt === node`), and the scope is squeezed after its `drop_unused` descend only when it is `same`. One optimizer relied on being re-run: the lazy-operator reassociation now optimizes each left operand it builds (`Cx::transformed`, terser's `self.transform(compressor)`; `conditionals/ifs_5`).
+- **5f.** No `mark_tree_squeezed`, `transfer_flags`, `fresh` or `made_fresh`: `drop_unused` and collapse edit in place, the descend after `drop_unused` walks what is not SQUEEZED. Then the block optimizer no longer empties a block of pure declarations (terser leaves that to `drop_unused`; R6a).
+- **6.** `retarget_fixed` and hoist_props' `fixed_value() === node.value` compare ids; `follow_rebuilt` retargets every rebuilt tracked node after `hoist` and `drop_unused`.
+- **7.** The flag audit is retired (`audit.rs`, `TERSER_ID_AUDIT`): with no carry-over left its id sets were the deciding sets. `Cx.injected` is keyed by `ScopeKey` (no `1 << 60`), `foreign_lambda` by id (the pointer was taken before `hoist`), and the parent checks against the walker's stacks compare ids.
+
+**Audit counts** (board + lwc board; lwc-rollup under 200 KB in brackets), mismatches between the deciding flags and the id flags set only where terser sets them:
+
+| decision | before 5a | after 5a | after 5f |
+| --- | --- | --- | --- |
+| `same` | 6736 [1799] | 5955 [1731] | (5e: by id) |
+| `skip_optimize` (+`@redescend`) | 6556 [1263] | 0 [0] | 0 [0] |
+| `already` (+`@redescend`) | 1867 [353] | 0 [0] | 0 [0] |
+| `entry` | 1876 [279] | 16 [6] | 0 [0] |
+| `entry@redescend` | 4793 [12359] | 4404 [12251] | 0 [0] |
+| `callee_processed` | 16 [1] | 0 [0] | 0 [0] |
+
+After 5a the remaining `entry` rows were the carry-overs (`late_squeezed`, `mark_tree_squeezed`); 5c-5f removed them. The counts are higher than step 3's because the triage fixes merged in between added cases.
+
+**Not done.**
+- The `set_parent` / `Cx.stack` swap stays. The parent checks compare ids now, but a child that the first descend replaced (a new id) is only in the once-rebuilt parent, so the stack top must be that version for the second descend. Dropping the swap left the board and lwc-rollup under 200 KB unchanged, but it is the less faithful choice, so it was not kept.
+- `scope_cache` stays pointer-keyed (a content cache), and so do drop_unused's `Use` maps and tighten's local maps.
+- R6b (`!function(){..}(0,i.f)` vs `(i.f)`) is not a flag case: the port's call optimizer drops an IIFE's unused parameters (`trim_unused`'s `iife_drops_params`), terser leaves that to `drop_unused` (du 262-285) and the call only replaces the unused argument by `0`. Moving it breaks 18 board cases, because the port's `drop_unused` does not trim parameters at all yet.
+- A top-only copy shares its children with the declaration until `drop_unused` drops it (terser shares the objects). If the declaration stays, `check_ids` reports the shared ids: that is how `class A{static x=f()}A.v=1` showed up before R13 stopped inlining a class with side effects, as terser does. The check is a detector for such a divergence, not a bug in the copy.
 
 **Timing.** User CPU of the release `try` over the 478 lwc-rollup inputs up to 400 KB, two interleaved rounds each, on a machine shared with other agents (so about ±5%):
 
@@ -315,4 +349,13 @@ None of these changed the board when step 4 removed them.
 | step 4 (SymTable by id, SipHash) | 184.2 s | 186.5 s |
 | step 4 with the identity-hashed `IdMap` / `IdSet` | | 189.8 s |
 
-The ids cost nothing measurable, and neither does keying the table by id. The jump between the first two rows and the rest is the merged triage fixes, not the ids (the second run had a load average near 25 on 4 cores, hence the higher absolute numbers). The big expected gains (§5) come with step 5: `is_sealed`'s linear scan and the keep-alives.
+The ids cost nothing measurable, and neither does keying the table by id. The jump between the first two rows and the rest is the merged triage fixes, not the ids (the second run had a load average near 25 on 4 cores, hence the higher absolute numbers).
+
+Steps 5-7, the same measurement against the start of step 5 (0034061), each pair run interleaved (load average near 30, so the pairs are comparable with each other but not with the rows above):
+
+| build | user CPU |
+| --- | --- |
+| 0034061 / after 5a | 196.2 s / 198.1 s |
+| 0034061 / after step 7 (two merges of the triage branch included) | 182.5 s / 177.1 s |
+
+Keying the flags by id and dropping `is_sealed`'s scan bought no measurable time at 5a; by the end the run is about 3% faster, within the noise of this machine. The keep-alives were the memory cost: peak RSS on the largest input (`inputLocation`, 2.2 MB) went from 282 MB to 181 MB, user CPU 20.3 s to 19.1 s. The full lwc-rollup check (779 inputs) took 18.0 min user CPU at the end and fails the same 297.
