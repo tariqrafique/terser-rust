@@ -1132,16 +1132,23 @@ fn apply_candidate(
         return None;
     }
     // terser `mangleable_var` — only when `referenced > 1` and this is the single declaration.
+    // terser `def.references.length - def.replaced` for a `var` candidate: the symbol
+    // table's when it has one (a reference in a plain copy is not among them, one an
+    // optimizer dropped still is), else the tree's count.
+    let referenced = match &cand.node.data {
+        Data::VarDef { name, .. } => REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()).filter(|&r| r < usize::MAX - 1).unwrap_or(total),
+        _ => total,
+    };
     let mangleable = match arg_referenced {
         Some(referenced) => referenced > 1 && is_mangleable(&cand.value, &cand.name, env),
-        None => cand.kind == Kind::Var && declared <= 1 && total > 1 && is_mangleable(&cand.value, &cand.name, env),
+        None => cand.kind == Kind::Var && declared <= 1 && referenced > 1 && is_mangleable(&cand.value, &cand.name, env),
     };
     if arg_referenced.is_some_and(|r| r > 1) && !mangleable {
         info.skip = Some("no_lhs");
         return None;
     }
     if cand.kind == Kind::Var {
-        let ok = (declared > 1) || if total > 1 { mangleable } else { !exposed };
+        let ok = (declared > 1) || if referenced > 1 { mangleable } else { !exposed };
         if !ok {
             info.skip = Some("no_lhs");
             return None;
@@ -1166,13 +1173,9 @@ fn apply_candidate(
     // assignment, whatever the tree now holds.
     let injected = INJECTED.with(|i| i.borrow().get(&cand.name).copied());
     // terser `def.references.length - def.replaced == 1` at the replacement.
-    let referenced = match &cand.node.data {
-        Data::VarDef { name, .. } => REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()).filter(|&r| r != usize::MAX).unwrap_or(total),
-        _ => total,
-    };
     let single = match arg_referenced {
         Some(referenced) => referenced == 1,
-        None => total == 1 && (!env.block_only || referenced == 1),
+        None => referenced == 1,
     };
     let mode = if matches!(cand.kind, Kind::Var | Kind::Arg) && single && !exposed {
         Mode::ValueOne
