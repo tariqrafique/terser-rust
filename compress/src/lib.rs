@@ -619,15 +619,15 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     if let Some(mangle_toplevel) = mangle {
         let table = syms::bind(root);
         let mut set = HashSet::new();
-        for (ptr, id) in &table.node_def {
+        for (nid, id) in table.node_def.borrow().iter() {
             let d = &table.defs[*id];
             let unmangleable = (d.global && !mangle_toplevel) || d.undeclared || d.pinned || d.exported || d.name == "arguments";
             if !unmangleable {
-                set.insert(*ptr);
+                set.insert(*nid);
             }
         }
         eval::set_mangled_symbols(set);
-        eval::set_known_symbols(table.node_def.keys().copied().collect(), mangle_toplevel);
+        eval::set_known_symbols(table.node_def.borrow().keys().copied().collect(), mangle_toplevel);
     } else {
         eval::set_mangled_symbols(HashSet::new());
         eval::set_known_symbols(HashSet::new(), false);
@@ -1098,6 +1098,7 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
     let orig_ptr = ptr;
+    let orig = Rc::clone(n);
     let entry = cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr);
     if audit::on() {
         audit::check(&cx.stage("entry"), n, entry, cx.squeezed_ids.contains(&n.id()));
@@ -1115,15 +1116,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
                 table.define_hoisted(created);
             }
         }
-        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its
-        // scopes and definitions.
+        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope
+        // and definitions; the flags still follow by pointer.
         if !Rc::ptr_eq(&hoisted, n) {
-            if let Some(table) = cx.syms.as_mut() {
-                if let Some(&sc) = table.node_scope.get(&ptr) {
-                    table.node_scope.insert(Rc::as_ptr(&hoisted) as usize, sc);
-                    cx.flag_keep.push(Rc::clone(&hoisted));
-                }
-            }
             transfer_flags(n, &hoisted, cx);
         }
         &hoisted
@@ -1140,7 +1135,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         mark_squeezed(cx, &out);
         cx.leave(entered);
         cx.parents.pop();
-        retarget(cx, orig_ptr, &out);
+        retarget(cx, &orig, &out);
         return out;
     }
     // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
@@ -1168,7 +1163,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // `parent.left === self` sees updated children, then the original for `fold`.
     cx.stack.push(Rc::clone(n));
     let once = map_children(n, cx);
-    alias_scope_node(cx, n, &once);
     *cx.stack.last_mut().unwrap() = Rc::clone(&once);
     set_parent(cx, &once);
     let twice = map_children(&once, cx);
@@ -1220,7 +1214,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         cx.leave(entered);
         cx.parents.pop();
         if !Rc::ptr_eq(&tightened, &out) {
-            alias_scope_node(cx, &out, &tightened);
             out = tightened;
         }
     }
@@ -1265,28 +1258,16 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.stack.pop();
     cx.leave(entered);
     cx.parents.pop();
-    retarget(cx, orig_ptr, &out);
+    retarget(cx, &orig, &out);
     out
 }
 
-/// A rebuilt copy of a scope node is the same scope (terser mutates in place).
-fn alias_scope_node(cx: &mut Cx, from: &N, to: &N) {
-    if Rc::ptr_eq(from, to) {
-        return;
-    }
-    if let Some(table) = cx.syms.as_ref() {
-        if let Some(sc) = table.scope_lookup(&(Rc::as_ptr(from) as usize)) {
-            table.alias_scope.borrow_mut().insert(Rc::as_ptr(to) as usize, (sc, Rc::clone(to)));
-        }
-    }
-}
-
-fn retarget(cx: &mut Cx, orig_ptr: usize, out: &N) {
-    if Rc::as_ptr(out) as usize == orig_ptr {
+fn retarget(cx: &mut Cx, orig: &N, out: &N) {
+    if Rc::ptr_eq(orig, out) {
         return;
     }
     if let Some(table) = cx.syms.as_mut() {
-        syms::retarget_fixed(table, orig_ptr, out);
+        syms::retarget_fixed(table, orig, out);
     }
 }
 
@@ -1323,21 +1304,6 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         return;
     }
     let ptr = Rc::as_ptr(old) as usize;
-    // The rebuilt node keeps its scope and definition (terser edits in place).
-    if let Some(table) = cx.syms.as_ref() {
-        let np = Rc::as_ptr(new) as usize;
-        if table.scope_lookup(&np).is_none() {
-            if let Some(sc) = table.scope_lookup(&ptr) {
-                table.alias_scope.borrow_mut().insert(np, (sc, Rc::clone(new)));
-            }
-        }
-        let same_name = matches!((&old.data, &new.data), (Data::Symbol { name: a, .. }, Data::Symbol { name: b, .. }) if a == b);
-        if same_name && table.lookup(&np).is_none() {
-            if let Some(id) = table.lookup(&ptr) {
-                table.alias.borrow_mut().insert(np, (id, Rc::clone(new)));
-            }
-        }
-    }
     if cx.fresh.borrow().contains_key(&ptr) {
         cx.fresh.borrow_mut().insert(Rc::as_ptr(new) as usize, Rc::clone(new));
     }
@@ -1347,7 +1313,7 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
     if matches!(old.data, Data::Func { .. } | Data::Class { .. })
         && old.start.as_ref().map(|t| t.pos) == new.start.as_ref().map(|t| t.pos)
     {
-        retarget(cx, ptr, new);
+        retarget(cx, old, new);
     }
     if cx.squeezed.contains(&ptr) {
         carry_squeezed(cx, new);
@@ -1500,7 +1466,7 @@ fn carry_optimized(cx: &mut Cx, n: &N) {
     cx.flag_keep.push(Rc::clone(n));
 }
 
-/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag and scope.
+/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag (its scope follows its id).
 pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
     if Rc::ptr_eq(from, to) {
         return;
@@ -1508,11 +1474,6 @@ pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
     let p = Rc::as_ptr(from) as usize;
     if cx.squeezed.contains(&p) || cx.late_squeezed.borrow().contains_key(&p) {
         cx.late_squeezed.borrow_mut().insert(Rc::as_ptr(to) as usize, Rc::clone(to));
-    }
-    if let Some(table) = cx.syms.as_ref() {
-        if let Some(sc) = table.scope_lookup(&p) {
-            table.alias_scope.borrow_mut().insert(Rc::as_ptr(to) as usize, (sc, Rc::clone(to)));
-        }
     }
 }
 

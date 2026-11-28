@@ -1,10 +1,11 @@
 //! The node-id shadow audit (`NODE_IDS.md` step 3).
 //!
-//! The compressor's flags and symbol tables are keyed by pointer, and every rebuild has to
-//! carry them over. The audit keeps id-keyed copies beside them, filled only where terser
-//! sets a flag or binds a name (not by the pointer carry-overs: `transfer_flags`,
-//! `keep_squeezed`, `mark_tree_squeezed`, the scope and definition aliases), and compares the
-//! two answers at each decision. Decisions stay pointer-based.
+//! The compressor's `SQUEEZED` / `OPTIMIZED` flags are keyed by pointer, and every rebuild
+//! has to carry them over. The audit keeps id-keyed copies beside them (in `Cx`), set only
+//! where terser sets a flag (not by the pointer carry-overs: `transfer_flags`,
+//! `keep_squeezed`, `mark_tree_squeezed`), and compares the two answers at each decision.
+//! Decisions stay pointer-based. (Step 3 audited the symbol table's definition and scope
+//! lookups the same way; step 4 keyed the table by id, so there is one answer.)
 //!
 //! `TERSER_ID_AUDIT=1` turns it on. At the end of each `compress` call every mismatch kind
 //! is printed to stderr as `id-audit<TAB>decision<TAB>node type<TAB>ptr=..<TAB>id=..<TAB>count<TAB>thread`
@@ -42,17 +43,6 @@ pub(crate) fn check<T: PartialEq + Display>(decision: &str, n: &N, by_ptr: T, by
     }
     let key = (decision.to_string(), ast::terser_type(n), by_ptr.to_string(), by_id.to_string());
     COUNTS.with(|c| *c.borrow_mut().entry(key).or_insert(0) += 1);
-}
-
-/// Record a table lookup (a definition or scope index) whose two answers differ: each side
-/// prints as `some` / `none`, and as `other` when both found a different entry.
-pub(crate) fn check_entry(decision: &str, n: &N, by_ptr: Option<usize>, by_id: Option<usize>) {
-    if by_ptr == by_id || !on() {
-        return;
-    }
-    let label = |v: Option<usize>| if v.is_some() { "some" } else { "none" };
-    let id_label = if by_ptr.is_some() && by_id.is_some() { "other" } else { label(by_id) };
-    check(decision, n, label(by_ptr), id_label);
 }
 
 pub(crate) fn flush() {

@@ -210,7 +210,7 @@ fn count_node(n: &N, count: &mut i32) {
 /// terser `index.js` `hoist_properties`.
 fn hoist_properties(n: &N, toplevel_vars: bool, top_retain: Option<&str>, table: Option<&SymTable>) -> N {
     let Some(table) = table else { return Rc::clone(n) };
-    let Some(&scope) = table.node_scope.get(&syms::ptr(n)) else { return Rc::clone(n) };
+    let Some(&scope) = table.scope_of(n).as_ref() else { return Rc::clone(n) };
     let mut plan: HashMap<usize, HashMap<String, String>> = HashMap::new();
     let mut used = visible_names(table, scope);
     collect_props(n, n, table, scope, toplevel_vars, top_retain, &mut used, &mut plan);

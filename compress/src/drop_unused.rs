@@ -91,7 +91,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
     match &n.data {
         Data::Toplevel { body: original } => {
             let body: Vec<N> = original.iter().map(|s| scope(s, table, true, true)).collect();
-            renode(n, Data::Toplevel { body: passes(&body, original, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
+            renode(n, Data::Toplevel { body: passes(&body, original, table, table.scope_of(n).as_ref().copied(), drop_vars, drop_funcs) })
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let original = body;
@@ -111,7 +111,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
                 _ => name.clone(),
             };
-            let body = if is_root { passes(&body, original, table, table.node_scope.get(&ptr(n)).copied(), true, true) } else { body };
+            let body = if is_root { passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, true) } else { body };
             renode(n, Data::Func {
                 kind: *kind,
                 name,
@@ -123,9 +123,9 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
         }
         Data::Block { body: original } => {
             let body: Vec<N> = original.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
-            let body = if let (Some(&id), false) = (table.node_scope.get(&ptr(n)), nested()) {
+            let body = if let (Some(&id), false) = (table.scope_of(n).as_ref(), nested()) {
                 let _ = id;
-                passes(&body, original, table, table.node_scope.get(&ptr(n)).copied(), true, drop_funcs)
+                passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, drop_funcs)
             } else {
                 body
             };

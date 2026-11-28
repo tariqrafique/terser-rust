@@ -214,11 +214,10 @@ pub(crate) fn pure_effects(n: &N) -> Option<Vec<N>> {
 
 /// terser `node.clone(true)`: new nodes that keep their definitions and scopes.
 fn fresh_copy(v: &N, cx: &Cx) -> N {
-    let copy = ast::deep_clone(v);
-    if let Some(table) = cx.syms.as_ref() {
-        table.alias_copy(v, &copy);
+    match cx.syms.as_ref() {
+        Some(table) => table.clone_deep(v),
+        None => ast::deep_clone(v),
     }
-    copy
 }
 
 fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: bool) -> Option<N> {
@@ -511,9 +510,6 @@ fn ref_sym(span: &N, name: &str) -> N {
 fn same_def(from: &N, to: &N, cx: &Cx) {
     if let Some(table) = cx.syms.as_ref() {
         table.copy_binding(from, to);
-        if let Some(id) = table.def_of(from) {
-            table.alias.borrow_mut().insert(Rc::as_ptr(to) as usize, (id, Rc::clone(to)));
-        }
     }
 }
 

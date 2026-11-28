@@ -96,7 +96,7 @@ fn drop_exit(n: &N, cx: &Cx) -> Option<N> {
         return None;
     }
     let lambda = find_lambda(cx)?;
-    let lambda_scope = *table.node_scope.get(&syms::ptr(lambda))?;
+    let lambda_scope = *table.scope_of(lambda).as_ref()?;
     if def.scope != lambda_scope {
         return None;
     }

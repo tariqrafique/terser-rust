@@ -53,7 +53,8 @@ pub struct SymbolDef {
     /// terser `reduce-vars.js` `mark_escaped`: the name is used as a value, not only as `obj.prop`.
     pub direct_access: bool,
     pub recursive_refs: u32,
-    pub references: Vec<usize>,
+    /// The `SymbolRef` nodes read or written, by id.
+    pub references: Vec<NodeId>,
     pub single_use: SingleUse,
     pub replaced: Cell<u32>,
     /// terser `SymbolDef.orig.length`. A parameter redeclared in the body is more than one.
@@ -62,13 +63,12 @@ pub struct SymbolDef {
 
 pub struct SymTable {
     pub defs: Vec<SymbolDef>,
-    pub node_def: HashMap<usize, usize>,
-    /// Symbols of a `clone(true)` copy made during compress: new pointer → def.
-    /// The nodes are kept so their addresses stay unique.
-    pub alias: RefCell<HashMap<usize, (usize, N)>>,
-    /// Scope nodes of such a copy: new pointer → scope id.
-    pub alias_scope: RefCell<HashMap<usize, (usize, N)>>,
-    pub node_scope: HashMap<usize, usize>,
+    /// terser `thedef`: symbol node id to definition. A rebuild (`Node::rebuild`, terser's
+    /// in-place edit) keeps the id and so the definition; terser's copies (`clone(true)`,
+    /// `make_node(X, orig, orig)`) add their new ids with `copy_binding`.
+    pub node_def: RefCell<HashMap<NodeId, usize>>,
+    /// Scope node id to scope index, the same way.
+    pub node_scope: RefCell<HashMap<NodeId, usize>>,
     pub scope_defs: HashMap<usize, Vec<usize>>,
     /// Parent scope id for each scope, indexed by scope id.
     pub scope_parent: Vec<Option<usize>>,
@@ -76,14 +76,9 @@ pub struct SymTable {
     pub fn_of: Vec<usize>,
     /// `scope.pinned()` for each scope id. Direct `eval` or `with` sets it.
     pub scope_pinned: Vec<bool>,
-    /// Shadow audit (`audit.rs`): `node_def` / `node_scope` by node id, filled where a name
-    /// is bound or a node is copied (`clone(true)`, `make_node(X, orig, orig)`), never by the
-    /// rebuild aliases. Nothing decides by them yet.
-    pub id_def: RefCell<HashMap<NodeId, usize>>,
-    pub id_scope: RefCell<HashMap<NodeId, usize>>,
-    /// Function and class nodes currently stored in `fixed`, so a compressed
+    /// Function and class nodes currently stored in `fixed`, by id, so a compressed
     /// replacement can follow them. Built at the end of `reduce_vars::analyze`.
-    pub fixed_of_node: HashMap<usize, Vec<usize>>,
+    pub fixed_of_node: HashMap<NodeId, Vec<usize>>,
     /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
     pub inlined_scopes: RefCell<HashSet<usize>>,
 }
@@ -108,18 +103,14 @@ pub fn bind(root: &N) -> SymTable {
     }];
     let mut table = SymTable {
         defs: Vec::new(),
-        node_def: HashMap::new(),
-        node_scope: HashMap::new(),
+        node_def: RefCell::new(HashMap::new()),
+        node_scope: RefCell::new(HashMap::new()),
         scope_defs: HashMap::new(),
         scope_parent: Vec::new(),
         fn_of: Vec::new(),
         scope_pinned: Vec::new(),
         fixed_of_node: HashMap::new(),
-        alias: RefCell::new(HashMap::new()),
-        alias_scope: RefCell::new(HashMap::new()),
         inlined_scopes: RefCell::new(HashSet::new()),
-        id_def: RefCell::new(HashMap::new()),
-        id_scope: RefCell::new(HashMap::new()),
     };
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
@@ -648,95 +639,47 @@ impl SymTable {
                 self.scope_defs.entry(scope).or_default().push(id);
                 id
             });
-            let p = ptr(&node);
             if matches!(node.data, Data::Symbol { kind: SymKind::Ref, .. }) {
-                self.defs[id].references.push(p);
+                self.defs[id].references.push(node.id());
             } else {
                 self.defs[id].orig_count += 1;
             }
             self.bind_def(&node, id);
-            // Keep the node alive so its address stays unique.
-            self.alias.borrow_mut().insert(p, (id, node));
         }
     }
 
-    fn bind_def(&mut self, n: &N, id: usize) {
-        self.node_def.insert(ptr(n), id);
-        self.id_def.borrow_mut().insert(n.id(), id);
+    fn bind_def(&self, n: &N, id: usize) {
+        self.node_def.borrow_mut().insert(n.id(), id);
     }
 
-    fn bind_scope(&mut self, n: &N, sc: usize) {
-        self.node_scope.insert(ptr(n), sc);
-        self.id_scope.borrow_mut().insert(n.id(), sc);
+    fn bind_scope(&self, n: &N, sc: usize) {
+        self.node_scope.borrow_mut().insert(n.id(), sc);
     }
 
-    /// The definition of symbol node `n` (through the rebuild and copy aliases).
+    /// The definition of symbol node `n`: terser `n.thedef`.
     pub fn def_of(&self, n: &N) -> Option<usize> {
-        let by_ptr = self.lookup(&ptr(n));
-        if crate::audit::on() {
-            crate::audit::check_entry("def", n, by_ptr, self.id_def.borrow().get(&n.id()).copied());
-        }
-        by_ptr
+        self.node_def.borrow().get(&n.id()).copied()
     }
 
-    /// The scope id of scope node `n` (through the rebuild and copy aliases).
+    /// The scope index of scope node `n`.
     pub fn scope_of(&self, n: &N) -> Option<usize> {
-        let by_ptr = self.scope_lookup(&ptr(n));
-        if crate::audit::on() {
-            crate::audit::check_entry("scope", n, by_ptr, self.id_scope.borrow().get(&n.id()).copied());
-        }
-        by_ptr
+        self.node_scope.borrow().get(&n.id()).copied()
     }
 
     /// terser's copy (`make_node(X, orig, orig)`, `clone()`): `to` keeps `from`'s definition
-    /// and scope. Shadow tables only for now.
+    /// and scope.
     pub fn copy_binding(&self, from: &N, to: &N) {
-        let d = self.id_def.borrow().get(&from.id()).copied();
-        if let Some(d) = d {
-            self.id_def.borrow_mut().insert(to.id(), d);
+        if let Some(d) = self.def_of(from) {
+            self.bind_def(to, d);
         }
-        let s = self.id_scope.borrow().get(&from.id()).copied();
-        if let Some(s) = s {
-            self.id_scope.borrow_mut().insert(to.id(), s);
+        if let Some(s) = self.scope_of(from) {
+            self.bind_scope(to, s);
         }
     }
 
-    pub fn lookup(&self, p: &usize) -> Option<usize> {
-        if let Some(id) = self.node_def.get(p) {
-            return Some(*id);
-        }
-        self.alias.borrow().get(p).map(|(id, _)| *id)
-    }
-
-    /// terser `clone(true)` keeps `thedef`: point the copy's symbols at the
-    /// original definitions.
-    /// The scope id of a scope node, through copies.
-    pub fn scope_lookup(&self, p: &usize) -> Option<usize> {
-        if let Some(s) = self.node_scope.get(p) {
-            return Some(*s);
-        }
-        self.alias_scope.borrow().get(p).map(|(s, _)| *s)
-    }
-
-    pub fn alias_copy(&self, orig: &N, copy: &N) {
-        self.copy_binding(orig, copy);
-        if let Some(sc) = self.scope_of(orig) {
-            if !Rc::ptr_eq(orig, copy) {
-                self.alias_scope.borrow_mut().insert(ptr(copy), (sc, Rc::clone(copy)));
-            }
-        }
-        if let Some(id) = self.def_of(orig) {
-            if !Rc::ptr_eq(orig, copy) {
-                self.alias.borrow_mut().insert(ptr(copy), (id, Rc::clone(copy)));
-            }
-        }
-        let mut a = Vec::new();
-        ast::transform_children(orig, &mut |c| a.push(Rc::clone(c)));
-        let mut b = Vec::new();
-        ast::transform_children(copy, &mut |c| b.push(Rc::clone(c)));
-        for (x, y) in a.iter().zip(b.iter()) {
-            self.alias_copy(x, y);
-        }
+    /// terser `clone(true)`: new nodes that keep their definitions and scopes.
+    pub fn clone_deep(&self, n: &N) -> N {
+        ast::deep_clone_with(n, &mut |old, new| self.copy_binding(old, new))
     }
 }
 
@@ -746,25 +689,22 @@ pub fn index_func_fixed(table: &mut SymTable) {
         // terser keeps `fixed` as `() => node.value`, so a compressed
         // initializer is what later reads see. Every fixed node is tracked.
         let Some(value) = &def.fixed else { continue };
-        table.fixed_of_node.entry(ptr(value)).or_default().push(id);
+        table.fixed_of_node.entry(value.id()).or_default().push(id);
     }
 }
 
-/// Point `fixed` at `new_node` when it still holds the node that was just compressed.
-pub fn retarget_fixed(table: &mut SymTable, old_ptr: usize, new_node: &N) {
-    // The rebuilt scope node is the same scope (terser mutates in place).
-    if let Some(&scope) = table.node_scope.get(&old_ptr) {
-        table.node_scope.entry(ptr(new_node)).or_insert(scope);
-    }
-    let Some(ids) = table.fixed_of_node.remove(&old_ptr) else { return };
+/// Point `fixed` at `new_node` when it still holds `old`, the node that was just compressed.
+/// terser's `fixed` reads the slot, so it sees the optimized node.
+pub fn retarget_fixed(table: &mut SymTable, old: &N, new_node: &N) {
+    let Some(ids) = table.fixed_of_node.remove(&old.id()) else { return };
     for id in &ids {
         if let Some(def) = table.defs.get_mut(*id) {
-            if def.fixed.as_ref().is_some_and(|f| ptr(f) == old_ptr) {
+            if def.fixed.as_ref().is_some_and(|f| Rc::ptr_eq(f, old)) {
                 def.fixed = Some(Rc::clone(new_node));
             }
         }
     }
-    table.fixed_of_node.entry(ptr(new_node)).or_default().extend(ids);
+    table.fixed_of_node.entry(new_node.id()).or_default().extend(ids);
 }
 
 /// Drop declarations whose references were all replaced.
@@ -826,7 +766,7 @@ fn drop_node(n: &N, table: &SymTable) -> N {
 
 fn replaced_decl(def: &N, table: &SymTable) -> bool {
     let Data::VarDef { name, value } = &def.data else { return false };
-    let Some(&id) = table.node_def.get(&ptr(name)) else { return false };
+    let Some(id) = table.def_of(name) else { return false };
     let d = &table.defs[id];
     if d.references.is_empty() || d.replaced.get() < d.references.len() as u32 {
         return false;
