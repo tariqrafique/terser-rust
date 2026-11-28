@@ -6,9 +6,9 @@ Goal: byte-exact terser 5.51.4 output, the lwc-rollup options first. The acorn/E
 
 ## Status (2026-11-28)
 
-- Compress default board 2362/2671, lwc 319/339, bundles 0/3.
-- lwc-rollup: 258 of 260 inputs under 200 KB match; 480 of 757 overall. Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
-- Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`, internationalizationLibrary, testUtils.
+- Compress default board 2381/2671, lwc 332/339, bundles 0/3.
+- lwc-rollup: all 260 inputs under 200 KB match; 480 of 779 overall at the triage (`TRIAGE.md`), before the triage fixes. Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
+- Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`.
 
 ## Why a restructure
 
@@ -21,10 +21,13 @@ Recent fixes fell into three classes, none of them missing optimizations:
 ## Steps
 
 - [x] Commit the tools (`tools/`) and this plan.
-- [ ] Trace diff: log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
+- [x] Trace diff (`tools/trace-diff.sh`): log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
 - [x] Canonical traversals: `ast::walk_children` (`_walk`), `ast::transform_children` / `map_children` (`def_transform`), `ast::children_backwards` (`_children_backwards`, the `walk()` helper); `parser/tests/walk_order.rs` checks them against terser through `tools/walk-order.mjs`. tighten, drop_unused, the binder, reduce_vars, hoist and `is_reachable` use them. Left: reduce_vars `collect_local_refs` / `collect_calls` (an approximation of `handle_defined_after_hoist`) and `contains_break` (not `has_break_or_continue`); reduce_vars lacks terser's frames for optional chains, classes, labels and loop `break`/`continue`; the concise-method value is `FuncKind::Expr` where terser has `AST_Accessor`; the `scope` crate's own walker.
 - [ ] Stable node ids (design: `NODE_IDS.md`): an id in every node; rebuilding with new children keeps it (terser's in-place edit), `make_node` and `clone(true)` make new ones (`clone(true)` copies definitions). Side tables keyed by id; retire the identity work-arounds one by one.
 - [ ] Complete the compressor's binder (patterns, defaults, hoisted and injected names), then make collapse definition-based (`is_lhs_local`, `may_modify`, `shadows` by definition) and drop the name sets.
+  - [x] Patterns, defaults, destructured catch parameters, imports, and loop / `switch` block scopes are declared (`syms.rs` `define_pattern`, `hoist` `Import`, the loop arm). Symbol-read purity, the `undefined` / `typeof` folds and the `unsafe` global folds ask the definition first (`Cx::declared_ref`); the name stack only answers for a node the table does not know. flatten's `scope_encloses_variables_in_this_scope` skips names declared inside the callee.
+  - [ ] Injected names: a `var` `flatten_fn` adds is aliased to the parameter's definition, but the scope's name sets (`Cx.injected`, `INJECTED` in `tighten.rs`) are still by name.
+  - [ ] Collapse: still name based (`block_scoped_names`, `BLOCK_LETS`, `BLOCK_CANDS`, `scope_bindings`). `get_lhs`'s `is_ref_of(lhs, AST_SymbolLet)` should read the lhs's definition.
 - [ ] Back to case-by-case parity, starting from the trace diff's first divergence on each failing lwc-rollup bundle.
 
 ## Rules

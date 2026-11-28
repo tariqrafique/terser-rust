@@ -16,6 +16,7 @@
 /harness/corpus/bundles/.cache
 /harness/.board-cache
 /tools/.out
+/tools/.cache
 
 # Subagent git worktrees.
 /.claude/worktrees/

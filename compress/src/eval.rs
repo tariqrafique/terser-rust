@@ -387,37 +387,58 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     let lhs = cx.in_lhs
         && !cx.parent().is_some_and(|p| matches!(p.data, Data::Dot { .. } | Data::Sub { .. } | Data::Call { .. }));
     if cx.opts.reduce_vars && !lhs {
-        if let Some(table) = &cx.syms {
-            if let Some(value) = crate::reduce_vars::inline_ref(
-                n,
-                table,
-                &crate::reduce_vars::At {
-                    env: &crate::reduce_vars::Env {
-                        unused: cx.opts.unused,
-                        evaluate: cx.opts.evaluate,
-                        toplevel_vars: cx.opts.toplevel_vars,
-                        toplevel_funcs: cx.opts.toplevel_funcs,
-                    },
-                    parents: &cx.parents,
-                    in_loop: cx.in_loop(),
-                    reduce_funcs: cx.opts.reduce_funcs,
-                    in_computed_key: cx.in_computed_key(),
-                    top_retain: cx.opts.top_retain.as_deref(),
+        if !crate::trace::on() {
+            return inline_symbolref(n, name, cx);
+        }
+        // Trace: every inlining, and every read of a single-use definition.
+        let single = cx.syms.as_ref().is_some_and(|table| {
+            table.def_of(n).is_some_and(|id| {
+                matches!(table.defs[id].single_use, crate::syms::SingleUse::Yes | crate::syms::SingleUse::Modified)
+            })
+        });
+        let slot = crate::trace::reserve();
+        let out = inline_symbolref(n, name, cx);
+        let event = (out.is_some() || single).then(|| {
+            ("inline", crate::trace::fields!(name = name, single = single, out = out.as_ref().map(crate::trace::code)))
+        });
+        crate::trace::fill(slot, event);
+        return out;
+    }
+    None
+}
+
+/// terser `inline.js` `inline_into_symbolref` (with `reduce_vars`, not an lhs).
+fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
+    if let Some(table) = &cx.syms {
+        if let Some(value) = crate::reduce_vars::inline_ref(
+            n,
+            table,
+            &crate::reduce_vars::At {
+                env: &crate::reduce_vars::Env {
+                    unused: cx.opts.unused,
+                    evaluate: cx.opts.evaluate,
+                    toplevel_vars: cx.opts.toplevel_vars,
+                    toplevel_funcs: cx.opts.toplevel_funcs,
                 },
-            ) {
-                // terser `fixed.optimize(compressor)`: a lambda that was not yet
-                // optimized gets its one `tighten_body` now.
-                let optimized = cx.optimized.contains(&(Rc::as_ptr(&value) as usize));
-                crate::audit_flags(cx, "fixed_optimized", &value, optimized, false, true);
-                if matches!(value.data, Data::Func { .. }) && !optimized {
-                    cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
-                }
-                return Some(value);
+                parents: &cx.parents,
+                in_loop: cx.in_loop(),
+                reduce_funcs: cx.opts.reduce_funcs,
+                in_computed_key: cx.in_computed_key(),
+                top_retain: cx.opts.top_retain.as_deref(),
+            },
+        ) {
+            // terser `fixed.optimize(compressor)`: a lambda that was not yet
+            // optimized gets its one `tighten_body` now.
+            let optimized = cx.optimized.contains(&(Rc::as_ptr(&value) as usize));
+            crate::audit_flags(cx, "fixed_optimized", &value, optimized, false, true);
+            if matches!(value.data, Data::Func { .. }) && !optimized {
+                cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
             }
+            return Some(value);
         }
-        if let Some(value) = cx.const_value(name) {
-            return Some(Rc::clone(value));
-        }
+    }
+    if let Some(value) = cx.const_value(name) {
+        return Some(Rc::clone(value));
     }
     None
 }
@@ -870,6 +891,10 @@ fn exit_conditional(span: &N, cond: &N, left: ExitPair, right: ExitPair, cx: &Cx
         &atom(span, Data::Cond { cond: Rc::clone(cond), cons, alt }),
         cx,
     );
+    // `.transform(compressor)`: `def_optimize` flags the conditional's result
+    // `OPTIMIZED`, so a later descend does not optimize it again (a `!a&&(!b&&c)`
+    // stays right-nested).
+    crate::seal(cx, &value);
     match left.kind {
         ExitKind::Return => {
             let value = if is_undefined_like(&value) { None } else { Some(value) };
@@ -1267,6 +1292,15 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             cur = next;
         }
     }
+    // terser `def_optimize(AST_Binary)`: a boolean binary outside another binary
+    // becomes `!negate(self)` when that is shorter. The result is no longer a binary.
+    if cx.opts.comparisons && is_boolean_value(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
+        let negated = unary(&cur, "!", crate::unary::negate(&cur, cx, crate::unary::first_in_statement(cx)));
+        let best = crate::unary::best_of(cx, &cur, &negated);
+        if Rc::ptr_eq(&best, &negated) {
+            return Some(negated);
+        }
+    }
     if let Some(next) = unsafe_comp_reverse(&cur, cx) {
         cur = next;
     }
@@ -1321,31 +1355,24 @@ fn drop_empty_string(n: &N) -> Option<N> {
     None
 }
 
-/// `"a" + "b"` as terser's `binary.optimize` would fold it, or `None`.
-fn concat_constants(a: &N, b: &N) -> Option<N> {
-    let (Some(la), Some(lb)) = (eval(a), eval(b)) else { return None };
-    match eval_bin("+", la, lb)? {
-        Lit::Str(v) => Some(atom(a, Data::String { value: v, quote: '"', units: None })),
-        _ => None,
-    }
-}
-
 fn is_constant_node(n: &N) -> bool {
     matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::True | Data::False | Data::Null | Data::RegExp { .. })
 }
 
 /// terser `def_optimize(AST_Binary)` `case "+"`: string and template joins.
 fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
-    let _ = cx;
     let Data::Binary { op, left, right } = &n.data else { return None };
     if op != "+" {
         return None;
     }
+    // terser `binary.optimize(compressor)` on the two middle operands: a constant
+    // pair evaluates, a template takes the constant (`` `a${b}c` + 1 ``).
+    let join = |a: &N, b: &N| opt_table(&binary(n, "+", Rc::clone(a), Rc::clone(b)), cx);
     // (x + "foo") + "bar" => x + "foobar"
     if is_constant_node(right) {
         if let Data::Binary { op: lop, left: ll, right: lr } = &left.data {
             if lop == "+" && is_string(left) {
-                if let Some(m) = concat_constants(lr, right) {
+                if let Some(m) = join(lr, right) {
                     return Some(binary(n, "+", Rc::clone(ll), m));
                 }
             }
@@ -1354,7 +1381,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
     // (x + "foo") + ("bar" + y) => (x + "foobar") + y
     if let (Data::Binary { op: lop, left: ll, right: lr }, Data::Binary { op: rop, left: rl, right: rr }) = (&left.data, &right.data) {
         if lop == "+" && rop == "+" && is_string(left) && is_string(right) {
-            if let Some(m) = concat_constants(lr, rl) {
+            if let Some(m) = join(lr, rl) {
                 return Some(binary(n, "+", binary(left, "+", Rc::clone(ll), m), Rc::clone(rr)));
             }
         }
@@ -1617,7 +1644,7 @@ fn is_nullish_node(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Null => true,
         Data::Unary { op, expr, prefix: true } if op == "void" => !has_side(expr, cx),
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.declared_ref(n, name),
         _ => false,
     }
 }
@@ -2193,7 +2220,7 @@ fn fold_typeof(left: &N, right: &N, op: &str, span: &N, cx: &Cx) -> Option<(N, N
 
 fn typeof_target_ok(expr: &N, cx: &Cx) -> bool {
     match &expr.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.declared_ref(expr, name),
         Data::Dot { .. } | Data::Sub { .. } => !cx.opts.ie8,
         _ => true,
     }
@@ -2238,7 +2265,7 @@ fn is_constant(n: &N) -> bool {
 fn is_undefined_value(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "void" && is_pure(expr) => true,
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.declared_ref(n, name) => true,
         _ => false,
     }
 }
@@ -2250,10 +2277,7 @@ fn read_is_pure(n: &N, cx: &Cx) -> bool {
         Data::Symbol { name, kind: ast::SymKind::Ref, .. } => {
             if let Some(table) = &cx.syms {
                 if let Some(id) = table.def_of(n) {
-                    // The table leaves destructured bindings undeclared; the
-                    // scope stack still knows them.
                     return !table.defs[id].undeclared
-                        || cx.shadowed(name)
                         || ["Number", "String", "Array", "Object", "Function", "Promise"].contains(&name.as_str());
                 }
             }
@@ -2268,6 +2292,17 @@ fn same_compare_type(left: &N, right: &N) -> bool {
         || is_number(left) && is_number(right)
         || is_bigint(left) && is_bigint(right)
         || is_boolean(left) && is_boolean(right)
+}
+
+/// terser `inference.js` `is_boolean`, all node types.
+fn is_boolean_value(n: &N) -> bool {
+    match &n.data {
+        Data::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||" | "??") => is_boolean_value(left) && is_boolean_value(right),
+        Data::Cond { cons, alt, .. } => is_boolean_value(cons) && is_boolean_value(alt),
+        Data::Assign { op, logical: false, right, .. } if op == "=" => is_boolean_value(right),
+        Data::Seq { exprs } => exprs.last().is_some_and(is_boolean_value),
+        _ => is_boolean(n),
+    }
 }
 
 fn is_boolean(n: &N) -> bool {
@@ -2764,6 +2799,13 @@ fn eval_length(span: &N, expr: &N, cx: &Cx) -> Option<N> {
         let len = js_str_len(&s, string_units(expr));
         return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
     }
+    // A reference evaluates through its fixed value (`AST_SymbolRef._eval`).
+    if let Some(table) = cx.syms.as_ref().filter(|_| cx.opts.reduce_vars) {
+        if let Some(Lit::Str(s)) = crate::reduce_vars::fixed_eval(expr, table) {
+            let len = js_str_len(&s, None);
+            return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
+        }
+    }
     let Data::Array { elements } = &expr.data else {
         return None;
     };
@@ -3025,7 +3067,7 @@ fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
         | Data::This
         | Data::Func { .. } => false,
         Data::Hole | Data::Spread { .. } => true,
-        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(name, cx),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(n, name, cx),
         Data::Unary { op, expr, prefix: true } => {
             matches!(op.as_str(), "delete" | "++" | "--") || expr_has_side_effects(expr, cx)
         }
@@ -3057,11 +3099,11 @@ fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
     }
 }
 
-fn symbol_read_pure(name: &str, cx: &Cx) -> bool {
+fn symbol_read_pure(n: &N, name: &str, cx: &Cx) -> bool {
     if cx.in_with {
         return false;
     }
-    cx.shadowed(name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
+    cx.declared_ref(n, name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
 }
 
 /// terser `lib/compress/inference.js` `may_throw_on_access`.
@@ -3080,6 +3122,8 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         | Data::Array { .. }
         | Data::Func { .. }
         | Data::Class { .. } => false,
+        // `AST_SymbolRef`: `arguments` whose scope is a function.
+        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" && scope_is_lambda(cx) => false,
         Data::Unary { op, .. } if op == "void" => true,
         Data::Unary { .. } => false,
         Data::Null => true,
@@ -3087,6 +3131,20 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         Data::Seq { exprs } => exprs.last().is_some_and(|e| may_throw_on_access(e, cx)),
         _ => true,
     }
+}
+
+/// terser `symbol.scope instanceof AST_Lambda` for a symbol in an expression under
+/// `cx.parents` that does not name a block declaration: its scope is the defun scope
+/// (`scope.js` `get_defun_scope`), so blocks and loops are skipped.
+fn scope_is_lambda(cx: &Cx) -> bool {
+    for p in cx.parents.iter().rev() {
+        match &p.data {
+            Data::Func { .. } => return true,
+            Data::Toplevel { .. } | Data::Class { .. } => return false,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn is_basic_ident(value: &str) -> bool {
@@ -3420,7 +3478,7 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
         return is_pure(n);
     }
     match &n.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.declared_ref(n, name),
         Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") => {
             statement_pure(expr, cx)
         }

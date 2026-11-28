@@ -96,6 +96,13 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                         collect_vardef_refs(st, table, &mut map);
                     }
                     crate::tighten::set_referenced(map);
+                    let mut lexical = std::collections::HashSet::new();
+                    for st in &stmts {
+                        collect_lexical_targets(st, table, &mut lexical);
+                    }
+                    crate::tighten::set_lexical_targets(lexical);
+                } else {
+                    crate::tighten::set_lexical_targets(Default::default());
                 }
                 let (next, changed) = crate::tighten::collapse_step(
                     stmts,
@@ -132,8 +139,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
 }
 
 /// Locals of this body, every enclosing scope's bindings, and whether it is a
-/// function. `None` for a block: `collapse` here is name based and a block's
-/// `var` belongs to the function, so blocks are not collapsed on their own.
+/// function. A nested block gets its loop and try state.
 #[allow(clippy::type_complexity)]
 fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<String>, std::collections::HashSet<String>, bool, Option<(bool, bool)>)> {
     let me = self_node(cx)?;
@@ -141,17 +147,13 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         Data::Func { args, .. } => (crate::tighten::scope_bindings(args, stmts), true, None),
         Data::Toplevel { .. } => (crate::tighten::scope_bindings(&[], stmts), false, None),
         Data::StaticBlock { .. } => (crate::tighten::scope_bindings(&[], stmts), true, None),
-        // A nested block: only its own `let` / `const` (they cannot be read
-        // outside it). terser `find_loop_scope_try` gives the loop and try state.
-        Data::Block { .. } => {
+        // A nested block: its own `let` / `const`, a `var` whose counts are
+        // all here (`tighten.rs` `block_var`), or an assignment to a function
+        // local (`block_assign`). terser collapses every block.
+        // terser `find_loop_scope_try` gives the loop and try state.
+        // A switch branch is an `AST_Block` too.
+        Data::Block { .. } | Data::Case { .. } | Data::Default { .. } => {
             let names = crate::tighten::block_lexicals(stmts);
-            // A `var` with a value here can collapse too, when its counts
-            // are all in this block (`tighten.rs` `block_var`).
-            let has_var = stmts.iter().any(|s| matches!(&s.data, Data::Defs { kind: DefKind::Var, defs, .. }
-                if defs.iter().any(|d| matches!(d.data, Data::VarDef { value: Some(_), .. }))));
-            if names.is_empty() && !has_var {
-                return None;
-            }
             let (mut in_loop, mut in_try) = (false, false);
             let len = cx.parents.len();
             for (i, p) in cx.parents[..len.saturating_sub(1)].iter().enumerate().rev() {
@@ -194,7 +196,13 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         }
         _ => return None,
     };
+    // A lambda tightened from where it was inlined: terser's `defun_scope`
+    // is the enclosing scope, so none of the lambda's own names are local,
+    // and `shadows` looks them up from the enclosing scope.
+    let foreign = matches!(me.data, Data::Func { .. }) && foreign(cx);
+    let (locals, own) = if foreign { (Default::default(), locals) } else { (locals, Default::default()) };
     let mut declared = locals.clone();
+    let mut outer: std::collections::HashSet<String> = Default::default();
     let len = cx.parents.len();
     for p in &cx.parents[..len.saturating_sub(1)] {
         let names = match &p.data {
@@ -206,8 +214,26 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
             _ => continue,
         };
         declared.extend(names.iter().cloned());
+        if foreign {
+            outer.extend(names.iter().cloned());
+        }
     }
+    let shadowed = if foreign {
+        let mut bound = Default::default();
+        crate::tighten::bindings_deep(&me, &mut bound);
+        bound.retain(|n: &String| outer.contains(n));
+        declared.extend(own);
+        bound
+    } else {
+        Default::default()
+    };
+    crate::tighten::set_foreign_shadow(shadowed);
     Some((locals, declared, in_fn, block))
+}
+
+/// This body is a lambda's `pre_tighten` (`Cx.foreign_lambda`).
+fn foreign(cx: &Cx) -> bool {
+    cx.foreign_lambda != 0 && self_node(cx).is_some_and(|s| Rc::as_ptr(&s) as usize == cx.foreign_lambda)
 }
 
 fn self_node(cx: &Cx) -> Option<N> {
@@ -374,7 +400,7 @@ fn if_parts(n: &N) -> Option<(&N, &N, Option<&N>)> {
 
 fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
     let self_n = self_node(cx);
-    let in_lambda = self_n.as_ref().is_some_and(|s| matches!(s.data, Data::Func { .. }));
+    let in_lambda = self_n.as_ref().is_some_and(|s| matches!(s.data, Data::Func { .. })) && !foreign(cx);
     let multiple_if_returns = {
         let mut n = 0;
         stmts
@@ -1065,6 +1091,25 @@ fn append_defs(n: &N, more: &[N]) -> N {
     defs.extend(more.iter().cloned());
     // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1447, 1461).
     eval::edit(n, Data::Defs { kind: *kind, defs, await_: *await_ })
+}
+
+/// Assignment and `++` / `--` targets that resolve to a `let` / `const` definition.
+fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashSet<usize>) {
+    let target = match &n.data {
+        Data::Func { .. } => return,
+        Data::Assign { left, .. } => Some(left),
+        Data::Unary { op, expr, .. } if op == "++" || op == "--" => Some(expr),
+        _ => None,
+    };
+    if let Some(t) = target {
+        if matches!(t.data, Data::Symbol { .. }) && table.def_of(t).is_some_and(|id| table.defs[id].lexical) {
+            out.insert(crate::syms::ptr(t));
+        }
+    }
+    let _ = ast::map_children(n, &mut |c| {
+        collect_lexical_targets(c, table, out);
+        Rc::clone(c)
+    });
 }
 
 fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {

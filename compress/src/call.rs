@@ -54,13 +54,18 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         return finish_call(n, callee, &args, trimmed, spread);
     }
     if let Some(func) = &func {
-        if let Some(rewritten) = inline_into_call(n, expr, func, &args, cx, &ann, resolved.direct) {
-            if !resolved.direct {
-                note_replaced(expr, cx);
-            }
-            return Some(rewritten);
+        let slot = crate::trace::reserve();
+        let how = crate::trace::enter_how();
+        let mut inlined = inline_into_call(n, expr, func, &args, cx, &ann, resolved.direct);
+        let mut how = crate::trace::leave_how(how);
+        if inlined.is_none() {
+            inlined = drop_empty_call(n, func, &args, cx);
+            how = Some("drop_empty");
         }
-        if let Some(rewritten) = drop_empty_call(n, func, &args, cx) {
+        if slot.is_some() {
+            crate::trace::fill(slot, inlined.as_ref().map(|out| trace_inline_call(n, expr, &args, how, out)));
+        }
+        if let Some(rewritten) = inlined {
             if !resolved.direct {
                 note_replaced(expr, cx);
             }
@@ -69,6 +74,16 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
     }
     let callee = trimmed_callee(expr, func.as_ref(), trimmed, resolved.direct);
     finish_call(n, callee, &args, trimmed, spread)
+}
+
+/// The `inline_call` trace event: the call as terser's `inline_into_call` sees it
+/// (unused arguments trimmed, the callee as it was) and what replaced it.
+fn trace_inline_call(n: &N, expr: &N, args: &[N], how: Option<&'static str>, out: &N) -> (&'static str, Vec<(&'static str, serde_json::Value)>) {
+    let call = atom(n, Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false });
+    (
+        "inline_call",
+        crate::trace::fields!(how = how.unwrap_or("?"), call = crate::trace::code(&call), out = crate::trace::code(out)),
+    )
 }
 
 fn trimmed_callee<'a>(expr: &'a N, func: Option<&'a N>, trimmed: bool, direct: bool) -> &'a N {
@@ -222,6 +237,7 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
                 // terser `returned.clone(true)`: a fresh copy without optimizer
                 // flags, so a returned lambda is compressed again.
                 exprs.push(value.as_ref().map(|v| fresh_copy(v, cx)).unwrap_or_else(|| void0(n)));
+                crate::trace::set_how("const_return");
                 return Some(finish_seq(n, exprs, cx));
             }
             if params.len() == 1
@@ -236,6 +252,7 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
                                 Some(arg) => polish(Rc::clone(arg), cx),
                                 None => void0(n),
                             };
+                            crate::trace::set_how("identity");
                             if is_prop_access(&replacement) && cx.parent_calls(n) {
                                 return Some(seq_node(n, vec![num(n, 0.0), replacement]));
                             }
@@ -246,6 +263,7 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
             }
         }
     }
+    crate::trace::set_how("flatten");
     flatten_call(n, func, args, cx, ann, direct)
 }
 
@@ -287,6 +305,10 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         && cx.opts.unused
         && def_flag(_expr_of(n), cx, |d| d.references.len() == 1 && d.recursive_refs == 0)
         && !inside_own_lambda(_expr_of(n), func, cx)
+        && cx.syms.as_ref().is_none_or(|table| {
+            let site = cx.parents.iter().rev().find_map(|p| table.scope_of(p)).or(Some(0));
+            crate::reduce_vars::lambda_is_constant(func, table, site)
+        })
         && !free_ref_shadowed(func, cx);
     if !direct && !ann.inline_ && !single_ref {
         return None;
@@ -414,9 +436,28 @@ fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
         }
     }
     rec(func, &mut Vec::new(), &mut free);
+    // terser `pulled_scope.enclosed`: only definitions outside `func` count. A
+    // name declared in a nested block of `func` (a `for (let i ...)`) is not
+    // free even when the name stack above misses it.
+    let func_scope = table.scope_of(func);
+    let inside_func = |mut sc: usize| -> bool {
+        let Some(fs) = func_scope else { return false };
+        loop {
+            if sc == fs {
+                return true;
+            }
+            match table.scope_parent.get(sc).copied().flatten() {
+                Some(p) => sc = p,
+                None => return false,
+            }
+        }
+    };
     for r in free {
         let Data::Symbol { name, .. } = &r.data else { continue };
         let target = table.def_of(&r).map(|id| table.defs[id].scope);
+        if target.is_some_and(|t| inside_func(t)) {
+            continue;
+        }
         let mut cur = Some(site);
         while let Some(sc) = cur {
             if Some(sc) == target {
@@ -819,7 +860,7 @@ fn optimize_new(n: &N, cx: &Cx) -> Option<N> {
 /// `unsafe` constructor folds in `def_optimize(AST_Call)`. `console.assert` is omitted.
 fn unsafe_call(n: &N, expr: &N, args: &[N], cx: &Cx) -> Option<N> {
     if let Data::Dot { expr: recv, prop, optional, .. } = &expr.data {
-        if !*optional && prop == "from" && args.len() == 1 && sym_str(recv) == Some("Array") && !cx.shadowed("Array") {
+        if !*optional && prop == "from" && args.len() == 1 && sym_str(recv) == Some("Array") && !cx.declared_ref(recv, "Array") {
             if let Data::Array { elements } = &args[0].data {
                 return Some(atom(n, Data::Array { elements: elements.clone() }));
             }
@@ -854,20 +895,13 @@ fn unsafe_call(n: &N, expr: &N, args: &[N], cx: &Cx) -> Option<N> {
 }
 
 /// terser `inference.js` `is_undeclared_ref`: `definition().undeclared`.
-/// A `var String` at toplevel is a binding even when `reduce_vars` is off and
-/// there is no symbol table. `shadowed` sees that binding, including names
-/// hoisted onto the root locals frame.
+/// Without a symbol table (or for a node it does not know) the name stack
+/// decides; it holds the names hoisted onto the root locals frame.
 fn undeclared(expr: &N, cx: &Cx, names: &[&str]) -> bool {
     let Data::Symbol { name, kind: SymKind::Ref, .. } = &expr.data else {
         return false;
     };
-    if !names.contains(&name.as_str()) || cx.shadowed(name) {
-        return false;
-    }
-    match cx.syms.as_ref().and_then(|t| t.def_of(expr)) {
-        Some(id) => cx.syms.as_ref().is_some_and(|t| t.defs[id].undeclared),
-        None => true,
-    }
+    names.contains(&name.as_str()) && !cx.declared_ref(expr, name)
 }
 
 fn contains_optional(n: &N) -> bool {

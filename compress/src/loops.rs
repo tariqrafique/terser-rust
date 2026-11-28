@@ -518,6 +518,7 @@ fn optimize_switch(n: &N, cx: &Cx, depth: u8) -> Option<N> {
     merge_equivalent(&mut arms);
 
     prune_trailing(&mut arms, &mut marker, &mut decl, cx);
+    prune_into_default(&mut arms, marker, cx);
     if let Some(out) = fold_into_default(n, &expr_n, &mut arms, &mut marker, &mut decl, cx, depth) {
         return Some(out);
     }
@@ -786,6 +787,48 @@ fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<
         }
         eliminate(&arm, None, arms, decl, cx);
     }
+}
+
+/// terser `def_optimize(AST_Switch)` "Prune side-effect free branches that fall into default":
+/// when the default (or exact match) body is the last one, side-effect free cases that
+/// only fall into it are removed. The removed branches are dropped, not `eliminate_branch`ed.
+fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
+    let Some(mid) = marker else { return };
+    let Some(default_index) = arms.iter().position(|a| a.id == mid) else { return };
+    let last = arms.len() - 1;
+    let mut default_body_index = default_index;
+    while default_body_index < last && is_inert(&arms[default_body_index]) {
+        default_body_index += 1;
+    }
+    if default_body_index < last {
+        return;
+    }
+    let mut side_effect_index = last as isize;
+    while side_effect_index >= 0 {
+        let arm = &arms[side_effect_index as usize];
+        if arm.id != mid && arm.expr.as_ref().is_some_and(|e| crate::unary::may_side_effect(e, cx)) {
+            break;
+        }
+        side_effect_index -= 1;
+    }
+    if default_body_index as isize <= side_effect_index {
+        return;
+    }
+    let mut prev_body_index = default_index as isize - 1;
+    while prev_body_index >= 0 && is_inert(&arms[prev_body_index as usize]) {
+        prev_body_index -= 1;
+    }
+    let before = (side_effect_index.max(prev_body_index) + 1) as usize;
+    let mut after = default_index;
+    let body = arms[default_body_index].body.clone();
+    if side_effect_index > default_index as isize {
+        after = side_effect_index as usize;
+        arms[after].body = body;
+    } else {
+        arms[default_index].body = body;
+    }
+    arms.drain(after + 1..=default_body_index);
+    arms.drain(before..default_index);
 }
 
 fn pop_switch_breaks(body: &mut Vec<N>, cx: &Cx) {

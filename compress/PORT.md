@@ -98,10 +98,7 @@ Known gaps worth the next pass:
 - lwc-rollup bundles: remaining differences in the LWC engine code shift the mangler's character frequencies, so many bundles differ only in names.
 - A `var` injected by `flatten_fn` is not in the `reduce_vars` table, so `collapse` uses current counts for it where terser has the parameter's references (`inline/issue_308`).
 - `arrow/issue_2136_2` (rest parameter in an IIFE), `drop_console`, `unsafe_Function`.
-- The compressor's `syms::bind` defines only plain-identifier bindings. Destructured
-  and defaulted parameters and `var`/`let`/`const` patterns stay undeclared there;
-  `read_is_pure` falls back to the scope stack. Defining them outright regressed 57
-  cases, since callers rely on the gap.
+- `collapse` still decides lexical names by spelling (`block_scoped_names`, `block_lexicals`, `BLOCK_LETS`); they now include destructured names.
 
 Optimize-once board: `tighten_body` (`after_descend`) is skipped for a node that is already `OPTIMIZED`, as terser's `def_optimize` is. A node terser `.optimize()`s where it is made (an inlined lambda not yet optimized, a switch-built block, a falsy-loop block) is in `Cx.pre_tighten`: its `tighten_body` runs once on the children as they are, before they are descended. Default 2610/3013 → 2615/3013, fixture unchanged.
 
@@ -112,3 +109,33 @@ Scope-faithful drop board: `drop_unused` drops only declarations of the scope it
 Export and collapse board: `export { x }` is a reference (`AST_SymbolExport` extends `AST_SymbolRef`) but not `def.export` during compress. The bitwise block of `def_optimize(AST_Binary)` and the `+ ""` removal are ported, and `best_of` sizes have no stack. Collapse follows `get_lhs` (any declared target; function-expression names are read-only) and `extract_candidates` (no property access), and `get_lvalues` enters nested functions. An injected var keeps the parameter's definition (`may_modify`, not `lhs_local`). Parameter defaults and destructuring patterns are walked by syms, reduce_vars (`suppress`) and drop_unused. Compress default 2355/2671, lwc 318/339, lwc-rollup inputs under 60 KB: 110 of 111, all lwc-rollup: 480 of 757.
 
 - `functions/issue_2657`: terser never re-collapses the body after the flatten; here an injected var is only treated as a local inside a nested block.
+
+internationalizationLibrary board: collapse's `stop_after` test is one `||` chain in terser, so a node whose own clause is false still meets the `may_throw` clause; inside a `try` that clause is `has_side_effects` of the node itself (`node_effects`: false for a declaration name, the value for a `VarDef`, the children for a statement). A single-use flatten checks `fn.is_constant_expression(exp.scope)` (`all_refs_local`, false once the lambda is `INLINED`). Collapse no longer substitutes the bare value of an unread assignment (the old sink shortcut): terser moves `x = v` whole and `drop_unused` removes it later, which later candidates in the same loop can see (an injected var's write stops a side-effect candidate). `drop_unused` now rewrites the object of an assignment target and keeps the `this` binding of a dropped callee assignment. Compress default 2362 → 2369/2671, lwc 319 → 320/339, lwc-rollup under 200 KB: 259 of 260 (testUtils left).
+
+Drop-unused writes: `scan_ref_scoped` matches `assign_as_unused` on the `AST_Assign` only, not on a `SimpleStatement` around it, so `x = f();` walks `f` (it was skipped, and a function or `let` read only there was dropped). An undeclared global is in `toplevel.globals`, not `variables`, so its write is a use and `tt` keeps it (`x = f()` at the top level with `toplevel` became `f()`). Compress default 2362 → 2364/2671.
+
+After a collapse in a function body, `tighten.rs` `drop_unmentioned` (a port shortcut; terser leaves this to `drop_unused`) drops a declaration whose name is never mentioned. Its name walk now uses `ast::walk_children`; it skipped object literals, so `var d` went while `{i:(d=r,d.h)}` still assigned it.
+
+Drop-unused pass 1 also requires the assigned name to be the scope's own binding (`owned`), not only a declared one.
+
+Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStatement`), not only one with a `let` / `const` or a `var` with a value, so an assignment to a function `var` collapses into a `for…in` object there. With `try` blocks collapsed, the `stop_after` `may_throw` clause keeps `collapse_vars/issue_2891_1` from moving a throwing candidate past `a = "FAIL"`.
+
+A lambda in `pre_tighten` (`Cx.foreign_lambda`) is tightened as terser does from the reference that inlined it: `defun_scope` is the enclosing scope, so its names are not local, `shadows` sees an enclosing binding of a name it rebinds (`FOREIGN_SHADOW`), and `handle_if_return` has `in_lambda` false.
+
+A switch branch is collapsed like a block. `x.length` evaluates through the fixed value of `x` (`reduce_vars.rs` `fixed_eval`, terser `AST_SymbolRef._eval`).
+
+Block-scope reads: terser gives every loop (`AST_IterationStatement`) and a switch body its own block scope, so a read in a `for…of` object or a `case` has a different `scope` than a toplevel `const` and is not `single_use` (`d.scope === this.scope`). The binder has no scope for these; `reduce_vars` `in_unbound_block_scope` adds the check, and a `let` / `const` in the same `for` head is in that loop's scope. Only a read of a block declaration (`let` / `const` / catch) keeps the block scope: `figure_out_scope` moves any other read to the defun scope, so a toplevel `var` read in a `for…of` head is still single-use.
+
+Boolean binary negation: `def_optimize(AST_Binary)` with `comparisons` turns a boolean binary whose parent is not a binary into `!negate(self)` when `best_of` prefers it (`!s(a)&&(!c(a)||!c(b))` → `!(s(a)||c(a)&&c(b))`). `unary.rs` `negate` is `inference.js` `negate`, now with the `unsafe_comps` flips.
+
+String joins: `(x + "foo") + "bar"` and `(x + "foo") + ("bar" + y)` optimize the middle pair as a binary (terser `binary.optimize`), so a template takes the constant: ``a+`u ${p}. `+"See"`` → ``a+`u ${p}. See` ``.
+
+Switch default pruning: `def_optimize(AST_Switch)` "Prune side-effect free branches that fall into default" is `loops.rs` `prune_into_default`. When the default (or exact) body is the last body, side-effect free cases that only fall into it are spliced away (not `eliminate_branch`ed). Case tests use `has_side_effects` (`unary::may_side_effect`), so an undeclared `case qux` stays.
+
+Single-use constants: `reduce_vars` `has_side_effects` / `may_throw` treat every `AST_Constant` (regexp, bigint, `Infinity`) as free of effects, so a single-use `const w=/a/` is substituted. A multiply-read regexp is still not evaluated (`unsafe_regexp`).
+
+Lexical collapse targets: terser `get_lhs` gives no lhs for an assignment or `++` / `--` whose target is a `let` / `const` in any scope (`is_ref_of`). `SymbolDef.lexical` records it; `body.rs` `collect_lexical_targets` marks those target nodes by definition before each collapse step (`tighten.rs` `LEXICAL_TARGETS`), which covers an outer `let` that the name sets miss.
+
+`arguments`: terser `AST_SymbolRef` `may_throw_on_access` is false for `arguments` whose scope is a function (`eval.rs` `scope_is_lambda`: the nearest function, class or toplevel, since a read of a non-block declaration has the defun scope), and `AST_Lambda.init_scope_vars` declares `arguments` in every non-arrow function, so the read itself drops (`unary.rs` `symbol_read_is_pure`). The binder still does not define it. `drop_unused`'s pre-check treats `arguments.x` / `arguments[k]` the same way. An unused `var w = c ? x : y` whose value drops entirely still leaves `0;` (pre-existing: `value_effects` decides before the context-aware drop).
+
+Binder board: `syms::bind` declares every name of a binding pattern (destructured `var`/`let`/`const`, destructured or defaulted parameters, a destructured catch parameter; terser `AST_SymbolDeclaration` inside `AST_Destructuring`, `init` null), import locals (`AST_SymbolImport`), and gives loops and `switch` their own block scope (`AST_IterationStatement` / `AST_Switch` `is_block_scope`). A reference to such a name no longer resolves to an outer definition of the same spelling, which inlined an outer constant into `const {k}=v; return k` and dropped a call through `const {f}=v` (C2a/C2b), and resolved `return i` after `for (let i ...)` to the loop's `i` and dropped the top-level `i` it reads. An earlier attempt regressed 57 cases because reduce_vars did not yet `suppress` a destructuring `AST_VarDef` (96b0dd9): the pattern names kept the reset `fixed === null` and their reads were taken as the initial `undefined`. drop_unused drops a loop's or `switch`'s `let` in the enclosing pass (`owned` climbs through the loop scopes), as terser's `scope` only changes at an `AST_Scope`. `Cx::declared_ref` (terser `is_declared`) asks the table first; `read_is_pure`'s name-stack fallback is gone. Compress default 2362 → 2363/2671, lwc 319 → 323/339, lwc-rollup under 200 KB: 2 failing of 260 (unchanged).

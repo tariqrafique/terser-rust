@@ -233,16 +233,29 @@ thread_local! {
     static INJECTED: std::cell::RefCell<HashMap<String, usize>> = Default::default();
     /// A nested block's own `let` / `const`: its only collapse candidates.
     static BLOCK_CANDS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// See `set_foreign_shadow`.
+    static FOREIGN_SHADOW: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Function-expression names visible here (terser `is_lhs_read_only`).
     static LAMBDAS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// Assignment and `++` / `--` targets (by node) that resolve to a `let` / `const`
+    /// in any enclosing scope: terser `get_lhs` `is_ref_of` gives no lhs for them.
+    static LEXICAL_TARGETS: std::cell::RefCell<HashSet<usize>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
 }
 
 pub(crate) fn set_injected(map: HashMap<String, usize>) {
     INJECTED.with(|d| *d.borrow_mut() = map);
+}
+
+pub(crate) fn set_lexical_targets(set: HashSet<usize>) {
+    LEXICAL_TARGETS.with(|d| *d.borrow_mut() = set);
+}
+
+fn lexical_target(n: &N) -> bool {
+    LEXICAL_TARGETS.with(|d| d.borrow().contains(&ptr(n)))
 }
 
 pub(crate) fn set_block_lets(set: HashSet<String>) {
@@ -274,6 +287,28 @@ pub(crate) fn lexical_names_deep(body: &[N]) -> HashSet<String> {
         rec(s, &mut out);
     }
     out
+}
+
+/// Names the lambda being tightened binds that its enclosing scopes also
+/// declare (`Cx.foreign_lambda`): terser's `shadows` looks them up from the
+/// enclosing scope and finds another definition.
+pub(crate) fn set_foreign_shadow(set: HashSet<String>) {
+    FOREIGN_SHADOW.with(|d| *d.borrow_mut() = set);
+}
+
+/// Every name bound in `n`: parameters, declarations and function names, in
+/// nested functions too.
+pub(crate) fn bindings_deep(n: &N, out: &mut HashSet<String>) {
+    if let Data::Func { name, args, body, .. } = &n.data {
+        if let Some(nm) = name.as_ref().and_then(sym_name) {
+            out.insert(nm.to_string());
+        }
+        out.extend(scope_bindings(args, body));
+    }
+    if let Data::Catch { arg: Some(arg), .. } = &n.data {
+        out.extend(scope_bindings(std::slice::from_ref(arg), &[]));
+    }
+    ast::walk_children(n, &mut |c| bindings_deep(c, out));
 }
 
 pub(crate) fn set_block_candidates(set: HashSet<String>) {
@@ -334,16 +369,14 @@ pub(crate) fn scope_bindings(params: &[N], body: &[N]) -> HashSet<String> {
     locals
 }
 
-/// `let` / `const` / class names declared directly in a block.
+/// `let` / `const` / class names declared directly in a block, destructured ones included.
 pub(crate) fn block_lexicals(stmts: &[N]) -> HashSet<String> {
     let mut out = HashSet::new();
     for s in stmts {
         if let Data::Defs { kind: DefKind::Let | DefKind::Const, defs, .. } = &s.data {
             for d in defs {
                 if let Data::VarDef { name, .. } = &d.data {
-                    if let Some(nm) = sym_name(name) {
-                        out.insert(nm.to_string());
-                    }
+                    out.extend(scope_bindings(std::slice::from_ref(name), &[]));
                 }
             }
         }
@@ -405,128 +438,15 @@ fn drop_unmentioned(stmts: &[N]) -> Vec<N> {
 }
 
 fn names_used(stmts: &[N]) -> HashSet<String> {
-    let mut used = HashSet::new();
+    // Every reference anywhere below, nested functions included (`ast::walk_children`
+    // reaches every node kind, object literals and templates too).
     fn rec(n: &N, used: &mut HashSet<String>) {
         if let Some(name) = ref_name(n) {
             used.insert(name.to_string());
         }
-        match &n.data {
-            Data::Func { body, .. }
-            | Data::Block { body }
-            | Data::Switch { body, .. }
-            | Data::Default { body }
-            | Data::Case { body, .. } => {
-                body.iter().for_each(|s| rec(s, used));
-            }
-            Data::Class { extends, props, .. } => {
-                if let Some(extends) = extends {
-                    rec(extends, used);
-                }
-                props.iter().for_each(|p| rec(p, used));
-            }
-            Data::Assign { left, right, .. }
-            | Data::Binary { left, right, .. }
-            | Data::DefaultAssign { left, right } => {
-                rec(left, used);
-                rec(right, used);
-            }
-            Data::Call { expr, args, .. } => {
-                rec(expr, used);
-                args.iter().for_each(|a| rec(a, used));
-            }
-            Data::Unary { expr, .. }
-            | Data::Return { value: Some(expr) }
-            | Data::Simple { body: expr }
-            | Data::Throw { value: expr }
-            | Data::Dot { expr, .. }
-            | Data::Await { expr }
-            | Data::Spread { expr }
-            | Data::Chain { expr }
-            | Data::Yield {
-                expr: Some(expr), ..
-            } => rec(expr, used),
-            Data::Seq { exprs } | Data::Array { elements: exprs } => {
-                exprs.iter().for_each(|e| rec(e, used))
-            }
-            Data::If { cond, body, alt } => {
-                rec(cond, used);
-                rec(body, used);
-                if let Some(alt) = alt {
-                    rec(alt, used);
-                }
-            }
-            Data::Cond { cond, cons, alt } => {
-                rec(cond, used);
-                rec(cons, used);
-                rec(alt, used);
-            }
-            Data::For {
-                init,
-                cond,
-                step,
-                body,
-            } => {
-                if let Some(init) = init {
-                    rec(init, used);
-                }
-                if let Some(cond) = cond {
-                    rec(cond, used);
-                }
-                if let Some(step) = step {
-                    rec(step, used);
-                }
-                rec(body, used);
-            }
-            Data::ForIn { init, object, body }
-            | Data::ForOf {
-                init, object, body, ..
-            } => {
-                rec(init, used);
-                rec(object, used);
-                rec(body, used);
-            }
-            Data::While { cond, body } | Data::Do { body, cond } => {
-                rec(cond, used);
-                rec(body, used);
-            }
-            Data::Try {
-                body,
-                catch,
-                finally,
-            } => {
-                rec(body, used);
-                if let Some(catch) = catch {
-                    rec(catch, used);
-                }
-                if let Some(finally) = finally {
-                    rec(finally, used);
-                }
-            }
-            Data::Catch { body, .. }
-            | Data::Finally { body }
-            | Data::Labeled { body, .. }
-            | Data::With { body, .. } => rec(body, used),
-            Data::Defs { defs, .. } => defs.iter().for_each(|d| rec(d, used)),
-            Data::VarDef {
-                value: Some(value), ..
-            } => rec(value, used),
-            Data::Destructuring { names, .. } => names.iter().for_each(|n| rec(n, used)),
-            Data::Prop { key, value, .. } => {
-                if let Key::Computed(expr) = key {
-                    rec(expr, used);
-                }
-                rec(value, used);
-            }
-            Data::Sub { expr, prop, .. } => {
-                rec(expr, used);
-                rec(prop, used);
-            }
-            Data::Field {
-                value: Some(value), ..
-            } => rec(value, used),
-            _ => {}
-        }
+        ast::walk_children(n, &mut |c| rec(c, used));
     }
+    let mut used = HashSet::new();
     for stmt in stmts {
         rec(stmt, &mut used);
     }
@@ -568,13 +488,21 @@ fn collapse_statements(mut stmts: Vec<N>, env: &Env<'_>) -> (Vec<N>, bool) {
     let mut changed = false;
     let mut guard = 0;
     let mut index = stmts.len();
+    // Trace: a candidate retried after a restart with the same outcome is not reported again
+    // (terser does not restart; it goes on to the earlier statements).
+    let mut traced: HashSet<String> = HashSet::new();
     while index > 0 && guard < 400 {
         index -= 1;
         // terser `extract_candidates`, then `candidates.pop()` so the last one runs first.
         let mut candidates = extract_candidates(&stmts[index], env, &block_names);
         let mut restarted = false;
         while let Some(cand) = candidates.pop() {
-            if let Some(next) = apply_candidate(&stmts, index, &cand, env, &escaped, &counts) {
+            let mut info = CandTrace::default();
+            let next = apply_candidate(&stmts, index, &cand, env, &escaped, &counts, &mut info);
+            if crate::trace::on() {
+                info.emit(&cand, next.is_some(), &mut traced);
+            }
+            if let Some(next) = next {
                 stmts = next;
                 counts = Counts::new(&stmts);
                 changed = true;
@@ -619,7 +547,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // terser `get_lhs` takes any declared symbol (a free one has
                         // side effects and is skipped).
                         let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
-                        if !block_names.contains(name) && !read_only && (env.locals.contains(name) || env.declared.contains(name) || injected) {
+                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || env.declared.contains(name) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -743,7 +671,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
             }
             Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
                 if let Some(name) = ref_name(expr) {
-                    if !block_names.contains(name) && env.locals.contains(name) {
+                    if !block_names.contains(name) && !lexical_target(expr) && env.locals.contains(name) {
                         out.push(Cand {
                             path: path.clone(),
                             kind: if *prefix { Kind::Pre } else { Kind::Post },
@@ -774,6 +702,39 @@ fn lhs_bad(n: &N) -> bool {
     }
 }
 
+/// What `apply_candidate` decided, for the `collapse` trace event (terser's
+/// `get_lhs` result, `abort`, `replaced`, `value_def`).
+#[derive(Default)]
+struct CandTrace {
+    /// Set when the candidate is dropped before its scan (terser `get_lhs` gives no lhs).
+    skip: Option<&'static str>,
+    /// Dropped before the scan for a reason of the port's own.
+    port_skip: Option<&'static str>,
+    abort: bool,
+    replaced: usize,
+    value_def: bool,
+}
+
+impl CandTrace {
+    fn emit(&self, cand: &Cand, applied: bool, seen: &mut HashSet<String>) {
+        let code = crate::trace::code(&cand.node);
+        let replaced = if applied { self.replaced } else { 0 };
+        if !applied {
+            let key = format!("{code}\u{0}{:?}{:?}{}", self.skip, self.port_skip, self.value_def);
+            if !seen.insert(key) {
+                return;
+            }
+        }
+        use crate::trace::trace;
+        match (self.skip, self.port_skip) {
+            (Some(why), _) => trace!("collapse", cand = code, ok = false, why = why),
+            (None, Some(why)) => trace!("collapse", cand = code, ok = true, abort = false, replaced = 0, value_def = self.value_def, why = why),
+            (None, None) => trace!("collapse", cand = code, ok = true, abort = self.abort, replaced = replaced, value_def = self.value_def),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn apply_candidate(
     stmts: &[N],
     index: usize,
@@ -781,6 +742,7 @@ fn apply_candidate(
     env: &Env<'_>,
     escaped: &HashSet<String>,
     counts: &Counts,
+    info: &mut CandTrace,
 ) -> Option<Vec<N>> {
     // In a nested block: the block's own `let` / `const`, or an assignment
     // to a function local that is moved (never dropped: reads after the
@@ -806,9 +768,11 @@ fn apply_candidate(
             if REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()) == Some(total))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
     if env.block_only && !block_assign && !block_var && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
+        info.port_skip = Some("block");
         return None;
     }
     if total == 0 {
+        info.skip = Some("no_lhs");
         return None;
     }
     let declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
@@ -820,6 +784,7 @@ fn apply_candidate(
             let stale = REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied());
             if let Some(referenced) = stale {
                 if referenced > total && referenced > 1 && !(declared <= 1 && is_mangleable(&cand.value, &cand.name, env)) {
+                    info.skip = Some("no_lhs");
                     return None;
                 }
             }
@@ -834,6 +799,7 @@ fn apply_candidate(
     if cand.kind == Kind::Var {
         let ok = (declared > 1) || if total > 1 { mangleable } else { !exposed };
         if !ok {
+            info.skip = Some("no_lhs");
             return None;
         }
     }
@@ -842,26 +808,20 @@ fn apply_candidate(
         Kind::Post | Kind::Pre => true,
         _ => expr_effects(&cand.value, env.declared),
     };
+    info.value_def = mangleable;
     // A value_def collapse that cannot see every reference is cancelled.
     if mangleable && hidden > 0 {
+        info.port_skip = Some("hidden_refs");
         return None;
     }
-    // The assignment is the value's only use, and nothing else observes the write.
-    // `return (a = r * r - r) + (b = 7)` is `return r * r - r + 7`.
+    // An assignment is always moved whole (terser returns `candidate`); a
+    // write nothing reads is left to `drop_unused`, as in terser, so later
+    // candidates in this loop still see it.
     // A name `flatten_fn` injected is the parameter's definition in terser:
     // its `references` are the parameter's reads in the inlined body plus the
     // assignment, whatever the tree now holds.
     let injected = INJECTED.with(|i| i.borrow().get(&cand.name).copied());
-    let sink = cand.kind == Kind::Assign
-        && !block_assign
-        && injected.is_none_or(|count| count == 2)
-        && cand.op == "="
-        && reads == 1
-        && writes == 1
-        && hidden == 0
-        && env.in_fn
-        && !escaped.contains(&cand.name);
-    let mode = if cand.kind == Kind::Var && total == 1 && !exposed || sink {
+    let mode = if cand.kind == Kind::Var && total == 1 && !exposed {
         Mode::ValueOne
     } else if mangleable {
         Mode::ValueAll
@@ -933,6 +893,7 @@ fn apply_candidate(
             scan_node(stmt, &mut scan);
         }
     }
+    info.abort = scan.abort;
     if scan.sites.is_empty() {
         return None;
     }
@@ -957,6 +918,7 @@ fn apply_candidate(
     if rw.hit != sites.len() || !rw.saw_cand {
         return None;
     }
+    info.replaced = rw.hit;
     if env.unused {
         next = sweep_duplicate_vars(next);
     }
@@ -1135,8 +1097,10 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
         }))
 }
 
+/// terser's scanner `stop_after` test: one `||` chain, so a node whose own
+/// clause is false still meets the `may_throw` clause.
 fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
-    match &n.data {
+    let own = match &n.data {
         Data::Call { .. } => true,
         Data::Return { .. } | Data::Throw { .. } => {
             st.side_effects || may_modify(&st.cand.name, st)
@@ -1156,21 +1120,25 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
         } => sym_name(name).is_some_and(|sym| {
             st.lvalues.contains_key(sym) || (st.side_effects && may_modify(sym, st))
         }),
-        Data::Assign { left, .. } | Data::Unary { expr: left, .. } => {
+        // `is_lhs(node.left, node)`: an assignment target, or the operand of
+        // `delete` / `++` / `--`.
+        Data::Assign { left, .. } => {
+            is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym))
+        }
+        Data::Unary { op, expr: left, .. } if matches!(op.as_str(), "delete" | "++" | "--") => {
             is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym))
         }
         Data::ForIn { init, .. } | Data::ForOf { init, .. } => {
             is_prop(init) || ref_name(init).is_some_and(|sym| st.lvalues.contains_key(sym))
         }
-        _ => {
-            st.may_throw
-                && if st.in_try {
-                    expr_effects(n, st.declared)
-                } else {
-                    side_effects_external(n, st.locals)
-                }
+        _ => false,
+    };
+    own || st.may_throw
+        && if st.in_try {
+            node_effects(n, st.declared)
+        } else {
+            side_effects_external(n, st.locals)
         }
-    }
 }
 
 fn may_modify(name: &str, st: &Scan<'_>) -> bool {
@@ -1467,6 +1435,9 @@ fn find_stop(
 fn shadows(parents: &[N], cand_path: &[usize], lvalues: &HashMap<String, bool>) -> bool {
     if lvalues.is_empty() {
         return false;
+    }
+    if FOREIGN_SHADOW.with(|f| lvalues.keys().any(|k| f.borrow().contains(k))) {
+        return true;
     }
     for parent in parents {
         if cand_path.contains(&ptr(parent)) {
@@ -2350,6 +2321,48 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
     }
 }
 
+/// terser `inference.js` `has_side_effects` for any node the scanner meets:
+/// statements and declaration names here, expressions in `expr_effects`.
+fn node_effects(n: &N, declared: &HashSet<String>) -> bool {
+    let any = |list: &[N]| list.iter().any(|s| node_effects(s, declared));
+    match &n.data {
+        Data::Empty => false,
+        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => any(body),
+        Data::Simple { body } | Data::Labeled { body, .. } => node_effects(body, declared),
+        Data::Catch { body, .. } | Data::Finally { body } => node_effects(body, declared),
+        Data::If { cond, body, alt } => {
+            node_effects(cond, declared)
+                || node_effects(body, declared)
+                || alt.as_ref().is_some_and(|a| node_effects(a, declared))
+        }
+        Data::Switch { expr, body } | Data::Case { expr, body } => {
+            node_effects(expr, declared) || any(body)
+        }
+        Data::Try { body, catch, finally } => {
+            node_effects(body, declared)
+                || catch.as_ref().is_some_and(|c| node_effects(c, declared))
+                || finally.as_ref().is_some_and(|f| node_effects(f, declared))
+        }
+        Data::Defs { defs, .. } => any(defs),
+        Data::VarDef { value, .. } => value.is_some(),
+        // `AST_SymbolExport` is an `AST_SymbolRef`.
+        Data::Symbol { kind: SymKind::Export, name, .. } => !declared.contains(name) && !pure_global(name),
+        // `AST_SymbolDeclaration` and `AST_SymbolClassProperty`; the other
+        // plain `AST_Symbol`s are `AST_Node` (true).
+        Data::Symbol { kind, .. } if !matches!(
+            kind,
+            SymKind::Ref
+                | SymKind::Method
+                | SymKind::Label
+                | SymKind::LabelRef
+                | SymKind::ImportForeign
+                | SymKind::ExportForeign
+                | SymKind::Private
+        ) => false,
+        _ => expr_effects(n, declared),
+    }
+}
+
 fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
     match &n.data {
         Data::Number { .. }
@@ -2532,9 +2545,7 @@ fn block_scoped_names(stmts: &[N]) -> HashSet<String> {
             } => {
                 for d in defs {
                     if let Data::VarDef { name, .. } = &d.data {
-                        if let Some(sym) = sym_name(name) {
-                            names.insert(sym.to_string());
-                        }
+                        names.extend(scope_bindings(std::slice::from_ref(name), &[]));
                     }
                 }
             }

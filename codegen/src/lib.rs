@@ -23,6 +23,18 @@ pub fn print_without_comments(root: &N) -> String {
     print_with(root, false)
 }
 
+/// terser `node.print_to_string()` on any node: as `print_without_comments`, but a
+/// statement's trailing `;` stays pending (only `AST_Toplevel` flushes it).
+pub fn print_fragment(root: &N) -> String {
+    if matches!(root.data, Data::Toplevel { .. }) {
+        return print_with(root, false);
+    }
+    let mut out = Out::new();
+    out.comments = false;
+    out.print_node(root, false);
+    out.buf
+}
+
 fn print_with(root: &N, comments: bool) -> String {
     let mut out = Out::new();
     out.comments = comments;

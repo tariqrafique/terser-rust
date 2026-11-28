@@ -17,6 +17,7 @@ mod hoist;
 mod loops;
 mod object;
 mod tighten;
+mod trace;
 mod reduce_vars;
 mod syms;
 mod unary;
@@ -497,7 +498,8 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if expression {
         tree = process_expression(&tree, true);
     }
-    for _ in 0..passes {
+    for pass in 0..passes {
+        trace::trace!("pass", n = pass);
         tree = compress_pass(&tree, opts.clone(), mangle);
     }
     eval::set_mangled_symbols(HashSet::new());
@@ -603,6 +605,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(HashMap::new()),
+        foreign_lambda: 0,
         fresh: RefCell::new(HashMap::new()),
         late_squeezed: RefCell::new(HashMap::new()),
         injected: RefCell::new(HashMap::new()),
@@ -725,6 +728,11 @@ struct Cx {
     /// copy): `tighten_body` runs on them before their children are descended,
     /// and never again (`OPTIMIZED`).
     pre_tighten: RefCell<HashMap<usize, N>>,
+    /// The lambda whose `pre_tighten` is running. terser calls its
+    /// `.optimize()` from the reference or call it replaces, so the lambda is
+    /// not on the stack: `find_scope()` is the enclosing scope and
+    /// `compressor.self()` is not a lambda.
+    foreign_lambda: usize,
     /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
     /// descend after `drop_unused` still optimizes them.
     fresh: RefCell<HashMap<usize, N>>,
@@ -752,6 +760,18 @@ impl Cx {
 
     fn shadowed(&self, name: &str) -> bool {
         self.locals.iter().any(|set| set.contains(name))
+    }
+
+    /// terser `AST_SymbolRef.is_declared` (without `unsafe`): the reference's
+    /// definition when the symbol table has it, else a binding of the name
+    /// in scope.
+    fn declared_ref(&self, n: &N, name: &str) -> bool {
+        if let Some(table) = &self.syms {
+            if let Some(id) = table.def_of(n) {
+                return !table.defs[id].undeclared;
+            }
+        }
+        self.shadowed(name)
     }
 
     fn const_value(&self, name: &str) -> Option<&N> {
@@ -1132,7 +1152,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
     let pre_node;
     let n = if pre {
+        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(n.data, Data::Func { .. }) { orig_ptr } else { 0 });
         pre_node = after_descend(Rc::clone(n), n, cx);
+        cx.foreign_lambda = saved;
         set_parent(cx, &pre_node);
         &pre_node
     } else {
@@ -1158,6 +1180,8 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
     cx.keep_block = keep_block;
+    // Trace: the node as terser's `optimize` receives it (tighten_body is part of it).
+    let traced_in = if trace::opt_on() { Some(trace::code(&twice)) } else { None };
     let twice = if already || pre { twice } else { after_descend(twice, n, cx) };
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
@@ -1190,12 +1214,20 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.pre_tighten.borrow_mut().remove(&(Rc::as_ptr(&out) as usize)).is_some() {
         cx.parents.push(Rc::clone(&out));
         let entered = cx.enter(&out);
+        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(out.data, Data::Func { .. }) { Rc::as_ptr(&out) as usize } else { 0 });
         let tightened = after_descend(Rc::clone(&out), &out, cx);
+        cx.foreign_lambda = saved;
         cx.leave(entered);
         cx.parents.pop();
         if !Rc::ptr_eq(&tightened, &out) {
             alias_scope_node(cx, &out, &tightened);
             out = tightened;
+        }
+    }
+    if let Some(traced_in) = traced_in {
+        let traced_out = trace::code(&out);
+        if traced_out != traced_in {
+            trace::trace!("opt", t = trace::type_name(n), code = traced_in, out = traced_out);
         }
     }
     let same = Rc::ptr_eq(&out, &twice);
@@ -1209,7 +1241,13 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         // mutates them in place and leaves `OPTIMIZED` set, so the descend after
         // `drop_unused` does not fold them again.
         mark_tree_squeezed(&out, cx);
+        let traced = if trace::on() { Some(trace::code(&out)) } else { None };
         let dropped = drop_unused::drop_unused_cx(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs, cx);
+        if let Some(code) = traced {
+            let after = trace::code(&dropped);
+            let after = if after == code { "=".to_string() } else { after };
+            trace::trace!("drop_unused", t = trace::type_name(&out), code = code, out = after);
+        }
         transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
         cx.redescend += 1;
