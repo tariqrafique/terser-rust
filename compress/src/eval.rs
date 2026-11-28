@@ -3087,6 +3087,8 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         | Data::Array { .. }
         | Data::Func { .. }
         | Data::Class { .. } => false,
+        // `AST_SymbolRef`: `arguments` whose scope is a function.
+        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" && scope_is_lambda(cx) => false,
         Data::Unary { op, .. } if op == "void" => true,
         Data::Unary { .. } => false,
         Data::Null => true,
@@ -3094,6 +3096,20 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         Data::Seq { exprs } => exprs.last().is_some_and(|e| may_throw_on_access(e, cx)),
         _ => true,
     }
+}
+
+/// terser `symbol.scope instanceof AST_Lambda` for a symbol in an expression under
+/// `cx.parents` that does not name a block declaration: its scope is the defun scope
+/// (`scope.js` `get_defun_scope`), so blocks and loops are skipped.
+fn scope_is_lambda(cx: &Cx) -> bool {
+    for p in cx.parents.iter().rev() {
+        match &p.data {
+            Data::Func { .. } => return true,
+            Data::Toplevel { .. } | Data::Class { .. } => return false,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn is_basic_ident(value: &str) -> bool {

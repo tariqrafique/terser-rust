@@ -556,6 +556,11 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
     if matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise") {
         return true;
     }
+    // terser `AST_Lambda.init_scope_vars` defines `arguments` in every function but an
+    // arrow, so a read inside one is declared. The binder does not define it.
+    if name == "arguments" && cx.parents.iter().any(|p| matches!(p.data, Data::Func { kind: FuncKind::Decl | FuncKind::Expr | FuncKind::Accessor, .. })) {
+        return true;
+    }
     if let Some(table) = &cx.syms {
         if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
             return table.defs.get(id).is_some_and(|d| !d.undeclared);
