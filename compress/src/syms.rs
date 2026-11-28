@@ -53,6 +53,9 @@ pub struct SymbolDef {
     /// terser `reduce-vars.js` `mark_escaped`: the name is used as a value, not only as `obj.prop`.
     pub direct_access: bool,
     pub recursive_refs: u32,
+    /// terser `def.chained`: a compound assignment or update made `fixed` a
+    /// computed value (`reduce-vars.js`).
+    pub chained: bool,
     /// The `SymbolRef` nodes read or written, by id.
     pub references: Vec<NodeId>,
     /// References a `clone(true, toplevel)` copy added during compress: terser
@@ -90,6 +93,10 @@ pub struct SymTable {
     pub fn_of: Vec<usize>,
     /// `scope.pinned()` for each scope id. Direct `eval` or `with` sets it.
     pub scope_pinned: Vec<bool>,
+    /// terser `AST_Lambda.uses_arguments` for each scope id: a reference named
+    /// `arguments` resolves to a definition of that function (its own `arguments`,
+    /// from it or an arrow inside, or a parameter or `var` of that name).
+    pub scope_uses_arguments: Vec<bool>,
     /// Function and class nodes currently stored in `fixed`, by id, so a compressed
     /// replacement can follow them. Built at the end of `reduce_vars::analyze`.
     pub fixed_of_node: ast::IdMap<Vec<usize>>,
@@ -128,6 +135,7 @@ struct Scope {
     /// defines `arguments` on it.
     lambda: bool,
     pinned: bool,
+    uses_arguments: bool,
     /// terser `tw.directives["use strict"]` inside this scope: a `"use strict"` directive,
     /// a class, or `module`. A function declaration in a block is then bound in the block
     /// (scope.js `AST_SymbolDefun`), not in the function scope.
@@ -151,6 +159,7 @@ pub fn bind_strict(root: &N, strict: bool) -> SymTable {
         func: true,
         lambda: false,
         pinned: false,
+        uses_arguments: false,
         strict,
         names: HashMap::new(),
     }];
@@ -163,6 +172,7 @@ pub fn bind_strict(root: &N, strict: bool) -> SymTable {
         scope_parent: Vec::new(),
         fn_of: Vec::new(),
         scope_pinned: Vec::new(),
+        scope_uses_arguments: Vec::new(),
         fixed_of_node: ast::IdMap::default(),
         inlined_scopes: RefCell::new(HashSet::new()),
         injected_vars: RefCell::new(HashMap::new()),
@@ -181,6 +191,7 @@ pub fn bind_strict(root: &N, strict: bool) -> SymTable {
     table.scope_parent = scopes.iter().map(|s| s.parent).collect();
     table.fn_of = scopes.iter().map(|s| s.fn_scope).collect();
     table.scope_pinned = scopes.iter().map(|s| s.pinned).collect();
+    table.scope_uses_arguments = scopes.iter().map(|s| s.uses_arguments).collect();
     table
 }
 
@@ -334,9 +345,20 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     }
                     continue;
                 };
-                define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
+                define(table, scopes, dest, sym_name.clone(), name, sk, value.clone(), false);
                 if dest != scope {
                     table.block_vars.insert(name.id());
+                    // terser `scope.js`: a `var` declared in a block scope takes
+                    // `scope.find_variable(node)` as its `thedef`. That differs from the
+                    // function's definition only for a `catch` parameter of the same
+                    // name: `catch (a) { var a }` declares `a` on the function, but the
+                    // `var`'s name is the catch parameter's.
+                    if let Some(found) = resolve(scopes, scope, &sym_name) {
+                        let d = &table.defs[found];
+                        if d.block_scoped && !d.lexical && found != table.def_of(name).unwrap_or(found) {
+                            table.bind_def(name, found);
+                        }
+                    }
                 }
                 if let Some(value) = value {
                     walk(value, scope, scopes, table);
@@ -349,7 +371,10 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             walk(body, scope, scopes, table);
         }
         Data::Call { expr, args, .. } => {
-            if sym(expr).as_deref() == Some("eval") && resolve(scopes, scope, "eval").is_none() {
+            // terser `scope.js`: an `eval` reference whose parent is a call (the callee
+            // or an argument) sets `uses_eval`, whatever `eval` resolves to.
+            let is_eval = |n: &N| matches!(&n.data, Data::Symbol { kind: SymKind::Ref, name, .. } if name == "eval");
+            if is_eval(expr) || args.iter().any(is_eval) {
                 pin_fn(table, scopes, scope);
             }
             // `AST_Call._walk`: the arguments, then the callee.
@@ -360,7 +385,13 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
         }
         Data::Symbol { name, kind: SymKind::Ref, .. } => {
             table.ref_scope.borrow_mut().insert(n.id(), scope);
-            if let Some(lambda) = (name == "arguments" && resolve(scopes, scope, name).is_none()).then(|| arguments_scope(scopes, scope)).flatten() {
+            // The nearest non-arrow function has its own `arguments`, so an outer
+            // binding of that name is not reached from inside it.
+            let own_arguments = (name == "arguments")
+                .then(|| arguments_scope(scopes, scope))
+                .flatten()
+                .filter(|&lambda| resolve_upto(scopes, scope, name, lambda).is_none());
+            if let Some(lambda) = own_arguments {
                 // terser `AST_Lambda.init_scope_vars`: every non-arrow function
                 // defines `arguments` (an `AST_SymbolFunarg`), so a reference in
                 // it, or in an arrow inside it, is declared. Defined here on the
@@ -370,6 +401,16 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 define(table, scopes, 0, name.clone(), n, SymKind::Ref, None, true);
             } else if let Some(id) = resolve(scopes, scope, name) {
                 table.bind_def(n, id);
+            }
+            // scope.js: `sym.scope instanceof AST_Lambda && name == "arguments"` sets
+            // `uses_arguments` on that function.
+            if name == "arguments" {
+                if let Some(id) = table.def_of(n) {
+                    let s = table.defs[id].scope;
+                    if s != 0 && scopes[s].func {
+                        scopes[s].uses_arguments = true;
+                    }
+                }
             }
         }
         Data::Export { is_default, names, value, definition, module_name, .. } => {
@@ -626,6 +667,7 @@ fn push_func(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         func: true,
         lambda: false,
         pinned: false,
+        uses_arguments: false,
         strict: scopes[parent].strict,
         names: HashMap::new(),
     });
@@ -641,6 +683,7 @@ fn push_block(parent: usize, scopes: &mut Vec<Scope>) -> usize {
         func: false,
         lambda: false,
         pinned: false,
+        uses_arguments: false,
         strict: scopes[parent].strict,
         names: HashMap::new(),
     });
@@ -661,7 +704,16 @@ fn define(
         table.bind_def(node, id);
         table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
         table.defs[id].lexical |= matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using);
-        if table.defs[id].init.is_none() {
+        // terser `def_variable`: a function expression's own name (`init` an
+        // `AST_Function`) gives way to the parameter, `var` or inner function that
+        // redeclares it, and only a function brings an `init`.
+        let lambda_init = table.defs[id].init.as_ref().is_some_and(|i| matches!(i.data, Data::Func { kind: ast::FuncKind::Expr, .. }));
+        if lambda_init {
+            table.defs[id].init = if kind == SymKind::Defun { init } else { None };
+            // A `var`'s `init` is `null` (`fixed === null` at reset), a parameter's
+            // `undefined`.
+            table.defs[id].var_decl |= kind == SymKind::Var;
+        } else if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
         return;
@@ -692,6 +744,7 @@ fn define(
         escaped: 0,
         direct_access: false,
         recursive_refs: 0,
+        chained: false,
         references: Vec::new(),
         clone_refs: Cell::new(0),
         single_use: SingleUse::No,
@@ -717,6 +770,19 @@ fn pin_fn(table: &mut SymTable, scopes: &mut [Scope], scope: usize) {
         if chain.contains(&def.fn_scope) {
             def.pinned = true;
         }
+    }
+}
+
+/// `resolve` from `scope` up to and including `stop`.
+fn resolve_upto(scopes: &[Scope], mut scope: usize, name: &str, stop: usize) -> Option<usize> {
+    loop {
+        if let Some(id) = scopes[scope].names.get(name) {
+            return Some(*id);
+        }
+        if scope == stop {
+            return None;
+        }
+        scope = scopes[scope].parent?;
     }
 }
 
@@ -775,6 +841,7 @@ impl SymTable {
                     escaped: 0,
                     direct_access: false,
                     recursive_refs: 0,
+                    chained: false,
                     references: Vec::new(),
                     clone_refs: Cell::new(0),
                     single_use: SingleUse::No,

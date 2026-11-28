@@ -593,6 +593,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         squeezed: RefCell::new(ast::IdSet::default()),
         optimized: RefCell::new(ast::IdSet::default()),
         truthy_falsy: RefCell::new(ast::IdMap::default()),
+        write_only: RefCell::new(ast::IdSet::default()),
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
@@ -698,6 +699,9 @@ struct Cx {
     /// terser `TRUTHY` / `FALSY` (`def_optimize(AST_Binary)` `||` / `&&`): a logical
     /// expression whose value is known to be truthy (`true`) or falsy (`false`).
     truthy_falsy: RefCell<ast::IdMap<bool>>,
+    /// terser `WRITE_ONLY`: an assignment or `++` / `--` whose value is discarded,
+    /// set by `drop_side_effect_free` and read by `drop_unused` (`assign_as_unused`).
+    write_only: RefCell<ast::IdSet>,
     /// Ancestors for `def_optimize(AST_Binary)` (`in_boolean_context`, `parent()`).
     stack: Vec<N>,
     /// terser `TreeWalker.stack`. Last node is `self()`, the one before it is `parent()`.
@@ -900,6 +904,19 @@ impl Cx {
     /// terser `set_flag(node, TRUTHY | FALSY)`.
     pub(crate) fn set_truth_flag(&self, n: &N, truthy: bool) {
         self.truthy_falsy.borrow_mut().insert(n.id(), truthy);
+    }
+
+    /// terser `set_flag(node, WRITE_ONLY)` / `clear_flag`.
+    pub(crate) fn set_write_only(&self, n: &N, on: bool) {
+        if on {
+            self.write_only.borrow_mut().insert(n.id());
+        } else {
+            self.write_only.borrow_mut().remove(&n.id());
+        }
+    }
+
+    pub(crate) fn is_write_only(&self, n: &N) -> bool {
+        self.write_only.borrow().contains(&n.id())
     }
 
     fn is_optimized(&self, n: &N) -> bool {

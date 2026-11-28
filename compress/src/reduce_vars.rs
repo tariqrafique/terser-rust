@@ -469,6 +469,9 @@ fn walk(n: &N, tw: &mut Tw) {
                 if safe && (op == "=" || prev.is_some()) {
                     // A compound assignment's value is `old fixed <op> right`
                     // (`make_node(AST_Binary, node, ...)`); it escapes as the assignment itself.
+                    if op != "=" {
+                        tw.table.defs[id].chained = true;
+                    }
                     let (value, escaped) = match prev {
                         None => (Rc::clone(right), Rc::clone(right)),
                         Some(old) => (
@@ -514,6 +517,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 if safe {
                     if let Some(fixed) = tw.table.defs[id].fixed.clone() {
                         tw.table.defs[id].references.push(expr.id());
+                        tw.table.defs[id].chained = true;
                         let bin_op = if op == "++" { "+" } else { "-" };
                         let value = span_node(
                             n,
@@ -638,15 +642,20 @@ fn reset_def(tw: &mut Tw, id: usize) {
     d.escaped = 0;
     d.direct_access = false;
     d.recursive_refs = 0;
+    d.chained = false;
     d.replaced.set(0);
     // terser `reset_def`: a funarg named `arguments` in a function that uses
     // `arguments` is not fixed. A `function arguments(){}` shares that binding.
-    if d.pinned || (d.name == "arguments" && (d.is_defun || d.funarg)) {
+    // terser `def.orig[0] instanceof AST_SymbolFunarg && def.scope.uses_arguments`.
+    let funarg_args = d.funarg && tw.table.scope_uses_arguments.get(d.scope).copied().unwrap_or(false);
+    let d = &mut tw.table.defs[id];
+    if d.pinned || funarg_args || (d.name == "arguments" && (d.is_defun || d.funarg)) {
         d.fixed = None;
     } else if d.is_const || !exposed {
         // terser scope.js defines a `var` with `init` null, so it resets to
         // `fixed === null` and `AST_VarDef` assigns the initializer.
-        if d.var_decl && !d.is_defun {
+        // A function expression's name a `var` redeclares has the `var`'s `init`.
+        if d.var_decl && (!d.is_defun || d.init.is_none()) {
             d.fixed = None;
             d.fixed_null = true;
         } else {

@@ -38,7 +38,9 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         if cx.opts.join_vars {
             join_consecutive_vars(&mut stmts, cx, &mut st);
         }
-        if cx.opts.collapse_vars {
+        // tighten-body.js `collapse`: `if (nearest_scope.pinned() || defun_scope.pinned())
+        // return statements` (`uses_eval` / `uses_with` reach every enclosing scope).
+        if cx.opts.collapse_vars && !defun_scope_pinned(cx) {
             if let Some(scope) = collapse_scope(&stmts, cx) {
                 crate::tighten::set_injected(visible_injected(cx));
                 // Function-statement names visible here, innermost declaration wins.
@@ -78,14 +80,16 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     }
                     for p in &chain {
                         let Data::Func { kind, name, args, body, .. } = &p.data else { continue };
+                        let body: &[N] = if Rc::ptr_eq(p, chain.last().unwrap()) { &stmts } else { body };
+                        let bound = crate::tighten::scope_bindings(args, body);
+                        lambdas.retain(|n| !bound.contains(n));
+                        // A parameter or `var` with the lambda's own name is the same
+                        // definition, whose `orig[0]` is the `AST_SymbolLambda`.
                         if !matches!(kind, ast::FuncKind::Decl) {
                             if let Some(Data::Symbol { name, .. }) = name.as_ref().map(|n| &n.data) {
                                 lambdas.insert(name.clone());
                             }
                         }
-                        let body: &[N] = if Rc::ptr_eq(p, chain.last().unwrap()) { &stmts } else { body };
-                        let bound = crate::tighten::scope_bindings(args, body);
-                        lambdas.retain(|n| !bound.contains(n));
                     }
                     crate::tighten::set_lambdas(lambdas);
                 }
@@ -121,6 +125,9 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     scope.3,
                 );
                 stmts = next;
+                for id in crate::tighten::take_moved_writes() {
+                    cx.write_only.borrow_mut().remove(&id);
+                }
                 if changed {
                     st.changed = true;
                     collapsed = true;
@@ -142,6 +149,20 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
 /// Locals of this body, every enclosing scope's bindings, and whether it is a
 /// function. A nested block gets its loop and try state.
 #[allow(clippy::type_complexity)]
+/// `defun_scope.pinned()` for the statements being tightened: the innermost function or
+/// toplevel on the stack, from the pass's scope table (`figure_out_scope` sets
+/// `uses_eval` once per pass).
+fn defun_scope_pinned(cx: &Cx) -> bool {
+    let Some(table) = cx.syms.as_ref() else { return false };
+    cx.parents
+        .iter()
+        .rev()
+        .find(|p| matches!(p.data, Data::Func { .. } | Data::Toplevel { .. }))
+        .and_then(|p| table.scope_of(p))
+        .and_then(|s| table.scope_pinned.get(s).copied())
+        .unwrap_or(false)
+}
+
 fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<String>, std::collections::HashSet<String>, bool, Option<(bool, bool)>)> {
     let me = self_node(cx)?;
     let (locals, in_fn, block) = match &me.data {
