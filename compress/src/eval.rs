@@ -2242,10 +2242,7 @@ fn read_is_pure(n: &N, cx: &Cx) -> bool {
         Data::Symbol { name, kind: ast::SymKind::Ref, .. } => {
             if let Some(table) = &cx.syms {
                 if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
-                    // The table leaves destructured bindings undeclared; the
-                    // scope stack still knows them.
                     return !table.defs[id].undeclared
-                        || cx.shadowed(name)
                         || ["Number", "String", "Array", "Object", "Function", "Promise"].contains(&name.as_str());
                 }
             }
