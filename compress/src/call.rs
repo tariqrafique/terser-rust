@@ -382,7 +382,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     for name in &declared {
         let reads = count_reads(body, name);
         let writes = exprs.iter().filter(|e| matches!(&e.data, Data::Assign { left, .. } if sym_str(left) == Some(name.as_str()))).count();
-        cx.injected_refs.borrow_mut().insert(name.clone(), reads + writes);
+        cx.injected_refs.borrow_mut().insert((inj.key, name.clone()), reads + writes);
     }
     if !declared.is_empty() {
         cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());
@@ -1032,19 +1032,7 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     if params.iter().any(|p| !is_simple_funarg(p)) {
         return (Some(Rc::clone(func)), args.to_vec(), false);
     }
-    let mut params = params.clone();
-    let mut func_changed = false;
-    if direct && iife_drops_params(func) {
-        let orig = params.len();
-        while params.last().is_some_and(|p| sym_str(p).is_some_and(|name| !refs_name(body, name))) {
-            params.pop();
-        }
-        func_changed = params.len() != orig;
-    }
-    let body = match &func.data {
-        Data::Func { body, .. } => body,
-        _ => body,
-    };
+    // The IIFE's unused parameters are popped later, by `drop_unused` (du 262-285).
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
     // callee sees none.
@@ -1076,8 +1064,7 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     }
     kept.truncate(last);
     let args_changed = kept.len() != args.len() || kept.iter().zip(args.iter()).any(|(a, b)| !Rc::ptr_eq(a, b));
-    let func = if func_changed { Some(func_with_params(func, params)) } else { Some(Rc::clone(func)) };
-    (func, kept, func_changed || args_changed)
+    (Some(Rc::clone(func)), kept, args_changed)
 }
 
 fn params_same(a: &N, b: &N) -> bool {
@@ -1085,37 +1072,6 @@ fn params_same(a: &N, b: &N) -> bool {
         (Data::Func { args: x, .. }, Data::Func { args: y, .. }) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| sym_str(p) == sym_str(q)),
         _ => false,
     }
-}
-
-fn iife_drops_params(func: &N) -> bool {
-    let Data::Func { kind, name, body, .. } = &func.data else {
-        return false;
-    };
-    if !matches!(kind, FuncKind::Expr | FuncKind::Arrow) {
-        return false;
-    }
-    match name {
-        None => true,
-        Some(name) => sym_str(name).is_none_or(|nm| !refs_name(body, nm)),
-    }
-}
-
-fn func_with_params(func: &N, params: Vec<N>) -> N {
-    let Data::Func { kind, name, body, async_, generator, .. } = &func.data else {
-        return Rc::clone(func);
-    };
-    // keep: drop_unused trims `node.argnames` in place (du 269).
-    edit(
-        func,
-        Data::Func {
-            kind: *kind,
-            name: name.clone(),
-            args: params,
-            body: body.clone(),
-            async_: *async_,
-            generator: *generator,
-        },
-    )
 }
 
 fn is_simple_funarg(n: &N) -> bool {

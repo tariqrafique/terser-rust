@@ -1167,7 +1167,7 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
         Data::Return { .. } | Data::Throw { .. } => {
             st.side_effects || may_modify(&st.cand.name, st)
         }
-        Data::Dot { expr, .. } | Data::Sub { expr, .. } => st.side_effects || !safe_receiver(expr),
+        Data::Dot { expr, .. } | Data::Sub { expr, .. } => st.side_effects || !safe_access(expr, st.declared),
         Data::Symbol {
             name,
             kind: SymKind::Ref,
@@ -2247,12 +2247,8 @@ fn inner_lvalue_names(value: &N) -> HashSet<String> {
             }
         }
         let pushed = if let Data::Func { args, body, name, .. } = &n.data {
-            let mut own = HashSet::new();
-            for a in args {
-                if let Some(nm) = sym_name(a) {
-                    own.insert(nm.to_string());
-                }
-            }
+            // Parameters with defaults and destructured ones bind too.
+            let mut own = scope_bindings(args, &[]);
             if let Some(nm) = name.as_ref().and_then(sym_name) {
                 own.insert(nm.to_string());
             }
@@ -2382,7 +2378,7 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             if *optional {
                 expr_effects(expr, locals)
             } else {
-                !safe_receiver(expr) || expr_effects(expr, locals)
+                !safe_access(expr, locals) || expr_effects(expr, locals)
             }
         }
         Data::Sub {
@@ -2393,10 +2389,12 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             if *optional {
                 expr_effects(expr, locals) || expr_effects(prop, locals)
             } else {
-                !safe_receiver(expr) || expr_effects(expr, locals) || expr_effects(prop, locals)
+                !safe_access(expr, locals) || expr_effects(expr, locals) || expr_effects(prop, locals)
             }
         }
         Data::Chain { expr } => expr_effects(expr, locals),
+        // terser `AST_TemplateString.has_side_effects`: its segments only.
+        Data::Template { segments } => segments.iter().any(|s| matches!(s, ast::Seg::Expr(e) if expr_effects(e, locals))),
         // terser `AST_Class.has_side_effects`: `extends`, computed keys,
         // static field values and static blocks.
         Data::Class { extends, props, .. } => {
@@ -2493,18 +2491,19 @@ fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
                 || expr_may_throw(alt, locals)
         }
         Data::Dot { expr, optional, .. } => {
-            !*optional && !safe_receiver(expr) || expr_may_throw(expr, locals)
+            !*optional && !safe_access(expr, locals) || expr_may_throw(expr, locals)
         }
         Data::Sub {
             expr,
             prop,
             optional,
         } => {
-            !*optional && !safe_receiver(expr)
+            !*optional && !safe_access(expr, locals)
                 || expr_may_throw(expr, locals)
                 || expr_may_throw(prop, locals)
         }
-        Data::Call { .. } => true,
+        // terser has no `may_throw` for `AST_TemplateString`: `AST_Node`'s `true`.
+        Data::Call { .. } | Data::Template { .. } => true,
         _ => false,
     }
 }
@@ -2525,6 +2524,16 @@ fn side_effects_external(n: &N, locals: &HashSet<String>) -> bool {
             .is_some_and(|v| side_effects_external(v, locals)),
         _ => false,
     }
+}
+
+/// terser `may_throw_on_access` (`_dot_throw`, `pure_getters` "strict") for
+/// the receivers this port knows: `safe_receiver`, and a lambda's own
+/// `arguments` (`this.name === "arguments" && this.scope instanceof
+/// AST_Lambda`). An `arguments` the table resolves to no function (in an
+/// arrow outside any function) is undeclared and has side effects anyway.
+fn safe_access(n: &N, declared: &HashSet<String>) -> bool {
+    safe_receiver(n)
+        || matches!(&n.data, Data::Symbol { kind: SymKind::Ref, name, .. } if name == "arguments" && is_declared(n, name, declared))
 }
 
 fn safe_receiver(n: &N) -> bool {

@@ -91,7 +91,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
     match &n.data {
         Data::Toplevel { body: original } => {
             let body: Vec<N> = original.iter().map(|s| scope(s, table, true, true)).collect();
-            renode(n, Data::Toplevel { body: passes(&body, original, table, table.scope_of(n).as_ref().copied(), drop_vars, drop_funcs) })
+            renode(n, Data::Toplevel { body: passes(&body, original, table, table.scope_of(n).as_ref().copied(), drop_vars, drop_funcs, true) })
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let original = body;
@@ -111,7 +111,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
                 _ => name.clone(),
             };
-            let body = if is_root { passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, true) } else { body };
+            let body = if is_root { passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, true, true) } else { body };
             renode(n, Data::Func {
                 kind: *kind,
                 name,
@@ -125,7 +125,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
             let body: Vec<N> = original.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
             let body = if let (Some(&id), false) = (table.scope_of(n).as_ref(), nested()) {
                 let _ = id;
-                passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, drop_funcs)
+                passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, drop_funcs, false)
             } else {
                 body
             };
@@ -158,7 +158,9 @@ struct Use {
 
 /// Passes 1–3 of `AST_Scope.drop_unused`.
 /// `original` is the body before nested scopes were rewritten: its loop nodes still have their scope ids.
-fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool) -> Vec<N> {
+/// `lambdas`: `stmts` is the body of the scope itself (not a block in it), whose lambdas
+/// have their parameters trimmed (du 262-285).
+fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool, lambdas: bool) -> Vec<N> {
     // `self.pinned()`: `with` keeps every name.
     if contains_with(stmts) {
         return stmts.to_vec();
@@ -235,7 +237,200 @@ fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>
     for stmt in stmts {
         rewrite_stmt(stmt, table, &u, scope_id, drop_vars, drop_funcs, &mut out);
     }
+    if lambdas {
+        out = out.iter().map(|s| trim_iifes(s, table, &u.in_use)).collect();
+    }
     out
+}
+
+/// drop-unused.js 262-285, for the lambdas in this scope (`scope === self`, so not in a
+/// nested function or class): the parameters nothing uses are `UNUSED` and, when `trim`,
+/// popped from the end up to the first one in use or destructuring. `keep_fargs` is on
+/// (the port has no option for it), so `trim` holds only for an IIFE that does not refer
+/// to its name and is not `pinned()`. The call's arguments were already replaced by
+/// `0` or dropped (`def_optimize(AST_Call)`, `call.rs` `trim_unused`).
+fn trim_iifes(n: &N, table: &SymTable, in_use: &HashSet<usize>) -> N {
+    match &n.data {
+        Data::Func { .. } | Data::Class { .. } => Rc::clone(n),
+        Data::Call { expr, args, optional, is_new } if matches!(expr.data, Data::Func { .. }) => {
+            let callee = trim_params(expr, table, in_use).unwrap_or_else(|| Rc::clone(expr));
+            let mut changed = !Rc::ptr_eq(&callee, expr);
+            let args: Vec<N> = args.iter().map(|a| {
+                let m = trim_iifes(a, table, in_use);
+                changed |= !Rc::ptr_eq(&m, a);
+                m
+            }).collect();
+            if !changed {
+                return Rc::clone(n);
+            }
+            renode(n, Data::Call { expr: callee, args, optional: *optional, is_new: *is_new })
+        }
+        _ => {
+            let mut changed = false;
+            let out = ast::map_children(n, &mut |c| {
+                let m = trim_iifes(c, table, in_use);
+                changed |= !Rc::ptr_eq(&m, c);
+                m
+            });
+            if changed { out } else { Rc::clone(n) }
+        }
+    }
+}
+
+/// terser `before` runs `drop_unused` on a class too (`AST_Class` is an `AST_Scope`): an
+/// IIFE in a field value, a computed key, `extends` or a static block (not an
+/// `AST_Scope` change in `tt`) has its parameters trimmed there, not in the enclosing
+/// scope. `None` when nothing changes.
+pub(crate) fn trim_class_iifes(n: &N) -> Option<N> {
+    if !matches!(n.data, Data::Class { .. }) || !has_iife(n) {
+        return None;
+    }
+    let table = syms::bind(n);
+    let mut kids = Vec::new();
+    ast::walk_children(n, &mut |c| kids.push(Rc::clone(c)));
+    let in_use = scan_in_use(&kids, &table);
+    let out = trim_iifes_in(n, &table, &in_use);
+    (!Rc::ptr_eq(&out, n)).then_some(out)
+}
+
+fn has_iife(n: &N) -> bool {
+    fn rec(n: &N, top: bool) -> bool {
+        match &n.data {
+            Data::Func { .. } => false,
+            Data::Class { .. } if !top => false,
+            Data::Call { expr, .. } if matches!(expr.data, Data::Func { .. }) => true,
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c, false));
+                hit
+            }
+        }
+    }
+    rec(n, true)
+}
+
+/// Passes 1 and 2 of `drop_unused` over `nodes`, for `in_use_ids` only.
+fn scan_in_use(nodes: &[N], table: &SymTable) -> HashSet<usize> {
+    let mut u = Use {
+        in_use: HashSet::new(),
+        inits: HashMap::new(),
+        fixed: HashSet::new(),
+        wrote: HashSet::new(),
+        scope: None,
+        var_defs: Default::default(),
+        orig_index: HashMap::new(),
+        eliminated: Default::default(),
+        loop_scopes: HashSet::new(),
+    };
+    for n in nodes {
+        scan_ref_scoped(n, table, &mut u, true);
+    }
+    let mut done: HashSet<usize> = HashSet::new();
+    loop {
+        let mut ready: Vec<usize> = u.in_use.iter().copied().filter(|id| !done.contains(id) && u.inits.contains_key(id)).collect();
+        if ready.is_empty() {
+            break;
+        }
+        ready.sort_unstable();
+        for id in ready {
+            done.insert(id);
+            for init in u.inits.get(&id).cloned().unwrap_or_default() {
+                scan_ref_scoped(&init, table, &mut u, false);
+            }
+        }
+    }
+    u.in_use
+}
+
+/// `trim_iifes` on the children of `n` (the scope itself is not a lambda in it).
+fn trim_iifes_in(n: &N, table: &SymTable, in_use: &HashSet<usize>) -> N {
+    let mut changed = false;
+    let out = ast::map_children(n, &mut |c| {
+        let m = trim_iifes(c, table, in_use);
+        changed |= !Rc::ptr_eq(&m, c);
+        m
+    });
+    if changed { out } else { Rc::clone(n) }
+}
+
+/// The callee of an IIFE with its unused trailing parameters popped (`a.pop()`, in place).
+fn trim_params(func: &N, table: &SymTable, in_use: &HashSet<usize>) -> Option<N> {
+    let Data::Func { kind, name, args, body, async_, generator } = &func.data else { return None };
+    // `!node.name || node.name.unreferenced()`: a name still here after the name drop
+    // (du 251-259) is read.
+    if !matches!(kind, ast::FuncKind::Expr | ast::FuncKind::Arrow) || name.is_some() || lambda_pinned(body) {
+        return None;
+    }
+    // drop-unused.js pass 1: a non-arrow lambda that reads `arguments` uses every
+    // parameter (outside "use strict"; the port checks the lambda's own directives).
+    if !matches!(kind, ast::FuncKind::Arrow) && uses_arguments(body) && !strict_body(body) {
+        return None;
+    }
+    let mut params = args.clone();
+    while let Some(last) = params.last() {
+        let mut sym = last;
+        if let Data::Spread { expr } = &sym.data {
+            sym = expr;
+        }
+        if let Data::DefaultAssign { left, .. } = &sym.data {
+            sym = left;
+        }
+        // Destructuring parameters stay: "they constitute a type assertion of sorts".
+        if matches!(sym.data, Data::Destructuring { .. }) || def_id(table, sym).is_none_or(|id| in_use.contains(&id)) {
+            break;
+        }
+        params.pop();
+    }
+    if params.len() == args.len() {
+        return None;
+    }
+    Some(renode(func, Data::Func { kind: *kind, name: None, args: params, body: body.clone(), async_: *async_, generator: *generator }))
+}
+
+/// terser `AST_Scope.pinned()`: `uses_eval` (an `eval` read whose parent is a call) or
+/// `uses_with`, both set on every enclosing scope.
+fn lambda_pinned(body: &[N]) -> bool {
+    fn is_eval(n: &N) -> bool {
+        matches!(&n.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "eval")
+    }
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::With { .. } => true,
+            Data::Call { expr, args, .. } if is_eval(expr) || args.iter().any(is_eval) => true,
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c));
+                hit
+            }
+        }
+    }
+    body.iter().any(rec)
+}
+
+/// terser `uses_arguments`: `arguments` read in the lambda or in an arrow inside it.
+fn uses_arguments(body: &[N]) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" => true,
+            Data::Func { kind, .. } if !matches!(kind, ast::FuncKind::Arrow) => false,
+            Data::Class { .. } => false,
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c));
+                hit
+            }
+        }
+    }
+    body.iter().any(rec)
+}
+
+fn strict_body(body: &[N]) -> bool {
+    body.iter()
+        .map_while(|s| match &s.data {
+            Data::Directive { value, .. } => Some(value == "use strict"),
+            _ => None,
+        })
+        .any(|strict| strict)
 }
 
 /// `scan_ref_scoped` in drop-unused.js. `record_inits` is pass 1; pass 2 only marks refs.
