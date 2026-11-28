@@ -89,6 +89,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     }
                     crate::tighten::set_lambdas(lambdas);
                 }
+                crate::tighten::set_visible(visible_names(cx, foreign(cx)));
                 if let Some(table) = cx.syms.as_ref() {
                     let mut map = std::collections::HashMap::new();
                     for st in &stmts {
@@ -100,8 +101,14 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                         collect_lexical_targets(st, table, &mut lexical);
                     }
                     crate::tighten::set_lexical_targets(lexical);
+                    let mut declared = std::collections::HashMap::new();
+                    for st in &stmts {
+                        collect_declared_refs(st, table, &mut declared);
+                    }
+                    crate::tighten::set_declared_refs(declared);
                 } else {
                     crate::tighten::set_lexical_targets(Default::default());
+                    crate::tighten::set_declared_refs(Default::default());
                 }
                 let (next, changed) = crate::tighten::collapse_step(
                     stmts,
@@ -215,6 +222,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
     let shadowed = if foreign {
         let mut bound = Default::default();
         crate::tighten::bindings_deep(&me, &mut bound);
+        let outer = visible_names(cx, true).unwrap_or(outer);
         bound.retain(|n: &String| outer.contains(n));
         declared.extend(own);
         bound
@@ -223,6 +231,36 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
     };
     crate::tighten::set_foreign_shadow(shadowed);
     Some((locals, declared, in_fn, block))
+}
+
+/// terser `shadows`: the names `find_variable` reaches from `nearest_scope`
+/// (`compressor.find_scope()`), read from the symbol table: the definitions
+/// of every scope on the current ancestry, as `figure_out_scope` left them,
+/// and the names `flatten_fn` appended (`append_var`). A `let` / `const` in
+/// a nested block is not among them; neither are the globals. A lambda
+/// tightened from the reference that inlined it (`skip_self`) is not on
+/// terser's stack. `None` when the body's own scope is not in the table.
+fn visible_names(cx: &Cx, skip_self: bool) -> Option<std::collections::HashSet<String>> {
+    let table = cx.syms.as_ref()?;
+    let chain = &cx.parents[..cx.parents.len().saturating_sub(usize::from(skip_self))];
+    let nearest = chain.iter().rev().find(|p| {
+        matches!(
+            p.data,
+            Data::Func { .. } | Data::Toplevel { .. } | Data::Block { .. } | Data::StaticBlock { .. } | Data::Switch { .. } | Data::Catch { .. }
+        )
+    })?;
+    table.scope_of(nearest)?;
+    let mut out = std::collections::HashSet::new();
+    for p in chain {
+        let Some(id) = table.scope_of(p) else { continue };
+        if let Some(defs) = table.scope_defs.get(&id) {
+            out.extend(defs.iter().filter(|&&d| !table.defs[d].undeclared).map(|&d| table.defs[d].name.clone()));
+        }
+        if let Some(names) = cx.injected.borrow().get(&crate::ScopeKey::Index(id)) {
+            out.extend(names.iter().cloned());
+        }
+    }
+    Some(out)
 }
 
 /// This body is a lambda's `pre_tighten` (`Cx.foreign_lambda`).
@@ -1106,6 +1144,17 @@ fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::
         collect_lexical_targets(c, table, out);
         Rc::clone(c)
     });
+}
+
+/// terser `is_declared` of every reference here the symbol table knows.
+fn collect_declared_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, bool>) {
+    if let Data::Symbol { kind: ast::SymKind::Ref | ast::SymKind::Export, .. } = &n.data {
+        if let Some(id) = table.def_of(n) {
+            out.insert(crate::syms::ptr(n), !table.defs[id].undeclared);
+        }
+        return;
+    }
+    ast::walk_children(n, &mut |c| collect_declared_refs(c, table, out));
 }
 
 fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {

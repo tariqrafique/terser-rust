@@ -244,6 +244,41 @@ thread_local! {
     static LEXICAL_TARGETS: std::cell::RefCell<HashSet<usize>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// See `set_visible`.
+    static VISIBLE: std::cell::RefCell<Option<HashSet<String>>> = Default::default();
+    /// See `set_declared_refs`.
+    static DECLARED_REFS: std::cell::RefCell<HashMap<usize, bool>> = Default::default();
+}
+
+/// terser `AST_SymbolRef.is_declared` for the references the symbol table
+/// knows, by node: `false` for a global. The name sets answer for the others.
+pub(crate) fn set_declared_refs(map: HashMap<usize, bool>) {
+    DECLARED_REFS.with(|d| *d.borrow_mut() = map);
+}
+
+/// terser `get_lhs` `is_ref_of(lhs, AST_SymbolLet)` (and `Const`, `Using`) by
+/// name, for a target the symbol table does not know: `block_names` holds
+/// every `let` / `const` here and in nested blocks and functions. A target
+/// the table knows is answered by its definition (`lexical_target`).
+fn lexical_by_name(n: &N, name: &str, block_names: &HashSet<String>) -> bool {
+    block_names.contains(name) && !DECLARED_REFS.with(|d| d.borrow().contains_key(&ptr(n)))
+}
+
+/// Whether the reference `n` (named `name`) is declared: its definition when
+/// the table has one, else a binding of the name in `declared`. An empty set
+/// is `lhs_bad`'s query with no bindings at all and stays by name.
+fn is_declared(n: &N, name: &str, declared: &HashSet<String>) -> bool {
+    if declared.is_empty() {
+        return false;
+    }
+    DECLARED_REFS.with(|d| d.borrow().get(&ptr(n)).copied()).unwrap_or_else(|| declared.contains(name))
+}
+
+/// Names `find_variable` reaches from the scope being collapsed (terser
+/// `shadows`' `nearest_scope` and its `parent_scope` chain), from the symbol
+/// table. `None` without one: the name sets stand in.
+pub(crate) fn set_visible(set: Option<HashSet<String>>) {
+    VISIBLE.with(|d| *d.borrow_mut() = set);
 }
 
 pub(crate) fn set_injected(map: HashMap<String, usize>) {
@@ -555,7 +590,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // terser `get_lhs` takes any declared symbol (a free one has
                         // side effects and is skipped).
                         let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
-                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || env.declared.contains(name) || injected) {
+                        if !lexical_by_name(left, name, block_names) && !read_only && !lexical_target(left) && (env.locals.contains(name) || is_declared(left, name, env.declared) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -679,7 +714,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
             }
             Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
                 if let Some(name) = ref_name(expr) {
-                    if !block_names.contains(name) && !lexical_target(expr) && env.locals.contains(name) {
+                    if !lexical_by_name(expr, name, block_names) && !lexical_target(expr) && env.locals.contains(name) {
                         out.push(Cand {
                             path: path.clone(),
                             kind: if *prefix { Kind::Pre } else { Kind::Post },
@@ -887,9 +922,18 @@ fn apply_candidate(
         block_only: env.block_only,
         // terser `lvalues.set(lhs.name, ...)` replaces an inner name equal to
         // the lhs with the lhs's own definition, so that one never shadows.
-        inner_shadow: inner_lvalue_names(&cand.value)
-            .iter()
-            .any(|n| *n != cand.name && (env.declared.contains(n) || env.locals.contains(n))),
+        // A name bound inside the value has that inner definition, so any
+        // definition `find_variable` reaches from here is another one.
+        inner_shadow: VISIBLE.with(|v| {
+            let v = v.borrow();
+            inner_lvalue_names(&cand.value).iter().any(|n| {
+                *n != cand.name
+                    && match v.as_ref() {
+                        Some(visible) => visible.contains(n),
+                        None => env.declared.contains(n) || env.locals.contains(n),
+                    }
+            })
+        }),
     };
     scan_node(&stmts[index], &mut scan);
     if !scan.abort {
@@ -1105,7 +1149,7 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
         }
     }) || (!st.replace_all
         && ref_name(n).is_some_and(|name| {
-            !st.declared.contains(name) && !pure_global(name) && !(st.block_only && INJECTED.with(|i| i.borrow().contains_key(name)))
+            !is_declared(n, name, st.declared) && !pure_global(name) && !(st.block_only && INJECTED.with(|i| i.borrow().contains_key(name)))
         }))
 }
 
@@ -2000,7 +2044,7 @@ fn is_mangleable(value: &N, cand_name: &str, env: &Env<'_>) -> bool {
     let Some(name) = ref_name(value) else {
         return false;
     };
-    name != "arguments" && name != cand_name && env.declared.contains(name)
+    name != "arguments" && name != cand_name && is_declared(value, name, env.declared)
 }
 
 /// `(reads, writes, hidden)`. Writes are `a = …` / `a++` / `delete a`. Hidden refs sit in nested functions.
@@ -2305,7 +2349,7 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             kind: SymKind::Ref,
             name,
             ..
-        } => !locals.contains(name) && !pure_global(name),
+        } => !is_declared(n, name, locals) && !pure_global(name),
         Data::Unary { op, expr, .. } => {
             matches!(op.as_str(), "delete" | "++" | "--") || expr_effects(expr, locals)
         }
@@ -2347,6 +2391,20 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             }
         }
         Data::Chain { expr } => expr_effects(expr, locals),
+        // terser `AST_Class.has_side_effects`: `extends`, computed keys,
+        // static field values and static blocks.
+        Data::Class { extends, props, .. } => {
+            extends.as_ref().is_some_and(|e| expr_effects(e, locals))
+                || props.iter().any(|p| match &p.data {
+                    Data::StaticBlock { body } => body.iter().any(|s| node_effects(s, locals)),
+                    Data::Field { key, value, static_, .. } => {
+                        matches!(key, Key::Computed(k) if expr_effects(k, locals))
+                            || *static_ && value.as_ref().is_some_and(|v| expr_effects(v, locals))
+                    }
+                    Data::Prop { key, .. } => matches!(key, Key::Computed(k) if expr_effects(k, locals)),
+                    _ => true,
+                })
+        }
         _ => true,
     }
 }
@@ -2376,7 +2434,7 @@ fn node_effects(n: &N, declared: &HashSet<String>) -> bool {
         Data::Defs { defs, .. } => any(defs),
         Data::VarDef { value, .. } => value.is_some(),
         // `AST_SymbolExport` is an `AST_SymbolRef`.
-        Data::Symbol { kind: SymKind::Export, name, .. } => !declared.contains(name) && !pure_global(name),
+        Data::Symbol { kind: SymKind::Export, name, .. } => !is_declared(n, name, declared) && !pure_global(name),
         // `AST_SymbolDeclaration` and `AST_SymbolClassProperty`; the other
         // plain `AST_Symbol`s are `AST_Node` (true).
         Data::Symbol { kind, .. } if !matches!(
@@ -2410,7 +2468,7 @@ fn expr_may_throw(n: &N, locals: &HashSet<String>) -> bool {
             kind: SymKind::Ref,
             name,
             ..
-        } => !locals.contains(name) && !pure_global(name),
+        } => !is_declared(n, name, locals) && !pure_global(name),
         Data::Unary { op, expr, .. }
             if op == "typeof" && matches!(expr.data, Data::Symbol { .. }) =>
         {

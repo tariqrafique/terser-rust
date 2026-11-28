@@ -1220,6 +1220,14 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         out = map_children(&dropped, cx);
         set_parent(cx, &out);
     }
+    // terser `before`: a class is an `AST_Scope`, so its `drop_unused` runs
+    // after its optimize and drops an unread class-expression name then, not
+    // at the enclosing scope's `drop_unused`.
+    if cx.opts.unused && !cx.in_asm() && matches!(out.data, Data::Class { stmt: false, name: Some(_), .. }) {
+        if let Some(dropped) = cx.syms.as_ref().and_then(|t| drop_unused::drop_class_name(&out, t)) {
+            out = dropped;
+        }
+    }
     cx.set_optimized(&out);
     if same {
         mark_squeezed(cx, &out);

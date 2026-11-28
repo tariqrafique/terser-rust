@@ -810,6 +810,33 @@ fn is_arguments(n: &N) -> bool {
     matches!(&n.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments")
 }
 
+/// terser `drop_unused` run on a class expression itself (`AST_Class` is an
+/// `AST_Scope`, so `before` calls it after the class is optimized): its name
+/// goes when nothing in the class reads it. `None` when it stays.
+pub(crate) fn drop_class_name(n: &N, table: &SymTable) -> Option<N> {
+    let Data::Class { stmt: false, name: Some(nm), extends, props } = &n.data else { return None };
+    let read = match def_id(table, nm) {
+        Some(id) => props.iter().chain(extends.iter()).any(|p| name_read(std::slice::from_ref(p), &[], table, id)),
+        // An inlined declaration's copy has a new name node (`reduce_vars`
+        // `lambda_copy`); its references inside are still by that name.
+        None => {
+            let Data::Symbol { name, .. } = &nm.data else { return None };
+            let mut hit = false;
+            for p in props.iter().chain(extends.iter()) {
+                ast::walk(p, &mut |c| {
+                    hit |= matches!(&c.data, Data::Symbol { kind: SymKind::Ref, name: r, .. } if r == name);
+                    hit
+                });
+            }
+            hit
+        }
+    };
+    if read {
+        return None;
+    }
+    Some(n.rebuild(Data::Class { stmt: false, name: None, extends: extends.clone(), props: props.clone() }))
+}
+
 fn def_id(table: &SymTable, n: &N) -> Option<usize> {
     table.def_of(n)
 }

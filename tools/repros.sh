@@ -74,6 +74,19 @@ const gm=index=>n=>r[index];const getName=gm(2);export const x=n=>getName(n);'
 r R2d-top-block-const-blocks-flatten '{const m=g();h(m)}
 function rc(C,m){if(q(C))s(C,m);return C}
 export const x=rc(r,{t:1});'
+r R2e-const-in-dead-fn-blocks-collapse-after-flatten 'function isF(o){return typeof o==="function"}
+function sv(vm){const Ctor=vm.c;g(Ctor)}
+function rc(Ctor,m){if(isF(Ctor)){k(Ctor);s(Ctor,m)}return Ctor}
+class cB{}
+rd(cB);
+const x=rc(cB,{t:1})'
+r R2f-class-value-collapse-after-flatten 'function isF(o){return typeof o==="function"}
+function rc(Ctor,m){if(isF(Ctor)){k(Ctor);s(Ctor,m)}return Ctor}
+class cB{a(){}}
+rc(cB,{t:1});'
+r R2g-outer-flatten-vars-block-inner-flatten 'function ae(t,type,cb){t.addEventListener(type,cb)}
+function re(t,type,cb){t.removeEventListener(type,cb)}
+export function rp(elm,tok,l){ae(elm,tok,l);return()=>re(elm,tok,l)}'
 r R3a-switch-case-on-const-object 'const u={S:1};export function a(x){switch(x){case u.S:return 1;case u.Y:default:return 2}}'
 r R3b-dot-on-const-object-kept 'export function f(c){const al={h:c.h};if(c.a){if(al.h===L){}else if(al.h===R){}}return al}'
 r R4-host-of-flatten-not-inlined 'function rf(f,t){f.on(e=>t.d(e))}function mn(n){let m;rf(m,n)}function pm(r){const mr=n=>{const m=mn(n);g(m)};mr(r)}export function pt(){q.forEach(n=>pm(n))}'
