@@ -29,20 +29,20 @@ After the M3 and M4 fixes, none of the 299 triaged inputs (mangling off) uses a 
 
 | Id | Inputs | What |
 | --- | --- | --- |
-| C1 | 296 | A function that terser marks INLINED is still inlined by the port. terser `inline.js` around line 222 marks every enclosing function as inlined when it inlines a body that uses an outside name. A marked function is then never inlined itself (`all_refs_local`, `has_flag(fixed, INLINED)`). The port has `mark_inlined` / `inlined_scopes` in `reduce_vars.rs`, but the mark has no effect. Most engine regions trace back here: `sanitizeHtmlContent`, `patchShadowRootWithRestrictions`, `upgradeCallback`, `connectContext`, `scheduleRehydration`, `renderComponent`, `patchMirrorDomTree`, and others. |
+| C1 | 296 | Repros match after the flatten `is_constant_expression` fix (internationalizationLibrary work); whether the mark has a remaining gap is still open. A function that terser marks INLINED is still inlined by the port. terser `inline.js` around line 222 marks every enclosing function as inlined when it inlines a body that uses an outside name. A marked function is then never inlined itself (`all_refs_local`, `has_flag(fixed, INLINED)`). The port has `mark_inlined` / `inlined_scopes` in `reduce_vars.rs`, but the mark has no effect. Most engine regions trace back here: `sanitizeHtmlContent`, `patchShadowRootWithRestrictions`, `upgradeCallback`, `connectContext`, `scheduleRehydration`, `renderComponent`, `patchMirrorDomTree`, and others. |
 | C2 | 296 | Fixed (repros C2a–d match): destructured bindings were not declared in the compressor's symbol table, which blocked inlining of an argument (C2c, also a block holding only a destructuring `const` was never collapsed) and conditional assignments (C2d), and made `{insertStylesheet}` / `{stylesheet}` count as a second reference to a top-level function. The 296 inputs still fail on other clusters. |
-| C3 | 296 | An array constant is inlined into a `for…of`; terser keeps it. |
-| C4 | 296 | Negation shape: terser gives `!(s(a)\|\|c(a)&&c(b))`, the port `!s(a)&&(!c(a)\|\|!c(b))`. |
+| C3 | 296 | Fixed: An array constant is inlined into a `for…of`; terser keeps it. |
+| C4 | 296 | Fixed: Negation shape: terser gives `!(s(a)\|\|c(a)&&c(b))`, the port `!s(a)&&(!c(a)\|\|!c(b))`. |
 | C5 | 296 | No collapse into the arguments of an inlined function. |
 | C6 | 296 | The port loses the `!` before an inlined function call used as a statement. |
-| C7 | 296 | Template literal concatenation: terser folds ``a+`u ${p}. `+`See` `` into one template; the port does not. |
+| C7 | 296 | Fixed: Template literal concatenation: terser folds ``a+`u ${p}. `+`See` `` into one template; the port does not. |
 | C8 | 229 | Fixed (repro matches): flattening was blocked by a nested `let` with the same name as a top-level function. `free_ref_shadowed` now skips names declared inside the callee, and loops are block scopes in the binder. |
-| C9 | 91 | An empty `case` before `default` is not removed, so the switch is not turned into a conditional. |
-| C13 | 78 | A regex constant used once is not substituted. |
+| C9 | 91 | Fixed: An empty `case` before `default` is not removed, so the switch is not turned into a conditional. |
+| C13 | 78 | Fixed: A regex constant used once is not substituted. |
 | C10 | 56 | Hoisted vars from nested inlines come out in a different order: terser `var a,e`, the port `var e,a`. |
 | C11 | 56 | A sequence produced by inlining is not collapsed again: terser `(v=nd(v=o.h,1),H[v])`, the port `(v=o.h,v=nd(v,1),H[v])`. |
-| C14 | 49 | Collapse into the object of a member assignment: terser `C\|\|(C=ce(..),C.id=1)`, the port `C\|\|((C=ce(..)).id=1)`. |
+| C14 | 49 | Fixed: Collapse into the object of a member assignment: terser `C\|\|(C=ce(..),C.id=1)`, the port `C\|\|((C=ce(..)).id=1)`. |
 | C12 | 1 | Fixed: every nested block is collapsed. testUtils: `for(var key in from=Object(a[s]),from)`. |
-| C16 | 1 | purifyLib: an unused conditional's value is kept (`?arguments[0]:`). |
-| C15 | 6 | `singleChar=_step.value` is not collapsed (internationalizationLibrary). No small repro yet. |
+| C16 | 1 | Fixed: purifyLib: an unused conditional's value is kept (`?arguments[0]:`). |
+| C15 | 6 | Fixed: `singleChar=_step.value` is not collapsed (internationalizationLibrary). No small repro yet. |
 | C17 | 1 | wireServiceMocks: an inlined function containing a `const` is not flattened. No small repro yet. |
