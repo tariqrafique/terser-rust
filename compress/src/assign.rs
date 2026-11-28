@@ -97,7 +97,9 @@ fn drop_exit(n: &N, cx: &Cx) -> Option<N> {
     }
     let lambda = find_lambda(cx)?;
     let lambda_scope = *table.scope_of(lambda).as_ref()?;
-    if def.scope != lambda_scope {
+    // A plain `clone(true)` copy shares the scope index, but terser's `def.scope` is
+    // the function it was copied from.
+    if def.scope != lambda_scope || crate::body::copied_lambda(lambda, table) {
         return None;
     }
     // `for (let x)` is a block scope in terser. The binder keeps that `let` on the function.
