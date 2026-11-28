@@ -16,6 +16,8 @@ The failing lwc-rollup inputs grouped by cause. Each cluster has a small repro i
 
 In 23 failing inputs, the port's output uses a name it never declares. Examples: `ariaDescVal` (7 inputs), `v` (10), `dateFormat`, `date`, `last`.
 
+After the M3 and M4 fixes, none of the 299 triaged inputs (mangling off) uses a name that terser's output declares and the port's does not. This check does not catch C2a/b: there the name stays declared and the value or call is wrong.
+
 | Id | What | Inputs |
 | --- | --- | --- |
 | M2 | Fixed by the M3 fix (`x = v;` never walked `v`). A `const` used once is dropped but its read is kept. `const v=d.pop();x=v` becomes `d.pop();x=v`. The same happens inside `if`, `try` and a top-level block. | utilsPrivate, modal/alert/confirm/prompt, testUtils, formattedDateTime, probably the colorPicker `v` inputs |
