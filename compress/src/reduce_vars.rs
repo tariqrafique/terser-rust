@@ -474,32 +474,22 @@ fn walk(n: &N, tw: &mut Tw) {
                 tw.table.defs[id].fixed_null = false; tw.table.defs[id].fixed = None;
             }
         }
-        other => walk_children(other, tw),
+        _ => walk_children(n, tw),
     }
     tw.parents.pop();
 }
 
-fn walk_children(data: &Data, tw: &mut Tw) {
-    match data {
-        Data::Simple { body } | Data::Throw { value: body } | Data::Return { value: Some(body) } | Data::Dot { expr: body, .. } | Data::Await { expr: body } | Data::Spread { expr: body } | Data::Chain { expr: body } | Data::Unary { expr: body, .. } => {
-            walk(body, tw);
-        }
-        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => {
-            walk(left, tw);
-            walk(right, tw);
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => {
-            for e in exprs {
-                walk(e, tw);
-            }
-        }
+/// The visitors that `walk` leaves to its caller's match, then terser's `_walk` order for every
+/// node without a `def_reduce_vars` visitor.
+fn walk_children(n: &N, tw: &mut Tw) {
+    match &n.data {
+        // terser `reduce-vars.js` `AST_Call`: the callee, then the arguments (not `_walk`'s order).
         Data::Call { expr, args, .. } => {
             walk(expr, tw);
             for a in args {
                 walk(a, tw);
             }
         }
-        Data::If { .. } | Data::Cond { .. } | Data::Func { .. } | Data::Toplevel { .. } | Data::Block { .. } | Data::While { .. } | Data::Do { .. } | Data::For { .. } | Data::Try { .. } | Data::VarDef { .. } | Data::Symbol { .. } => {}
         Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
             // terser `reduce-vars.js` `AST_ForIn`: `suppress(this.init)` clears `fixed`.
             suppress(init, tw);
@@ -510,12 +500,6 @@ fn walk_children(data: &Data, tw: &mut Tw) {
             walk(body, tw);
             pop(tw);
             tw.in_loop = saved;
-        }
-        Data::Switch { expr, body } => {
-            walk(expr, tw);
-            for s in body {
-                walk(s, tw);
-            }
         }
         Data::Case { expr, body } => {
             // terser `reduce-vars.js` `AST_Case`: the test and the body are separate safe frames.
@@ -537,12 +521,6 @@ fn walk_children(data: &Data, tw: &mut Tw) {
             }
             pop(tw);
         }
-        Data::StaticBlock { body } => {
-            for s in body {
-                walk(s, tw);
-            }
-        }
-        Data::Catch { body, .. } | Data::Finally { body } => walk(body, tw),
         Data::Labeled { body, .. } => {
             let skips = contains_break(body);
             if skips {
@@ -552,61 +530,6 @@ fn walk_children(data: &Data, tw: &mut Tw) {
             if skips {
                 tw.conditional_var -= 1;
             }
-        }
-        Data::Object { props } => {
-            for p in props {
-                walk(p, tw);
-            }
-        }
-        Data::Prop { key, value, .. } => {
-            if let Key::Computed(k) = key {
-                walk(k, tw);
-            }
-            walk(value, tw);
-        }
-        Data::Field { key, value, .. } => {
-            if let Key::Computed(k) = key {
-                walk(k, tw);
-            }
-            if let Some(v) = value {
-                walk(v, tw);
-            }
-        }
-        Data::Sub { expr, prop, .. } => {
-            walk(expr, tw);
-            walk(prop, tw);
-        }
-        Data::Template { segments } => {
-            for seg in segments {
-                if let ast::Seg::Expr(e) = seg {
-                    walk(e, tw);
-                }
-            }
-        }
-        Data::TaggedTemplate { tag, template } => {
-            walk(tag, tw);
-            walk(template, tw);
-        }
-        Data::Yield { expr: Some(e), .. } => walk(e, tw),
-        Data::DynImport { args, .. } => {
-            for a in args {
-                walk(a, tw);
-            }
-        }
-        Data::PrivateIn { value, .. } => walk(value, tw),
-        // A default value or nested pattern in a parameter or destructuring.
-        Data::DefaultAssign { left, right } => {
-            walk(left, tw);
-            walk(right, tw);
-        }
-        Data::Destructuring { names, .. } => {
-            for name in names {
-                walk(name, tw);
-            }
-        }
-        Data::With { expr, body } => {
-            walk(expr, tw);
-            walk(body, tw);
         }
         Data::Export { value, definition, names, module_name, .. } => {
             if let Some(v) = value {
@@ -626,20 +549,7 @@ fn walk_children(data: &Data, tw: &mut Tw) {
                 }
             }
         }
-        Data::Class { extends, props, .. } => {
-            if let Some(extends) = extends {
-                walk(extends, tw);
-            }
-            for p in props {
-                walk(p, tw);
-            }
-        }
-        Data::Defs { defs, .. } => {
-            for d in defs {
-                walk(d, tw);
-            }
-        }
-        _ => {}
+        _ => ast::walk_children(n, &mut |c| walk(c, tw)),
     }
 }
 
