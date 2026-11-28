@@ -1422,7 +1422,7 @@ fn retain_top(at: &At, func: &N) -> bool {
     sym_str(name).as_deref() == Some(keep)
 }
 
-pub(crate) fn scope_is_inlined(table: &SymTable, func: &N) -> bool {
+fn scope_is_inlined(table: &SymTable, func: &N) -> bool {
     table.scope_lookup(&syms::ptr(func)).is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
 }
 
@@ -1581,6 +1581,11 @@ enum CExpr {
     Yes,
     /// terser `is_constant_expression` result `"f"`: free refs resolve in the target scope.
     Free,
+}
+
+/// terser `fn.is_constant_expression(exp.scope)` for a lambda: `all_refs_local`.
+pub(crate) fn lambda_is_constant(func: &N, table: &SymTable, scope: Option<usize>) -> bool {
+    !matches!(all_refs_local(func, table, scope), CExpr::No)
 }
 
 fn const_expr_truthy(n: &N, table: &SymTable, scope: Option<usize>) -> bool {
