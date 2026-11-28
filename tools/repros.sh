@@ -62,4 +62,32 @@ function gi(d){ return d.h + d.m }
 export function n(v){ const r = pt(v); if (!r) return 0; return { i: gi(r) } }'
 r M4b-var-read-only-in-object-dropped 'export function n(v){ var r = g(v), d; return {i: (d=r,d.h)} }'
 r M2b-decl-dropped-in-block 'export function e(d){ if (d) { const v = d.pop(); x = v; } }'
+# Round 2 (compress/TRIAGE.md "Round 2")
+r R1-negation-size-in 'f(p=>!(p in H)&&!(p in A))'
+r R2a-block-let-blocks-collapse 'export function b(C){var _a;return _a=function(n){g(n)},_a.o=1,_a}
+{let n=1;h(n)}'
+r R2b-block-const-in-dead-fn-blocks-flatten 'function f(a){if(a){const m=g();h(m)}}
+function rc(C,m){if(q(C))s(C,m);return C}
+export const x=rc(r,{t:1});'
+r R2c-block-const-blocks-flatten-arrow 'function f(a){if(a){const index=a.i;g(index)}}
+const gm=index=>n=>r[index];const getName=gm(2);export const x=n=>getName(n);'
+r R2d-top-block-const-blocks-flatten '{const m=g();h(m)}
+function rc(C,m){if(q(C))s(C,m);return C}
+export const x=rc(r,{t:1});'
+r R3a-switch-case-on-const-object 'const u={S:1};export function a(x){switch(x){case u.S:return 1;case u.Y:default:return 2}}'
+r R3b-dot-on-const-object-kept 'export function f(c){const al={h:c.h};if(c.a){if(al.h===L){}else if(al.h===R){}}return al}'
+r R4-host-of-flatten-not-inlined 'function rf(f,t){f.on(e=>t.d(e))}function mn(n){let m;rf(m,n)}function pm(r){const mr=n=>{const m=mn(n);g(m)};mr(r)}export function pt(){q.forEach(n=>pm(n))}'
+r R5-const-string-inlined-into-copy 'const S="position: absolute; width: 1px";function pt(r){ge(r)}function ge(r){let e=M.get(r);if(!e){m.s("style",S)}}export function pq(){M.forEach((t,r)=>pt(r,t))}'
+r R6a-reoptimized-after-drop-unused 'export function s(){if(F){g()}else{const t=this}}'
+r R6b-reoptimized-then-flattened 'function ra(e,a){if(l){return}b.push(l);const m=b.join("")}export function mf(e,i){ra(e,i.f)}'
+r R6c-inlined-class-body-reoptimized 'class A{f(r){for(;;){const[n,{p}]=S;if(v){let m=g(r);if(m){const k=x(v);p(m,k,n)}}}}}const c=rc(A);'
+r R7a-hoist-props-symbol-values 'import l from "x";const i18n={a:l};export function b(){return i18n.a+i18n.a}'
+r R7b-hoist-props-param-values 'export function s(x,y){const p={x:x,y:y};x=p.x+1;y=p.y-1;g(x,y)}'
+r R8-or-chain-not-reassociated 'export function h(){if(a)return;if(!b)c?d:e()}'
+r R9-fn-not-inlined-into-constructor 'function tk(value){const tv=[..."Gy"];const tokens=[];let esc=false;[...value].forEach(char=>{const t=tv.indexOf(char)>=0?char:undefined;if(t!==undefined&&!esc){if(tokens.length>0){let l=tokens[0].length;l=l===undefined?1:l+1}}})}function ge(p,d,c){const tokens=tk(p);for(let i=0;i<tokens.length;i++){}}class D{constructor(o){this.expr=ge(this.p,this.d,this.c)}}export function g(o){cache.set(o,new D(o))}'
+r R10-recursive-local-defun-not-inlined 'export function e(el,t){function h(){el.r("m",h)}if(!t){el.a("m",h)}}'
+r R11-const-not-collapsed-in-copy 'function co({items:t,c:w}){const a=t.reduce((s,i)=>s+i.w,0);if(a<=w||w<=0){return{v:t}}for(let i=0;i<n;i++){const it=t[i];if(x.v===it.v){}else{}}}export function r(){const o=co({items:this.a})}'
+r R12-unused-arg-placeholder 'function pt(r){ge(r)}function ge(r){h()}export function pq(){m.forEach((t,r)=>pt(r,t))}'
+r R13-unused-class-prop-assign 'class A{}A.v=1;'
+r R14-void-const-not-collapsed 'function tk(v){let esc=false;v.forEach(c=>{if(!esc)h()})}function ge(p){const t=tk(p);g(t)}export function g(o){x=ge(o)}'
 echo "$same same, $diff differ"
