@@ -282,7 +282,7 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
             scan_ref_scoped(object, table, u, record_inits);
             scan_ref_scoped(body, table, u, record_inits);
         }
-        _ => descend(n, |c| scan_ref_scoped(c, table, u, record_inits)),
+        _ => ast::walk_children(n, &mut |c| scan_ref_scoped(c, table, u, record_inits)),
     }
 }
 
@@ -588,7 +588,7 @@ fn name_read(body: &[N], args: &[N], table: &SymTable, id: usize) -> bool {
             return true;
         }
         let mut hit = false;
-        descend(n, |c| hit = hit || rec(c, table, id));
+        ast::walk_children(n, &mut |c| hit = hit || rec(c, table, id));
         hit
     }
     body.iter().chain(args.iter()).any(|s| rec(s, table, id))
@@ -671,87 +671,7 @@ fn collect_var_defs_in(n: &N, table: &SymTable, out: &mut HashMap<usize, Vec<usi
                 }
             }
         }
-        _ => descend(n, |c| collect_var_defs_in(c, table, out, catch_names)),
-    }
-}
-
-fn descend(n: &N, mut f: impl FnMut(&N)) {
-    let one = |c: &N, f: &mut dyn FnMut(&N)| f(c);
-    match &n.data {
-        Data::Simple { body } | Data::Return { value: Some(body) } | Data::Throw { value: body }
-        | Data::Unary { expr: body, .. } | Data::Dot { expr: body, .. } | Data::Await { expr: body }
-        | Data::Spread { expr: body } | Data::Chain { expr: body } => one(body, &mut f),
-        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } | Data::DefaultAssign { left, right }
-        | Data::PrivateIn { key: left, value: right } => { f(left); f(right); }
-        Data::Call { expr, args, .. } => {
-            f(expr);
-            args.iter().for_each(|a| f(a));
-        }
-        Data::DynImport { args, .. } => args.iter().for_each(|a| f(a)),
-        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().for_each(|e| f(e)),
-        Data::Object { props } => props.iter().for_each(|p| f(p)),
-        Data::Prop { key, value, .. } => {
-            if let Key::Computed(e) = key { f(e); }
-            f(value);
-        }
-        Data::Field { key, value, .. } => {
-            if let Key::Computed(e) = key { f(e); }
-            if let Some(value) = value { f(value); }
-        }
-        Data::Class { extends, props, .. } => {
-            if let Some(extends) = extends { f(extends); }
-            props.iter().for_each(|p| f(p));
-        }
-        Data::If { cond, body, alt } => {
-            f(cond); f(body);
-            if let Some(alt) = alt { f(alt); }
-        }
-        Data::Cond { cond, cons, alt } => { f(cond); f(cons); f(alt); }
-        Data::For { init, cond, step, body } => {
-            if let Some(v) = init { f(v); }
-            if let Some(v) = cond { f(v); }
-            if let Some(v) = step { f(v); }
-            f(body);
-        }
-        Data::While { cond, body } | Data::Do { body, cond } => { f(cond); f(body); }
-        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => { f(init); f(object); f(body); }
-        Data::Switch { expr, body } => { f(expr); body.iter().for_each(|s| f(s)); }
-        Data::Case { expr, body } => { f(expr); body.iter().for_each(|s| f(s)); }
-        // Parameter defaults and computed keys are reads too.
-        Data::Func { args, body, .. } => {
-            args.iter().filter(|a| !matches!(a.data, Data::Symbol { .. })).for_each(|a| f(a));
-            body.iter().for_each(|s| f(s));
-        }
-        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => body.iter().for_each(|s| f(s)),
-        Data::Try { body, catch, finally } => {
-            f(body);
-            if let Some(c) = catch { f(c); }
-            if let Some(fnode) = finally { f(fnode); }
-        }
-        Data::Catch { arg, body } => {
-            if let Some(arg) = arg { f(arg); }
-            f(body);
-        }
-        Data::Labeled { body, .. } | Data::Finally { body } | Data::With { body, .. } => f(body),
-        Data::Defs { defs, .. } => defs.iter().for_each(|d| f(d)),
-        Data::VarDef { name, value } => {
-            // A destructuring pattern holds defaults and computed keys.
-            if !matches!(name.data, Data::Symbol { .. }) { f(name); }
-            if let Some(v) = value { f(v); }
-        }
-        Data::Destructuring { names, .. } => names.iter().for_each(|d| f(d)),
-        Data::Sub { expr, prop, .. } => { f(expr); f(prop); }
-        Data::Template { segments } => {
-            for seg in segments {
-                if let Seg::Expr(e) = seg { f(e); }
-            }
-        }
-        Data::TaggedTemplate { tag, template } => { f(tag); f(template); }
-        Data::Export { value, definition, .. } => {
-            if let Some(v) = value { f(v); }
-            if let Some(d) = definition { f(d); }
-        }
-        _ => {}
+        _ => ast::walk_children(n, &mut |c| collect_var_defs_in(c, table, out, catch_names)),
     }
 }
 
@@ -759,7 +679,7 @@ fn mark_names(n: &N, table: &SymTable, u: &mut Use) {
     if let Some(id) = def_id(table, n) {
         u.in_use.insert(id);
     }
-    descend(n, |c| mark_names(c, table, u));
+    ast::walk_children(n, &mut |c| mark_names(c, table, u));
 }
 
 fn mentions_arguments(stmts: &[N]) -> bool {
@@ -769,7 +689,7 @@ fn mentions_arguments(stmts: &[N]) -> bool {
             Data::Func { .. } => false,
             _ => {
                 let mut hit = false;
-                descend(n, |c| hit |= rec(c));
+                ast::walk_children(n, &mut |c| hit |= rec(c));
                 hit
             }
         }
@@ -785,7 +705,7 @@ fn contains_with(stmts: &[N]) -> bool {
             Data::Func { body, .. } => body.iter().any(rec),
             _ => {
                 let mut hit = false;
-                descend(n, |c| hit |= rec(c));
+                ast::walk_children(n, &mut |c| hit |= rec(c));
                 hit
             }
         }
