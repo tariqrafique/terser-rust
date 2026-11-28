@@ -1153,7 +1153,9 @@ fn contains_this(func: &N) -> bool {
 fn has_this(n: &N) -> bool {
     match &n.data {
         Data::This => true,
-        Data::Func { .. } => false,
+        // terser `contains_this`: an arrow is walked into, any other scope is not.
+        Data::Func { kind: FuncKind::Arrow, .. } => kids_any(&n.data, has_this, true),
+        Data::Func { .. } | Data::Class { .. } => false,
         other => kids_any(other, has_this, true),
     }
 }
