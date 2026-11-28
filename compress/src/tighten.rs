@@ -2167,9 +2167,11 @@ fn each_child(data: &Data, mut f: impl FnMut(&N)) {
     match data {
         Data::Block { body }
         | Data::Default { body }
-        | Data::Switch { body, .. }
-        | Data::Case { body, .. }
         | Data::StaticBlock { body } => body.iter().for_each(&mut f),
+        Data::Switch { expr, body } | Data::Case { expr, body } => {
+            f(expr);
+            body.iter().for_each(&mut f);
+        }
         Data::Simple { body }
         | Data::Throw { value: body }
         | Data::Unary { expr: body, .. }
@@ -2257,7 +2259,11 @@ fn each_child(data: &Data, mut f: impl FnMut(&N)) {
             }
             f(body);
         }
-        Data::Finally { body } | Data::Labeled { body, .. } | Data::With { body, .. } => f(body),
+        Data::Finally { body } | Data::Labeled { body, .. } => f(body),
+        Data::With { expr, body } => {
+            f(expr);
+            f(body);
+        }
         Data::Sub { expr, prop, .. } => {
             f(expr);
             f(prop);
