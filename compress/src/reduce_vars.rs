@@ -580,12 +580,22 @@ fn walk_children(data: &Data, tw: &mut Tw) {
             walk(expr, tw);
             walk(body, tw);
         }
-        Data::Export { value, definition, .. } => {
+        Data::Export { value, definition, names, module_name, .. } => {
             if let Some(v) = value {
                 walk(v, tw);
             }
             if let Some(d) = definition {
                 walk(d, tw);
+            }
+            // `AST_SymbolExport` is an `AST_SymbolRef`: `export { c }` is a
+            // reference to `c` (its own optimizer leaves it alone).
+            if let (Some(names), None) = (names, module_name) {
+                for m in names {
+                    let Data::NameMap { name, .. } = &m.data else { continue };
+                    if let Some(id) = tw.table.lookup(&syms::ptr(name)) {
+                        on_ref(tw, id, name);
+                    }
+                }
             }
         }
         Data::Class { extends, props, .. } => {
