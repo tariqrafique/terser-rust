@@ -29,7 +29,8 @@ Recent fixes fell into three classes, none of them missing optimizations:
 - [ ] Complete the compressor's binder (patterns, defaults, hoisted and injected names), then make collapse definition-based (`is_lhs_local`, `may_modify`, `shadows` by definition) and drop the name sets.
   - [x] Patterns, defaults, destructured catch parameters, imports, and loop / `switch` block scopes are declared (`syms.rs` `define_pattern`, `hoist` `Import`, the loop arm). Symbol-read purity, the `undefined` / `typeof` folds and the `unsafe` global folds ask the definition first (`Cx::declared_ref`); the name stack only answers for a node the table does not know. flatten's `scope_encloses_variables_in_this_scope` skips names declared inside the callee.
   - [ ] Injected names: a `var` `flatten_fn` adds is aliased to the parameter's definition, but the scope's name sets (`Cx.injected`, `INJECTED` in `tighten.rs`) are still by name.
-  - [ ] Collapse: still name based (`block_scoped_names`, `BLOCK_LETS`, `BLOCK_CANDS`, `scope_bindings`). `get_lhs`'s `is_ref_of(lhs, AST_SymbolLet)` should read the lhs's definition.
+  - [x] By definition: flatten's `conflicting_def` / `block_scope.variables`, collapse's inner-value `shadows` and `is_declared` read the table (`visible_names`, `DECLARED_REFS`), falling back to the name sets for nodes the table does not know.
+  - [ ] Collapse: still name based elsewhere (`block_scoped_names`, `BLOCK_LETS`, `BLOCK_CANDS`, `scope_bindings` for `locals` / `lhs_local`, `shadows` for outer lvalues). `get_lhs`'s `is_ref_of(lhs, AST_SymbolLet)` should read the lhs's definition.
 - [ ] Back to case-by-case parity, starting from the trace diff's first divergence on each failing lwc-rollup bundle.
 
 ## Rules
