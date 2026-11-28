@@ -1616,7 +1616,7 @@ fn is_nullish_node(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Null => true,
         Data::Unary { op, expr, prefix: true } if op == "void" => !has_side(expr, cx),
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.declared_ref(n, name),
         _ => false,
     }
 }
@@ -2230,7 +2230,7 @@ fn is_constant(n: &N) -> bool {
 fn is_undefined_value(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "void" && is_pure(expr) => true,
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.declared_ref(n, name) => true,
         _ => false,
     }
 }

@@ -263,7 +263,7 @@ fn maintain_this_binding(val: N, cx: &Cx) -> N {
 fn is_undefined(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "void" && !may_side_effect(expr, cx) => true,
-        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "undefined" && !cx.declared_ref(n, name) => true,
         _ => false,
     }
 }
