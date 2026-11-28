@@ -227,9 +227,6 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
         // expression puts `Name` on the class body only, so it does not count
         // as a use of an outer `var Name`.
         Data::Class { name, extends, props, stmt } => {
-            if let Some(extends) = extends {
-                walk(extends, scope, scopes, table);
-            }
             let id = push_block(scope, scopes);
             scopes[id].strict = true;
             table.bind_scope(n, id);
@@ -248,6 +245,11 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                         define(table, scopes, dest, sym_name, name, kind, init, false);
                     }
                 }
+            }
+            // terser `figure_out_scope`: a class is an `AST_Scope`, so `extends` is
+            // resolved from inside it (`sym.scope` is the class).
+            if let Some(extends) = extends {
+                walk(extends, id, scopes, table);
             }
             for prop in props {
                 walk(prop, id, scopes, table);

@@ -42,7 +42,11 @@ pub(crate) fn drop_unused_cx(root: &N, toplevel_vars: bool, toplevel_funcs: bool
     }
     let mut map: HashMap<usize, N> = HashMap::new();
     for v in &kept {
-        let r = crate::unary::drop_side_effect_free(v, cx, false).unwrap_or_else(|| num0(v));
+        let r = if matches!(v.data, Data::Class { stmt: true, .. }) {
+            crate::unary::drop_class_statement(v, cx).unwrap_or_else(|| node(v, Data::Empty))
+        } else {
+            crate::unary::drop_side_effect_free(v, cx, false).unwrap_or_else(|| num0(v))
+        };
         if !Rc::ptr_eq(&r, v) {
             map.insert(ptr(v), r);
         }
@@ -473,8 +477,17 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
         // drop-unused.js `scan_ref_scoped`: a function declaration's body is
         // walked only once its name is in use (an `initializations` entry).
         Data::Func { kind: ast::FuncKind::Decl, name: Some(nm), .. } | Data::Class { stmt: true, name: Some(nm), .. }
-            if record_inits && def_id(table, nm).is_some() && class_pure(n) =>
+            if record_inits && def_id(table, nm).is_some() =>
         {
+            // drop-unused.js pass 1: a class with side effects has its parts that run
+            // at definition time walked (all of it when it refers to itself).
+            if !class_pure(n, table) {
+                if class_self_referential(n, table) {
+                    ast::walk_children(n, &mut |c| scan_ref_scoped(c, table, u, record_inits));
+                } else {
+                    class_nondeferred_parts(n, &mut |c| scan_ref_scoped(c, table, u, record_inits));
+                }
+            }
             let id = def_id(table, nm).unwrap();
             u.inits.entry(id).or_default().push(Rc::clone(n));
         }
@@ -718,10 +731,21 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             }
         }
     }
-    // drop-unused.js: an unused `class` declaration goes when it has no side effects.
+    // drop-unused.js `AST_DefClass`: an unused class declaration is replaced by its
+    // `drop_side_effect_free` (finished by `drop_unused_cx`), after its own descend.
     if drop_funcs {
         if let Data::Class { stmt: true, name: Some(name), .. } = &n.data {
-            if class_pure(n) && owned(table, u, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
+            if owned(table, u, name, scope_id).is_some_and(|id| !u.in_use.contains(&id)) {
+                if class_pure(n, table) {
+                    return;
+                }
+                let kept = rewrite_expr(n, table, u, scope_id, drop_vars, true).unwrap_or_else(|| Rc::clone(n));
+                KEPT.with(|k| {
+                    if let Some(list) = k.borrow_mut().as_mut() {
+                        list.push(Rc::clone(&kept));
+                    }
+                });
+                out.push(kept);
                 return;
             }
         }
@@ -956,21 +980,90 @@ fn one(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_vars: boo
     }
 }
 
-/// A class whose definition runs no code: no `extends` with effects, no
-/// static block, computed key, or static initializer with effects.
-fn class_pure(n: &N) -> bool {
+/// `!AST_Class.has_side_effects`: no `extends` with effects, no static block,
+/// computed key, or static initializer with effects. A read of an undeclared
+/// name may throw (`AST_SymbolRef.has_side_effects`).
+fn class_pure(n: &N, table: &SymTable) -> bool {
     let Data::Class { extends, props, .. } = &n.data else { return true };
-    if extends.as_ref().is_some_and(has_side_effects) {
+    let effects = |e: &N| has_side_effects(e) || reads_undeclared(e, table);
+    if extends.as_ref().is_some_and(effects) {
         return false;
     }
     props.iter().all(|p| match &p.data {
         Data::StaticBlock { body } => body.is_empty(),
         Data::Field { key, value, static_, .. } => {
-            !matches!(key, Key::Computed(k) if has_side_effects(k)) && !(*static_ && value.as_ref().is_some_and(has_side_effects))
+            !matches!(key, Key::Computed(k) if effects(k)) && !(*static_ && value.as_ref().is_some_and(effects))
         }
-        Data::Prop { key: Key::Computed(k), .. } => !has_side_effects(k),
+        Data::Prop { key: Key::Computed(k), .. } => !effects(k),
         _ => true,
     })
+}
+
+/// A read, outside nested functions, of an undeclared global other than the ones
+/// terser's `pure_prop_access_globals` lets through.
+fn reads_undeclared(n: &N, table: &SymTable) -> bool {
+    match &n.data {
+        Data::Symbol { kind: SymKind::Ref, name, .. } => {
+            def_id(table, n).is_some_and(|id| table.defs[id].undeclared)
+                && !matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
+        }
+        Data::Func { .. } | Data::Class { .. } => false,
+        _ => {
+            let mut hit = false;
+            ast::walk_children(n, &mut |c| hit = hit || reads_undeclared(c, table));
+            hit
+        }
+    }
+}
+
+/// terser `AST_Class.visit_nondeferred_class_parts`: `extends`, static blocks,
+/// computed keys and static initializers.
+fn class_nondeferred_parts(n: &N, f: &mut dyn FnMut(&N)) {
+    let Data::Class { extends, props, .. } = &n.data else { return };
+    if let Some(e) = extends {
+        f(e);
+    }
+    for p in props {
+        match &p.data {
+            Data::StaticBlock { .. } => f(p),
+            Data::Field { key, value, static_, .. } => {
+                if let Key::Computed(k) = key {
+                    f(k);
+                }
+                if let (true, Some(v)) = (*static_, value) {
+                    f(v);
+                }
+            }
+            Data::Prop { key: Key::Computed(k), .. } => f(k),
+            _ => {}
+        }
+    }
+}
+
+/// terser `AST_Class.is_self_referential`: a part that runs at definition time reads
+/// the class name or the class's `this` (not inside a non-arrow function).
+fn class_self_referential(n: &N, table: &SymTable) -> bool {
+    fn rec(n: &N, table: &SymTable, this_id: Option<usize>, class_this: bool) -> bool {
+        match &n.data {
+            Data::This => class_this,
+            Data::Symbol { kind: SymKind::Ref, .. } => this_id.is_some() && def_id(table, n) == this_id,
+            Data::Func { kind, .. } if *kind != ast::FuncKind::Arrow => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c, table, this_id, false));
+                hit
+            }
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c, table, this_id, class_this));
+                hit
+            }
+        }
+    }
+    let Data::Class { name, .. } = &n.data else { return false };
+    let this_id = name.as_ref().and_then(|nm| def_id(table, nm));
+    let mut hit = false;
+    class_nondeferred_parts(n, &mut |c| hit = hit || rec(c, table, this_id, true));
+    hit
 }
 
 /// terser `maintain_this_binding(parent, node, assignee)` for an unused
