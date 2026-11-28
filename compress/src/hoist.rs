@@ -200,7 +200,7 @@ fn count_node(n: &N, count: &mut i32) {
     match &n.data {
         Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } => {}
         Data::Defs { kind: DefKind::Var, .. } => *count += 1,
-        other => each_child(other, |c| count_node(c, count)),
+        _ => ast::walk_children(n, &mut |c| count_node(c, count)),
     }
 }
 
@@ -255,7 +255,8 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
             plan.insert(id, mapped);
         }
     }
-    each_child_data(&n.data, &mut |c| collect_props(root, c, table, scope, toplevel_vars, top_retain, used, plan));
+    // terser's hoister is a TreeTransformer.
+    ast::transform_children(n, &mut |c| collect_props(root, c, table, scope, toplevel_vars, top_retain, used, plan));
 }
 
 fn uses_are_props(scope: &N, table: &SymTable, id: usize, keys: &HashSet<String>) -> bool {
@@ -276,7 +277,7 @@ fn uses_are_props(scope: &N, table: &SymTable, id: usize, keys: &HashSet<String>
             Data::Assign { left, .. } if prop_of(table, left, id) => *bad = true,
             Data::Unary { op, expr, .. } if matches!(op.as_str(), "++" | "--") && prop_of(table, expr, id) => *bad = true,
             Data::Symbol { kind: SymKind::Ref, .. } if is_ref_of(table, n, id) => *bad = true,
-            other => each_child_data(other, &mut |c| walk(c, table, id, keys, bad)),
+            _ => ast::walk_children(n, &mut |c| walk(c, table, id, keys, bad)),
         }
     }
     let mut bad = false;
@@ -287,9 +288,9 @@ fn uses_are_props(scope: &N, table: &SymTable, id: usize, keys: &HashSet<String>
 fn contains_this(n: &N) -> bool {
     match &n.data {
         Data::This => true,
-        other => {
+        _ => {
             let mut hit = false;
-            each_child_data(other, &mut |c| hit |= contains_this(c));
+            ast::walk_children(n, &mut |c| hit |= contains_this(c));
             hit
         }
     }
@@ -487,36 +488,6 @@ fn with_body(n: &N, body: Vec<N>) -> N {
 
 fn finish(span: &N, data: Data) -> N {
     Rc::new(Node { start: span.start.clone(), end: span.end.clone(), data })
-}
-
-fn each_child(data: &Data, mut f: impl FnMut(&N)) {
-    each_child_data(data, &mut f);
-}
-
-fn each_child_data(data: &Data, f: &mut dyn FnMut(&N)) {
-    match data {
-        Data::Toplevel { body } | Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } | Data::Func { body, .. } => body.iter().for_each(f),
-        Data::Simple { body } | Data::Throw { value: body } | Data::Unary { expr: body, .. } | Data::Dot { expr: body, .. } | Data::Await { expr: body } | Data::Spread { expr: body } | Data::Chain { expr: body } | Data::Return { value: Some(body) } => f(body),
-        Data::If { cond, body, alt } => { f(cond); f(body); if let Some(a) = alt { f(a) } }
-        Data::Binary { left, right, .. } | Data::Assign { left, right, .. } => { f(left); f(right) }
-        Data::Seq { exprs } | Data::Array { elements: exprs } | Data::Defs { defs: exprs, .. } => exprs.iter().for_each(f),
-        Data::VarDef { name, value } => { f(name); if let Some(v) = value { f(v) } }
-        Data::For { init, cond, step, body } => {
-            if let Some(v) = init { f(v) }
-            if let Some(v) = cond { f(v) }
-            if let Some(v) = step { f(v) }
-            f(body);
-        }
-        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => { f(init); f(object); f(body) }
-        Data::While { cond, body } | Data::Do { body, cond } => { f(cond); f(body) }
-        Data::Switch { expr, body } => { f(expr); body.iter().for_each(f) }
-        Data::Object { props } => props.iter().for_each(f),
-        Data::Prop { value, .. } => f(value),
-        Data::Call { expr, args, .. } => { f(expr); args.iter().for_each(f) }
-        Data::Cond { cond, cons, alt } => { f(cond); f(cons); f(alt) }
-        Data::Sub { expr, prop, .. } => { f(expr); f(prop) }
-        _ => {}
-    }
 }
 
 fn finish_children(n: &N, data: &Data, mut map: impl FnMut(&N, bool) -> N) -> N {
