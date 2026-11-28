@@ -534,7 +534,7 @@ fn optimize_switch(n: &N, cx: &Cx, depth: u8) -> Option<N> {
     let mut marker = default_id.or(exact_id);
 
     if arms_are_simple(&arms, marker) {
-        group_equivalent(&mut arms, marker);
+        group_equivalent(&mut arms, marker, cx);
     }
     merge_equivalent(&mut arms);
 
@@ -658,7 +658,7 @@ fn arms_are_simple(arms: &[Arm], marker: Option<u32>) -> bool {
     })
 }
 
-fn group_equivalent(arms: &mut Vec<Arm>, marker: Option<u32>) {
+fn group_equivalent(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     let _ = marker;
     let mut i = 0;
     while i < arms.len() {
@@ -680,7 +680,7 @@ fn group_equivalent(arms: &mut Vec<Arm>, marker: Option<u32>) {
                 let mut fall = 0usize;
                 while x > i + 1 {
                     x -= 1;
-                    if is_inert(&arms[x]) {
+                    if is_inert(&arms[x], cx) {
                         fall += 1;
                     } else {
                         break;
@@ -746,38 +746,42 @@ fn bodies_eq(branch: &[N], prev: &[N], span: &N, insert_break: bool) -> bool {
     codegen::print(&left) == codegen::print(&right)
 }
 
-fn is_inert(arm: &Arm) -> bool {
-    !list_aborts(&arm.body) && !block_side(&arm.body)
+/// terser `is_inert_body`: `!aborts(branch)` and the branch's statements as a block have no
+/// side effects.
+fn is_inert(arm: &Arm, cx: &Cx) -> bool {
+    !list_aborts(&arm.body) && !arm.body.iter().any(|s| stmt_has_side_effects(s, cx))
 }
 
-fn block_side(stmts: &[N]) -> bool {
-    stmts.iter().any(stmt_side)
-}
-
-fn stmt_side(n: &N) -> bool {
+/// terser `inference.js` `has_side_effects` on a statement; expressions go to
+/// `conditional::has_side_effects`.
+pub(crate) fn stmt_has_side_effects(n: &N, cx: &Cx) -> bool {
+    let any = |list: &[N]| list.iter().rev().any(|s| stmt_has_side_effects(s, cx));
     match &n.data {
-        Data::Empty | Data::Directive { .. } | Data::Func { .. } => false,
-        Data::Simple { body } => !eval::is_pure(body) && !pure_read(body),
-        Data::Block { body } | Data::Default { body } => block_side(body),
-        Data::Case { expr, body } => stmt_side_expr(expr) || block_side(body),
+        Data::Empty => false,
+        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => any(body),
+        Data::Catch { body, .. } | Data::Finally { body } => stmt_has_side_effects(body, cx),
+        Data::Simple { body } => has_side_effects(body, cx),
+        Data::Labeled { body, .. } => stmt_has_side_effects(body, cx),
+        Data::Switch { expr, body } => has_side_effects(expr, cx) || any(body),
+        Data::Case { expr, body } => has_side_effects(expr, cx) || any(body),
+        Data::Try { body, catch, finally } => {
+            stmt_has_side_effects(body, cx)
+                || catch.as_ref().is_some_and(|c| stmt_has_side_effects(c, cx))
+                || finally.as_ref().is_some_and(|f| stmt_has_side_effects(f, cx))
+        }
+        Data::If { cond, body, alt } => {
+            has_side_effects(cond, cx) || stmt_has_side_effects(body, cx) || alt.as_ref().is_some_and(|a| stmt_has_side_effects(a, cx))
+        }
+        // `AST_Lambda`: a function declaration has none.
+        Data::Func { .. } => false,
         Data::Defs { defs, .. } => defs.iter().any(|d| matches!(d.data, Data::VarDef { value: Some(_), .. })),
+        Data::Class { .. } => crate::unary::may_side_effect(n, cx),
         _ => true,
     }
 }
 
-fn stmt_side_expr(n: &N) -> bool {
-    !eval::is_pure(n) && !pure_read(n)
-}
-
-fn pure_read(n: &N) -> bool {
-    match &n.data {
-        Data::Symbol { .. } => true,
-        Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") => {
-            pure_read(expr) || eval::is_pure(expr)
-        }
-        Data::Binary { left, right, .. } => (pure_read(left) || eval::is_pure(left)) && (pure_read(right) || eval::is_pure(right)),
-        _ => false,
-    }
+fn has_side_effects(n: &N, cx: &Cx) -> bool {
+    crate::conditional::has_side_effects(n, cx)
 }
 
 fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<N>, cx: &Cx) {
@@ -788,7 +792,7 @@ fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<
     while i >= 0 {
         let idx = i as usize;
         pop_switch_breaks(&mut arms[idx].body, cx);
-        if !is_inert(&arms[idx]) {
+        if !is_inert(&arms[idx], cx) {
             break;
         }
         i -= 1;
@@ -802,7 +806,7 @@ fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<
         let arm = arms.pop().unwrap();
         if marker == &Some(arm.id) {
             *marker = None;
-        } else if arm.expr.as_ref().is_some_and(|e| stmt_side_expr(e)) {
+        } else if arm.expr.as_ref().is_some_and(|e| has_side_effects(e, cx)) {
             arms.push(arm);
             break;
         }
@@ -818,7 +822,7 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     let Some(default_index) = arms.iter().position(|a| a.id == mid) else { return };
     let last = arms.len() - 1;
     let mut default_body_index = default_index;
-    while default_body_index < last && is_inert(&arms[default_body_index]) {
+    while default_body_index < last && is_inert(&arms[default_body_index], cx) {
         default_body_index += 1;
     }
     if default_body_index < last {
@@ -827,7 +831,7 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     let mut side_effect_index = last as isize;
     while side_effect_index >= 0 {
         let arm = &arms[side_effect_index as usize];
-        if arm.id != mid && arm.expr.as_ref().is_some_and(|e| crate::unary::may_side_effect(e, cx)) {
+        if arm.id != mid && arm.expr.as_ref().is_some_and(|e| has_side_effects(e, cx)) {
             break;
         }
         side_effect_index -= 1;
@@ -836,7 +840,7 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
         return;
     }
     let mut prev_body_index = default_index as isize - 1;
-    while prev_body_index >= 0 && is_inert(&arms[prev_body_index as usize]) {
+    while prev_body_index >= 0 && is_inert(&arms[prev_body_index as usize], cx) {
         prev_body_index -= 1;
     }
     let before = (side_effect_index.max(prev_body_index) + 1) as usize;
@@ -877,7 +881,7 @@ fn fold_into_default(
     let Some(mi) = arms.iter().position(|a| a.id == mid) else {
         return None;
     };
-    let i = arms.iter().position(|a| !is_inert(a)).map(|p| p as isize).unwrap_or(-1);
+    let i = arms.iter().position(|a| !is_inert(a, cx)).map(|p| p as isize).unwrap_or(-1);
     let mut case_body: Option<N> = None;
     if i == arms.len() as isize - 1 {
         if nested_break(arms, n) {
@@ -889,7 +893,7 @@ fn fold_into_default(
     } else if i != -1 {
         return None;
     }
-    let side = arms.iter().any(|a| a.id != mid && a.expr.as_ref().is_some_and(|e| stmt_side_expr(e)));
+    let side = arms.iter().any(|a| a.id != mid && a.expr.as_ref().is_some_and(|e| has_side_effects(e, cx)));
     if !side {
         let mut stmts = std::mem::take(decl);
         stmts.push(eval::simple(n, Rc::clone(expr)));
