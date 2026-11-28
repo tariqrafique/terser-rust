@@ -977,9 +977,6 @@ fn apply_candidate(
         return None;
     }
     info.replaced = rw.hit;
-    if env.unused {
-        next = sweep_duplicate_vars(next);
-    }
     Some(next)
 }
 
@@ -1928,121 +1925,6 @@ fn maintain_this(parent: Option<&N>, slot: &N, value: &N) -> N {
             exprs: vec![num0(slot), Rc::clone(value)],
         },
     )
-}
-
-fn sweep_duplicate_vars(stmts: Vec<N>) -> Vec<N> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    let mut valued: HashSet<String> = HashSet::new();
-    fn tally(n: &N, counts: &mut HashMap<String, usize>, valued: &mut HashSet<String>) {
-        match &n.data {
-            Data::Func { .. } | Data::Class { .. } => {}
-            Data::Defs {
-                kind: DefKind::Var,
-                defs,
-                ..
-            } => {
-                for d in defs {
-                    if let Data::VarDef { name, value } = &d.data {
-                        if let Some(sym) = sym_name(name) {
-                            *counts.entry(sym.to_string()).or_insert(0) += 1;
-                            if value.is_some() {
-                                valued.insert(sym.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-            Data::Block { body }
-            | Data::Switch { body, .. }
-            | Data::Case { body, .. }
-            | Data::Default { body } => body.iter().for_each(|s| tally(s, counts, valued)),
-            Data::If { body, alt, .. } => {
-                tally(body, counts, valued);
-                if let Some(alt) = alt {
-                    tally(alt, counts, valued);
-                }
-            }
-            Data::For { init, body, .. } => {
-                if let Some(init) = init {
-                    tally(init, counts, valued);
-                }
-                tally(body, counts, valued);
-            }
-            Data::While { body, .. }
-            | Data::Do { body, .. }
-            | Data::Labeled { body, .. }
-            | Data::With { body, .. }
-            | Data::Finally { body }
-            | Data::Catch { body, .. } => {
-                tally(body, counts, valued);
-            }
-            Data::Try {
-                body,
-                catch,
-                finally,
-            } => {
-                tally(body, counts, valued);
-                if let Some(c) = catch {
-                    tally(c, counts, valued);
-                }
-                if let Some(f) = finally {
-                    tally(f, counts, valued);
-                }
-            }
-            _ => {}
-        }
-    }
-    for s in &stmts {
-        tally(s, &mut counts, &mut valued);
-    }
-    fn strip<'a>(n: &N, counts: &HashMap<String, usize>, valued: &HashSet<String>) -> Option<N> {
-        match &n.data {
-            Data::Defs {
-                kind: DefKind::Var,
-                defs,
-                await_,
-            } => {
-                let mut kept_empty = HashSet::new();
-                let defs: Vec<N> = defs
-                    .iter()
-                    .filter(|d| match &d.data {
-                        Data::VarDef { name, value: None } => {
-                            let Some(sym) = sym_name(name) else {
-                                return true;
-                            };
-                            if counts.get(sym).copied().unwrap_or(0) <= 1 {
-                                return true;
-                            }
-                            if valued.contains(sym) {
-                                return false;
-                            }
-                            // `var a, a` keeps one declaration.
-                            kept_empty.insert(sym.to_string())
-                        }
-                        _ => true,
-                    })
-                    .cloned()
-                    .collect();
-                if defs.is_empty() {
-                    None
-                } else {
-                    Some(renode(
-                        n,
-                        Data::Defs {
-                            kind: DefKind::Var,
-                            defs,
-                            await_: *await_,
-                        },
-                    ))
-                }
-            }
-            _ => Some(Rc::clone(n)),
-        }
-    }
-    stmts
-        .iter()
-        .filter_map(|s| strip(s, &counts, &valued))
-        .collect()
 }
 
 /// terser `mangleable_var`: the value is a declared symbol other than `arguments`.
