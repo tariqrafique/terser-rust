@@ -9,6 +9,7 @@ Goal: byte-exact terser 5.51.4 output, the lwc-rollup options first. The acorn/E
 - Compress default board 2362/2671, lwc 319/339, bundles 0/3.
 - lwc-rollup: 258 of 260 inputs under 200 KB match; 480 of 757 overall. Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
 - Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`, internationalizationLibrary, testUtils.
+- Trace diff, internationalizationLibrary: first divergence is `var singleChar=_step.value` (loop body inside `try`), which terser collapses into `codePoint=singleChar.codePointAt(0)` and the port aborts.
 
 ## Why a restructure
 
@@ -21,7 +22,7 @@ Recent fixes fell into three classes, none of them missing optimizations:
 ## Steps
 
 - [x] Commit the tools (`tools/`) and this plan.
-- [ ] Trace diff: log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
+- [x] Trace diff (`tools/trace-diff.sh`): log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
 - [ ] Canonical traversals: walk and transform child orders per node type, generated from terser's `ast.js` / `transform.js`, in `ast`; replace the hand-written walkers with them.
 - [ ] Stable node ids: an id in every node; rebuilding with new children keeps it (terser's in-place edit), `make_node` and `clone(true)` make new ones (`clone(true)` copies definitions). Side tables keyed by id; retire the identity work-arounds one by one.
 - [ ] Complete the compressor's binder (patterns, defaults, hoisted and injected names), then make collapse definition-based (`is_lhs_local`, `may_modify`, `shadows` by definition) and drop the name sets.
