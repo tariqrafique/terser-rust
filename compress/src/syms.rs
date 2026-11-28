@@ -81,6 +81,9 @@ pub struct SymTable {
     pub fixed_of_node: HashMap<usize, Vec<usize>>,
     /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
     pub inlined_scopes: RefCell<HashSet<usize>>,
+    /// Names `flatten_fn` added to a scope's `variables` (`append_var`), by
+    /// scope id. Their definitions stay the callee's.
+    pub injected_vars: RefCell<HashMap<usize, HashSet<String>>>,
 }
 
 struct Scope {
@@ -113,6 +116,7 @@ pub fn bind(root: &N) -> SymTable {
         alias: RefCell::new(HashMap::new()),
         alias_scope: RefCell::new(HashMap::new()),
         inlined_scopes: RefCell::new(HashSet::new()),
+        injected_vars: RefCell::new(HashMap::new()),
     };
     table.node_scope.insert(ptr(root), 0);
     if let Data::Toplevel { body } = &root.data {

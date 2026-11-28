@@ -372,6 +372,11 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     }
     if !declared.is_empty() {
         cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());
+        if inj.key & (1 << 60) != 0 {
+            if let Some(table) = cx.syms.as_ref() {
+                table.injected_vars.borrow_mut().entry(inj.key & !(1 << 60)).or_default().extend(declared.iter().cloned());
+            }
+        }
     }
     if !decls.is_empty() {
         let var = atom(func, Data::Defs { kind: ast::DefKind::Var, defs: decls, await_: false });

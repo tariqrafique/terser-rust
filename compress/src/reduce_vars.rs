@@ -1574,7 +1574,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
+        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) || injected_var(table, &nested, name) {
             return;
         }
         if find_var(table, nearest, name).is_some_and(|found| found != id) {
@@ -1594,6 +1594,16 @@ fn nested_scopes(func: &N, table: &SymTable) -> std::collections::HashSet<usize>
         }
     });
     nested
+}
+
+/// terser `this.variables.has(def.name)`: a name `flatten_fn` injected into
+/// the scope is one of its variables, though its definition is the callee's.
+/// A copy of such a scope inlined into `func` (its `t` refs keep the callee's
+/// definition) counts too: terser's `enclosed` of `func` is the one
+/// `figure_out_scope` computed, which never saw that definition.
+fn injected_var(table: &SymTable, scopes: &std::collections::HashSet<usize>, name: &str) -> bool {
+    let injected = table.injected_vars.borrow();
+    scopes.iter().any(|sc| injected.get(sc).is_some_and(|names| names.contains(name)))
 }
 
 fn defined_inside(table: &SymTable, def_id: usize, func_scope: usize) -> bool {
@@ -1706,7 +1716,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
         // Locals and names defined in a nested function are not free references.
-        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
+        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) || injected_var(table, &nested, name) {
             return;
         }
         match scope {
