@@ -536,7 +536,7 @@ fn same_def(a: &N, b: &N, cx: &Cx) -> bool {
     }
 }
 
-fn has_side_effects(n: &N, cx: &Cx) -> bool {
+pub(crate) fn has_side_effects(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }
@@ -840,7 +840,9 @@ fn left_edge(parent: &N, node: &N) -> bool {
 }
 
 fn node_size(n: &N, cx: &Cx) -> usize {
-    size_walk(n, &[], &cx.parents)
+    // terser `ast.size()` from `best_of` has no stack: the root has no parent.
+    let _ = cx;
+    size_walk(n, &[], &[])
 }
 
 fn size_walk(n: &N, walk: &[N], comp: &[N]) -> usize {

@@ -1263,6 +1263,11 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
         if let Some(next) = numeric_swap(&cur, cx) {
             cur = next;
         }
+        match bitwise_ops(&cur, cx) {
+            Some(Ok(done)) => return Some(done),
+            Some(Err(next)) => cur = next,
+            None => {}
+        }
     }
     if let Some(next) = reassoc_lazy(&cur) {
         cur = next;
@@ -1610,6 +1615,111 @@ fn plus_to_minus(n: &N, cx: &Cx) -> Option<N> {
         }
     }
     None
+}
+
+/// terser `def_optimize(AST_Binary)` "bitwise ops". `Ok` is a returned
+/// replacement, `Err` the rewritten node that the optimizer goes on with.
+fn bitwise_ops(n: &N, cx: &Cx) -> Option<Result<N, N>> {
+    use crate::unary::{bitwise_negate, in_32_bit_context_of, is_32_bit_integer};
+    let Data::Binary { op, .. } = &n.data else { return None };
+    if !matches!(op.as_str(), "<<" | ">>" | "&" | "|" | "^") {
+        return None;
+    }
+    let num_of = |x: &N| match eval(x) {
+        Some(Lit::Num(v)) => Some(v),
+        _ => None,
+    };
+    let mut cur = Rc::clone(n);
+    // De Morgan: z & (X | y) => z & X when y & z is 0, else z & X | (y & z).
+    if let Data::Binary { op, left, right } = &cur.data {
+        if op == "&" {
+            if let Data::Binary { op: rop, left: rl, right: rr } = &right.data {
+                if rop == "|" {
+                    if let Some(z) = num_of(left) {
+                        let found = match num_of(rr) {
+                            Some(y) => Some((y, rl, rr)),
+                            None => num_of(rl).map(|y| (y, rr, rl)),
+                        };
+                        if let Some((y, x_node, y_node)) = found {
+                            let yz = to_int32(y) & to_int32(z);
+                            let next = if yz == 0 {
+                                binary(&cur, "&", Rc::clone(left), Rc::clone(x_node))
+                            } else {
+                                let reordered = binary(
+                                    &cur,
+                                    "|",
+                                    binary(&cur, "&", Rc::clone(x_node), Rc::clone(left)),
+                                    num(y_node, yz as f64),
+                                );
+                                crate::conditional::best_of(cx, &cur, &reordered)
+                            };
+                            cur = next;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let Data::Binary { op, left, right } = &cur.data else {
+        return Some(Ok(cur));
+    };
+    let (mut op, mut left, right) = (op.clone(), Rc::clone(left), Rc::clone(right));
+    // x | x => 0 | x, x & x => 0 | x
+    if (op == "|" || op == "&")
+        && equivalent(&left, &right)
+        && !crate::conditional::has_side_effects(&left, cx)
+        && in_32_bit_context_of(cx, true)
+    {
+        left = num(&cur, 0.0);
+        op = "|".into();
+    }
+    // ~x ^ ~y => x ^ y
+    if op == "^" {
+        if let (Data::Unary { op: a, expr: x, prefix: true }, Data::Unary { op: b, expr: y, prefix: true }) = (&left.data, &right.data) {
+            if a == "~" && b == "~" {
+                let next = binary(&cur, "^", Rc::clone(x), Rc::clone(y));
+                return Some(Err(next));
+            }
+        }
+    }
+    // {anything} << 0 / >> 0 => {anything} | 0
+    let is_zero = |x: &N| matches!(x.data, Data::Number { value, .. } if value == 0.0);
+    if (op == "<<" || op == ">>") && is_zero(&right) {
+        op = "|".into();
+    }
+    let rebuilt = |op: &str, left: &N, right: &N| -> N {
+        if let Data::Binary { op: o, left: l, right: r } = &cur.data {
+            if o == op && Rc::ptr_eq(l, left) && Rc::ptr_eq(r, right) {
+                return Rc::clone(&cur);
+            }
+        }
+        binary(&cur, op, Rc::clone(left), Rc::clone(right))
+    };
+    let zero = if is_zero(&right) { Some((&right, &left)) } else if is_zero(&left) { Some((&left, &right)) } else { None };
+    if let Some((zero_side, other)) = zero {
+        if (op == "|" || op == "^") && (is_32_bit_integer(other, cx) || in_32_bit_context_of(cx, true)) {
+            return Some(Ok(Rc::clone(other)));
+        }
+        if op == "&" && !crate::conditional::has_side_effects(other, cx) && is_32_bit_integer(other, cx) {
+            return Some(Ok(Rc::clone(zero_side)));
+        }
+    }
+    let full_mask = |x: &N| match &x.data {
+        Data::Number { value, .. } => *value == -1.0,
+        Data::Unary { op, expr, prefix: true } => op == "-" && matches!(expr.data, Data::Number { value, .. } if value == 1.0),
+        _ => false,
+    };
+    let mask = if full_mask(&right) { Some(&left) } else if full_mask(&left) { Some(&right) } else { None };
+    if let Some(other) = mask {
+        if op == "&" && (is_32_bit_integer(other, cx) || in_32_bit_context_of(cx, true)) {
+            return Some(Ok(Rc::clone(other)));
+        }
+        if op == "^" && (is_32_bit_integer(other, cx) || in_32_bit_context_of(cx, true)) {
+            return Some(Ok(bitwise_negate(other, in_32_bit_context_of(cx, false), cx)));
+        }
+    }
+    let out = rebuilt(&op, &left, &right);
+    if Rc::ptr_eq(&out, n) { None } else { Some(Err(out)) }
 }
 
 /// terser `def_optimize(AST_Binary)` `a + +b => +b + a` (`best_of` on `+ * & | ^`).

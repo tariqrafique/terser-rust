@@ -309,14 +309,23 @@ fn bool_propagate(p: &N, self_n: &N) -> bool {
 }
 
 fn in_32_bit_context(cx: &Cx) -> bool {
+    in_32_bit_context_of(cx, false)
+}
+
+/// terser `Compressor.in_32_bit_context(other_operand_must_be_number)`.
+pub(crate) fn in_32_bit_context_of(cx: &Cx, other_number: bool) -> bool {
     if !cx.opts.evaluate || cx.parents.len() < 2 {
         return false;
     }
     let mut self_n = Rc::clone(cx.parents.last().unwrap());
     for i in (0..cx.parents.len() - 1).rev() {
         let p = &cx.parents[i];
-        if let Data::Binary { op, .. } = &p.data {
+        if let Data::Binary { op, left, right } = &p.data {
             if bitwise_binop(op) {
+                if other_number {
+                    let other = if Rc::ptr_eq(left, &self_n) { right } else { left };
+                    return is_number(other);
+                }
                 return true;
             }
         }
@@ -342,7 +351,7 @@ fn bitwise_binop(op: &str) -> bool {
     matches!(op, "<<" | ">>" | "&" | "|" | "^" | "<<<")
 }
 
-fn is_32_bit_integer(n: &N, cx: &Cx) -> bool {
+pub(crate) fn is_32_bit_integer(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Number { value, .. } => value.is_finite() && *value == (to_int32(*value) as f64),
         Data::Unary { op, expr, prefix: true } if op == "~" => is_number(expr),
@@ -352,7 +361,7 @@ fn is_32_bit_integer(n: &N, cx: &Cx) -> bool {
     }
 }
 
-fn bitwise_negate(node: &N, force_32: bool, cx: &Cx) -> N {
+pub(crate) fn bitwise_negate(node: &N, force_32: bool, cx: &Cx) -> N {
     if let Data::Number { value, .. } = &node.data {
         let neg = !to_int32(*value);
         let neg_s = codegen::js_number(neg as f64);
