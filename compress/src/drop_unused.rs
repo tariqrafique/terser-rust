@@ -749,7 +749,15 @@ fn has_side_effects(n: &N) -> bool {
         Data::Symbol { kind: SymKind::Ref, .. } => false,
         Data::Unary { op, expr, .. } if matches!(op.as_str(), "!" | "~" | "+" | "-" | "void" | "typeof") => has_side_effects(expr),
         Data::Binary { left, right, .. } => has_side_effects(left) || has_side_effects(right),
-        Data::Func { .. } | Data::Array { .. } | Data::Object { .. } => false,
+        Data::Func { .. } => false,
+        // An array or object literal runs its elements and property values.
+        Data::Array { elements } => elements.iter().any(|e| !matches!(e.data, Data::Hole) && has_side_effects(e)),
+        Data::Object { props } => props.iter().any(|p| match &p.data {
+            Data::Prop { key, value, method, .. } => {
+                matches!(key, Key::Computed(k) if has_side_effects(k)) || (method.is_none() && has_side_effects(value))
+            }
+            _ => true,
+        }),
         _ => true,
     }
 }
