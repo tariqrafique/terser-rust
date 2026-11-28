@@ -907,8 +907,8 @@ impl Cx {
                 return false;
             }
             let inside = match &node.data {
-                Data::For { init, .. } => !init.as_ref().is_some_and(|init| Rc::ptr_eq(init, child)),
-                Data::ForIn { object, .. } | Data::ForOf { object, .. } => !Rc::ptr_eq(object, child),
+                Data::For { init, .. } => !init.as_ref().is_some_and(|init| init.id() == child.id()),
+                Data::ForIn { object, .. } | Data::ForOf { object, .. } => object.id() != child.id(),
                 Data::While { .. } | Data::Do { .. } => true,
                 _ => false,
             };
@@ -962,7 +962,7 @@ impl Cx {
             return false;
         };
         self.parents.iter().rev().skip(1).any(|p| {
-            matches!(&p.data, Data::Prop { key: ast::Key::Computed(key), .. } if Rc::ptr_eq(key, self_node))
+            matches!(&p.data, Data::Prop { key: ast::Key::Computed(key), .. } if key.id() == self_node.id())
         })
     }
 
@@ -973,7 +973,7 @@ impl Cx {
         let Data::Call { expr, is_new: false, .. } = &parent.data else {
             return false;
         };
-        Rc::ptr_eq(expr, node) || self.parents.last().is_some_and(|top| Rc::ptr_eq(expr, top))
+        expr.id() == node.id() || self.parents.last().is_some_and(|top| expr.id() == top.id())
     }
 }
 
@@ -1146,6 +1146,8 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.keep_block = false;
     // The stack top is the once-rewritten node during the second descend so
     // `parent.left === self` sees updated children, then the original for `fold`.
+    // The parent checks compare ids, so a rebuilt child matches; a child the first
+    // descend replaced (a new id) is only in `once`, which is why the top is swapped.
     cx.stack.push(Rc::clone(n));
     let once = map_children(n, cx);
     *cx.stack.last_mut().unwrap() = Rc::clone(&once);

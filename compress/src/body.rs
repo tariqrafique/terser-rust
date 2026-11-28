@@ -155,7 +155,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
                     Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. } | Data::Class { .. } => break,
                     Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } => in_loop = true,
                     Data::Try { body, .. } => {
-                        if cx.parents.get(i + 1).is_some_and(|c| Rc::ptr_eq(c, body)) {
+                        if cx.parents.get(i + 1).is_some_and(|c| c.id() == body.id()) {
                             in_try = true;
                         }
                     }
@@ -571,7 +571,7 @@ fn can_merge_flow(ab: &N, stmts: &[N], i: usize, in_lambda: bool, self_n: Option
         Data::Return { value } => in_lambda && is_return_void(value),
         Data::Continue { .. } => {
             let Some(me) = self_n else { return false };
-            crate::loops::loop_target(ab, &cx.parents).is_some_and(|lct| Rc::ptr_eq(&loop_body(lct), me))
+            crate::loops::loop_target(ab, &cx.parents).is_some_and(|lct| loop_body(lct).id() == me.id())
         }
         Data::Break { .. } => {
             let Some(me) = self_n else { return false };

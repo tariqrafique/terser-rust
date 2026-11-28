@@ -1470,8 +1470,8 @@ fn maintain_this(cx: &Cx, val: N) -> N {
     let self_n = &cx.stack[len - 1];
     let parent = &cx.stack[len - 2];
     let needs = match &parent.data {
-        Data::Unary { op, expr, prefix: true } if op == "delete" && Rc::ptr_eq(expr, self_n) => true,
-        Data::Call { expr, .. } if Rc::ptr_eq(expr, self_n) => match &val.data {
+        Data::Unary { op, expr, prefix: true } if op == "delete" && expr.id() == self_n.id() => true,
+        Data::Call { expr, .. } if expr.id() == self_n.id() => match &val.data {
             Data::Chain { .. } | Data::Dot { .. } | Data::Sub { .. } => true,
             Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "eval" => true,
             _ => false,
@@ -1508,12 +1508,12 @@ fn in_boolean_context(cx: &Cx) -> bool {
 
 fn bool_producer(parent: &N, self_n: &N) -> bool {
     match &parent.data {
-        Data::Simple { body } => Rc::ptr_eq(body, self_n),
+        Data::Simple { body } => body.id() == self_n.id(),
         Data::Cond { cond, .. } | Data::Do { cond, .. } | Data::While { cond, .. } | Data::If { cond, .. } => {
-            Rc::ptr_eq(cond, self_n)
+            cond.id() == self_n.id()
         }
-        Data::For { cond: Some(cond), .. } => Rc::ptr_eq(cond, self_n),
-        Data::Unary { op, expr, prefix: true } if op == "!" => Rc::ptr_eq(expr, self_n),
+        Data::For { cond: Some(cond), .. } => cond.id() == self_n.id(),
+        Data::Unary { op, expr, prefix: true } if op == "!" => expr.id() == self_n.id(),
         _ => false,
     }
 }
@@ -1522,7 +1522,7 @@ fn bool_continues(parent: &N, self_n: &N) -> bool {
     match &parent.data {
         Data::Binary { op, .. } if op == "&&" || op == "||" => true,
         Data::Cond { .. } => true,
-        Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, self_n)),
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| e.id() == self_n.id()),
         _ => false,
     }
 }
@@ -1534,7 +1534,7 @@ fn left_of(cx: &Cx, op: &str) -> bool {
     }
     let self_n = &cx.stack[len - 1];
     match &cx.stack[len - 2].data {
-        Data::Binary { op: pop, left, .. } => pop == op && Rc::ptr_eq(left, self_n),
+        Data::Binary { op: pop, left, .. } => pop == op && left.id() == self_n.id(),
         _ => false,
     }
 }

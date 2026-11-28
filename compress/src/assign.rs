@@ -153,7 +153,7 @@ fn in_try(cx: &Cx, exit_index: usize, exit: &N, stop: &N) -> bool {
     while index > 0 {
         index -= 1;
         let parent = &cx.parents[index];
-        if Rc::ptr_eq(parent, stop) {
+        if parent.id() == stop.id() {
             return false;
         }
         if let Data::Try { catch, finally, .. } = &parent.data {

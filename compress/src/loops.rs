@@ -317,7 +317,7 @@ fn is_break_stmt(n: &N, cx: &Cx) -> bool {
     let Some(top) = cx.parents.last() else {
         return false;
     };
-    loop_target(n, &cx.parents).is_some_and(|t| Rc::ptr_eq(t, top))
+    loop_target(n, &cx.parents).is_some_and(|t| t.id() == top.id())
 }
 
 pub(crate) fn loop_target<'a>(jump: &N, stack: &'a [N]) -> Option<&'a N> {
@@ -983,7 +983,7 @@ fn walk_break(n: &N, stack: &mut Vec<N>, root: &N, found: &mut bool, direct: boo
     match &n.data {
         Data::Func { .. } | Data::Simple { .. } => return,
         Data::Break { .. } => {
-            if loop_target(n, stack).is_some_and(|t| Rc::ptr_eq(t, root)) {
+            if loop_target(n, stack).is_some_and(|t| t.id() == root.id()) {
                 let trailing = direct
                     && stack.last().is_some_and(|p| {
                         arm_last(p).is_some_and(|s| Rc::ptr_eq(s, n))
