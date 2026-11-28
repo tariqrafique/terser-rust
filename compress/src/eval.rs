@@ -2218,7 +2218,8 @@ pub(crate) fn is_constant(n: &N) -> bool {
         | Data::BigInt { .. }
         | Data::True
         | Data::False
-        | Data::Null => true,
+        | Data::Null
+        | Data::Infinity => true,
         Data::Unary { op, expr, prefix: true } => {
             matches!(op.as_str(), "!" | "~" | "-" | "+" | "void") && is_constant(expr)
         }

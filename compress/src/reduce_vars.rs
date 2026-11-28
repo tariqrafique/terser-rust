@@ -192,6 +192,14 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
                 let len = size(&node);
                 (node, len)
             }
+            // `make_node_from_constant`: `AST_Infinity`, under `-` when negative. The
+            // replacement is `OPTIMIZED`, so it prints as `Infinity`.
+            Lit::Num(num) if num.is_infinite() => {
+                let inf = span_node(&fixed, Data::Infinity);
+                let node = if num < 0.0 { span_node(&fixed, Data::Unary { op: "-".into(), expr: inf, prefix: true }) } else { inf };
+                let len = size(&node);
+                (node, len)
+            }
             Lit::Str(v) => {
                 let node = span_node(&fixed, Data::String { value: v, quote: '"', units: None });
                 let len = size(&node);

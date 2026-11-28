@@ -90,7 +90,9 @@ fn optimize_body(n: &N, cx: &Cx, active: &mut HashSet<usize>) -> N {
     }
 
     let mut operand = Rc::clone(expr);
-    if op == "-" && matches!(operand.data, Data::Infinity) {
+    // `e = e.transform(compressor)`: an `AST_Infinity` not yet optimized becomes `1/0`; an
+    // optimized one (an inlined constant) is returned as it is.
+    if op == "-" && matches!(operand.data, Data::Infinity) && !cx.is_squeezed(&operand) && !cx.is_optimized(&operand) {
         operand = eval::infinity(expr, false);
     }
 
