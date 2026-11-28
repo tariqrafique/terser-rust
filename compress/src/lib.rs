@@ -1159,7 +1159,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             trace::trace!("opt", t = trace::type_name(n), code = traced_in, out = traced_out);
         }
     }
-    let same = Rc::ptr_eq(&out, &twice);
+    // terser `opt === node`: a block that `tighten_body` reduced to its one
+    // statement returns that statement, a different node.
+    let same = Rc::ptr_eq(&out, &twice) && std::mem::discriminant(&out.data) == std::mem::discriminant(&n.data);
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
         // Nodes built by this optimize (a switch turned into `if`, then a comma
         // pulled into its condition) are already in their final shape. Terser
