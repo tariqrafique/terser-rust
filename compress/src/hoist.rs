@@ -282,8 +282,6 @@ fn uses_are_props(scope: &N, table: &SymTable, id: usize, keys: &HashSet<String>
             Data::Dot { expr, prop, .. } if is_ref_of(table, expr, id) => {
                 if !keys.contains(prop) { *bad = true }
             }
-            // `obj.prop.name` is a chain, not a plain property read.
-            Data::Dot { expr, .. } | Data::Sub { expr, .. } if prop_of(table, expr, id) => *bad = true,
             Data::Sub { expr, prop, .. } if is_ref_of(table, expr, id) => {
                 if !sub_key(prop).is_some_and(|k| keys.contains(&k)) {
                     *bad = true

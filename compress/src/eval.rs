@@ -1690,8 +1690,17 @@ fn reassoc_lazy(n: &N, cx: &Cx) -> Option<N> {
     if rop != op {
         return None;
     }
-    // The new left is `make_node(AST_Binary, ..)`, which `self.transform(compressor)`
-    // optimizes (`bar||(baz||baa)` is reassociated in turn); each round of the loop is
+    // keep: `self.left = make_node(..); self.right = ..; return self.transform(..)`
+    // (index.js 2925-2931). terser spans the new left on `self.left`, the port on `n`.
+    // From `transform`, the new left is left unoptimized and `transform` runs on the
+    // result: it optimizes the new left with `self` as its parent (no boolean negation,
+    // `left_of`), then `self` again, which reassociates the next level.
+    if cx.reassoc_at.get() == Some(n.id()) {
+        cx.retransform.set(true);
+        return Some(edit(n, Data::Binary { op: op.clone(), left: binary(n, op, Rc::clone(left), Rc::clone(rl)), right: Rc::clone(rr) }));
+    }
+    // Elsewhere (an optimizer's `make_node(..).optimize(compressor)`), the new left is
+    // optimized here, under the stack of `self`. Each round of the loop is
     // `self.transform`'s optimize of `self` again.
     let new_left = |l: N, r: N| {
         let made = binary(n, op, l, r);
@@ -1708,8 +1717,6 @@ fn reassoc_lazy(n: &N, cx: &Cx) -> Option<N> {
         cur_left = new_left(cur_left, Rc::clone(rl));
         cur_right = Rc::clone(rr);
     }
-    // keep: `self.left = make_node(..); self.right = ..; return self.transform(..)`
-    // (index.js 2925-2931). terser spans the new left on `self.left`, the port on `n`.
     Some(edit(n, Data::Binary { op: op.clone(), left: cur_left, right: cur_right }))
 }
 

@@ -595,6 +595,8 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
+        reassoc_at: std::cell::Cell::new(None),
+        retransform: std::cell::Cell::new(false),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(ast::IdSet::default()),
         foreign_lambda: None,
@@ -698,6 +700,11 @@ struct Cx {
     /// terser `flatten_fn` splices `var` declarations into the scope body after
     /// the statement holding the inlined call. Keyed by that statement's id.
     pending_vars: RefCell<Vec<(ast::NodeId, N)>>,
+    /// The node `transform` is folding. `x && (y && z)` reassociated there
+    /// (`eval.rs` `reassoc_lazy`) is `self.transform(compressor)` again (index.js 2931),
+    /// which needs `transform`'s stack: the fold sets `retransform` and `transform` runs.
+    reassoc_at: std::cell::Cell<Option<ast::NodeId>>,
+    retransform: std::cell::Cell<bool>,
     /// Name sets computed from an ancestor scope node while it is on the stack
     /// (its bindings, its free references). The node is kept so its address
     /// cannot be reused.
@@ -1174,7 +1181,17 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
         rep
     } else {
-        eval::fold(&twice, cx)
+        cx.reassoc_at.set(Some(twice.id()));
+        let folded = eval::fold(&twice, cx);
+        cx.reassoc_at.set(None);
+        if cx.retransform.replace(false) {
+            // terser `return self.transform(compressor)` from inside the optimizer: `self` is
+            // on the stack twice, the new left is descended into and optimized with `self`
+            // as its parent, and `self` is optimized again (`OPTIMIZED` is set after that).
+            transform(&folded, cx)
+        } else {
+            folded
+        }
     };
     // `index.js` `Compressor.before`: after `optimize`, a scope runs
     // `drop_unused` and descends once more. `use asm` skips `drop_unused`.
@@ -1227,6 +1244,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.opts.unused && !cx.in_asm() && matches!(out.data, Data::Class { stmt: false, name: Some(_), .. }) {
         if let Some(dropped) = cx.syms.as_ref().and_then(|t| drop_unused::drop_class_name(&out, t)) {
             out = dropped;
+        }
+    }
+    if cx.opts.unused && !cx.in_asm() {
+        if let Some(trimmed) = drop_unused::trim_class_iifes(&out) {
+            out = trimmed;
         }
     }
     cx.set_optimized(&out);
