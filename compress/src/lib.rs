@@ -724,6 +724,18 @@ impl Cx {
         self.locals.iter().any(|set| set.contains(name))
     }
 
+    /// terser `AST_SymbolRef.is_declared` (without `unsafe`): the reference's
+    /// definition when the symbol table has it, else a binding of the name
+    /// in scope.
+    fn declared_ref(&self, n: &N, name: &str) -> bool {
+        if let Some(table) = &self.syms {
+            if let Some(id) = table.lookup(&syms::ptr(n)) {
+                return !table.defs[id].undeclared;
+            }
+        }
+        self.shadowed(name)
+    }
+
     fn const_value(&self, name: &str) -> Option<&N> {
         for (locals, consts) in self.locals.iter().rev().zip(self.consts.iter().rev()) {
             if let Some(value) = consts.get(name) {

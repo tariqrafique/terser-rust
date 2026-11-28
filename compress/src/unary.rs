@@ -537,18 +537,7 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
     let Data::Symbol { name, kind: SymKind::Ref, .. } = &n.data else {
         return false;
     };
-    if cx.shadowed(name) {
-        return true;
-    }
-    if matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise") {
-        return true;
-    }
-    if let Some(table) = &cx.syms {
-        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
-            return table.defs.get(id).is_some_and(|d| !d.undeclared);
-        }
-    }
-    false
+    cx.declared_ref(n, name) || matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
 }
 
 /// terser `lib/compress/drop-side-effect-free.js` `AST_Node#drop_side_effect_free`.
