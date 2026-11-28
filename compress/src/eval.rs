@@ -16,12 +16,16 @@ pub(crate) enum Lit {
     Bool(bool),
     Null,
     Undef,
+    /// terser `def_eval(AST_BigInt)` `BigInt(this.value)`. A literal or result outside
+    /// `i128` is not evaluated.
+    BigInt(i128),
 }
 
 impl Lit {
     pub(crate) fn truthy(&self) -> bool {
         match self {
             Lit::Num(n) => *n != 0.0 && !n.is_nan(),
+            Lit::BigInt(n) => *n != 0,
             Lit::Str(s) => !s.is_empty(),
             Lit::Bool(b) => *b,
             Lit::Null | Lit::Undef => false,
@@ -34,10 +38,66 @@ impl Lit {
             (Lit::Num(a), Lit::Num(b)) => a == b,
             (Lit::Str(a), Lit::Str(b)) => a == b,
             (Lit::Bool(a), Lit::Bool(b)) => a == b,
+            (Lit::BigInt(a), Lit::BigInt(b)) => a == b,
             (Lit::Null, Lit::Null) | (Lit::Undef, Lit::Undef) => true,
             _ => false,
         }
     }
+}
+
+/// `BigInt(value)` of a literal's source digits (`10`, `0x1f`, `0o7`, `0b1`).
+fn parse_bigint(value: &str) -> Option<i128> {
+    let lower = value.to_ascii_lowercase();
+    let (digits, radix) = if let Some(d) = lower.strip_prefix("0x") {
+        (d, 16)
+    } else if let Some(d) = lower.strip_prefix("0o") {
+        (d, 8)
+    } else if let Some(d) = lower.strip_prefix("0b") {
+        (d, 2)
+    } else {
+        (lower.as_str(), 10)
+    };
+    if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+        return None;
+    }
+    i128::from_str_radix(digits, radix).ok()
+}
+
+/// terser `def_eval(AST_Binary)` on two bigints: `>>>`, `**`, and `/` or `%` by `0n`
+/// are not evaluated.
+fn eval_bigint_bin(op: &str, a: i128, b: i128) -> Option<Lit> {
+    Some(match op {
+        "+" => Lit::BigInt(a.checked_add(b)?),
+        "-" => Lit::BigInt(a.checked_sub(b)?),
+        "*" => Lit::BigInt(a.checked_mul(b)?),
+        "/" if b != 0 => Lit::BigInt(a.checked_div(b)?),
+        "%" if b != 0 => Lit::BigInt(a.checked_rem(b)?),
+        "|" => Lit::BigInt(a | b),
+        "&" => Lit::BigInt(a & b),
+        "^" => Lit::BigInt(a ^ b),
+        "<<" | ">>" => {
+            let left = (op == "<<") == (b >= 0);
+            let by = u32::try_from(b.unsigned_abs()).ok()?;
+            if left {
+                if a == 0 {
+                    Lit::BigInt(0)
+                } else if by >= 127 || (a << by) >> by != a {
+                    return None;
+                } else {
+                    Lit::BigInt(a << by)
+                }
+            } else {
+                Lit::BigInt(a >> by.min(127))
+            }
+        }
+        "==" | "===" => Lit::Bool(a == b),
+        "!=" | "!==" => Lit::Bool(a != b),
+        "<" => Lit::Bool(a < b),
+        "<=" => Lit::Bool(a <= b),
+        ">" => Lit::Bool(a > b),
+        ">=" => Lit::Bool(a >= b),
+        _ => return None,
+    })
 }
 
 /// terser `def_optimize` table. One arm per node type. A type that does not
@@ -349,6 +409,7 @@ fn lit_text(lit: &Lit) -> String {
         Lit::Bool(false) => "false".into(),
         Lit::Null => "null".into(),
         Lit::Undef => "undefined".into(),
+        Lit::BigInt(n) => n.to_string(),
     }
 }
 
@@ -628,6 +689,7 @@ pub(crate) fn known_truth(n: &N, cx: &Cx) -> Option<bool> {
             Data::Cond { cond, cons, alt } => pure(cond, cx) && pure(cons, cx) && pure(alt, cx),
             Data::Seq { exprs } => exprs.iter().all(|e| pure(e, cx)),
             Data::Array { elements } => elements.iter().all(|e| pure(e, cx)),
+            Data::BigInt { .. } => true,
             _ => is_pure(n),
         }
     }
@@ -1184,6 +1246,9 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
         if let Some(next) = numeric_swap(&cur, cx) {
             cur = next;
         }
+        if let Some(next) = reassociate(&cur, cx) {
+            cur = next;
+        }
         match bitwise_ops(&cur, cx) {
             Some(Ok(done)) => return Some(done),
             Some(Err(next)) => cur = next,
@@ -1670,6 +1735,63 @@ fn numeric_swap(n: &N, cx: &Cx) -> Option<N> {
         crate::size::best_of(first, n, &reversed)
     };
     if Rc::ptr_eq(&pick, n) { None } else { Some(pick) }
+}
+
+/// terser `def_optimize(AST_Binary)` `associative`: `+` and `*` with `unsafe_math`,
+/// `&`, `|` and `^` always, when the whole is a number. The new inner binaries are
+/// not optimized here; the second descend folds their constants.
+fn reassociate(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Binary { op, .. } = &n.data else {
+        return None;
+    };
+    let associative = match op.as_str() {
+        "+" | "*" => cx.opts.unsafe_math,
+        "&" | "|" | "^" => true,
+        _ => return None,
+    };
+    if !associative || !is_number_or_bigint(n) {
+        return None;
+    }
+    // `instanceof AST_Constant` (atoms included).
+    let constant = |x: &N| is_constant_node(x) || matches!(x.data, Data::Infinity | Data::Hole);
+    let same_op = |x: &N| matches!(&x.data, Data::Binary { op: o, .. } if o == op);
+    let parts = |x: &N| match &x.data {
+        Data::Binary { left, right, .. } => (Rc::clone(left), Rc::clone(right)),
+        _ => unreachable!(),
+    };
+    let mut cur = Rc::clone(n);
+    // a + (b + c) => (a + b) + c
+    {
+        let (left, right) = parts(&cur);
+        if same_op(&right) {
+            let (rl, rr) = parts(&right);
+            cur = binary(&cur, op, binary(&left, op, left.clone(), rl), rr);
+        }
+    }
+    // (n + 2) + 3 => 5 + n, (2 * n) * 3 => 6 * n
+    {
+        let (left, right) = parts(&cur);
+        if constant(&right) && same_op(&left) {
+            let (ll, lr) = parts(&left);
+            if constant(&ll) {
+                cur = binary(&cur, op, binary(&left, op, ll, right), lr);
+            } else if constant(&lr) {
+                cur = binary(&cur, op, binary(&left, op, lr, right), ll);
+            }
+        }
+    }
+    // (a | 1) | (2 | d) => (3 | a) | b
+    {
+        let (left, right) = parts(&cur);
+        if same_op(&left) && same_op(&right) {
+            let (ll, lr) = parts(&left);
+            let (rl, rr) = parts(&right);
+            if constant(&lr) && constant(&rl) {
+                cur = binary(&cur, op, binary(&left, op, binary(&ll, op, lr, rl), ll.clone()), rr);
+            }
+        }
+    }
+    if Rc::ptr_eq(&cur, n) { None } else { Some(cur) }
 }
 
 /// terser `def_optimize(AST_Binary)` `unsafe_comps` reversal of `<` / `<=`.
@@ -2793,6 +2915,7 @@ fn normalize_prop_key(lit: Lit) -> PropKey {
         Lit::Bool(b) => PropKey::Bool(b),
         Lit::Null => PropKey::Null,
         Lit::Undef => PropKey::Undef,
+        Lit::BigInt(n) => normalize_prop_key(Lit::Str(n.to_string())),
     }
 }
 
@@ -3399,8 +3522,18 @@ fn eval_in(n: &N, table: Option<&SymTable>) -> Option<Lit> {
         Data::False => Some(Lit::Bool(false)),
         Data::Null => Some(Lit::Null),
         Data::Infinity => Some(Lit::Num(f64::INFINITY)),
+        Data::BigInt { value } => parse_bigint(value).map(Lit::BigInt),
         Data::Unary { op, expr, prefix: true } => {
             let inner = eval_in(expr, table)?;
+            if let Lit::BigInt(v) = inner {
+                return match op.as_str() {
+                    "!" => Some(Lit::Bool(v == 0)),
+                    "void" => Some(Lit::Undef),
+                    "~" => Some(Lit::BigInt(!v)),
+                    "-" => v.checked_neg().map(Lit::BigInt),
+                    _ => None,
+                };
+            }
             match op.as_str() {
                 "!" => Some(Lit::Bool(!inner.truthy())),
                 "void" => Some(Lit::Undef),
@@ -3523,6 +3656,7 @@ impl Lit {
             Lit::Bool(false) => 0.0,
             Lit::Null => 0.0,
             Lit::Undef => f64::NAN,
+            Lit::BigInt(_) => return None,
             Lit::Str(s) => {
                 let t = s.trim();
                 if t.is_empty() {
@@ -3544,6 +3678,12 @@ fn neg(n: f64) -> Lit {
 }
 
 fn eval_bin(op: &str, l: Lit, r: Lit) -> Option<Lit> {
+    // "Do not mix BigInt and Number".
+    match (&l, &r) {
+        (Lit::BigInt(a), Lit::BigInt(b)) => return eval_bigint_bin(op, *a, *b),
+        (Lit::BigInt(_), _) | (_, Lit::BigInt(_)) => return None,
+        _ => {}
+    }
     if op == "+" {
         if matches!(l, Lit::Str(_)) || matches!(r, Lit::Str(_)) {
             return Some(Lit::Str(format!("{}{}", js_str(&l), js_str(&r))));
@@ -3622,6 +3762,7 @@ fn js_str(lit: &Lit) -> String {
         Lit::Bool(false) => "false".into(),
         Lit::Null => "null".into(),
         Lit::Undef => "undefined".into(),
+        Lit::BigInt(n) => n.to_string(),
     }
 }
 
@@ -3679,6 +3820,7 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
         Lit::Bool(false) => atom(orig, Data::False),
         Lit::Null => atom(orig, Data::Null),
         Lit::Undef => void0(orig),
+        Lit::BigInt(n) => atom(orig, Data::BigInt { value: n.to_string() }),
     }
 }
 
@@ -3793,6 +3935,15 @@ fn finish_constant(orig: &N, lit: Lit, cx: &Cx) -> Option<N> {
 }
 
 fn apply_unary(op: &str, inner: Lit) -> Option<Lit> {
+    if let Lit::BigInt(v) = inner {
+        return Some(match op {
+            "!" => Lit::Bool(v == 0),
+            "void" => Lit::Undef,
+            "~" => Lit::BigInt(!v),
+            "-" => Lit::BigInt(v.checked_neg()?),
+            _ => return None,
+        });
+    }
     Some(match op {
         "!" => Lit::Bool(!inner.truthy()),
         "void" => Lit::Undef,
@@ -3821,6 +3972,7 @@ fn eval_typeof(expr: &N, cx: &Cx) -> Option<Lit> {
         Lit::Bool(_) => "boolean",
         Lit::Null => "object",
         Lit::Undef => "undefined",
+        Lit::BigInt(_) => "bigint",
     }.into()))
 }
 
