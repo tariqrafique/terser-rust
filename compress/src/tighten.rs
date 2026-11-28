@@ -571,13 +571,21 @@ fn collapse_statements(mut stmts: Vec<N>, env: &Env<'_>) -> (Vec<N>, bool) {
     let mut changed = false;
     let mut guard = 0;
     let mut index = stmts.len();
+    // Trace: a candidate retried after a restart with the same outcome is not reported again
+    // (terser does not restart; it goes on to the earlier statements).
+    let mut traced: HashSet<String> = HashSet::new();
     while index > 0 && guard < 400 {
         index -= 1;
         // terser `extract_candidates`, then `candidates.pop()` so the last one runs first.
         let mut candidates = extract_candidates(&stmts[index], env, &block_names);
         let mut restarted = false;
         while let Some(cand) = candidates.pop() {
-            if let Some(next) = apply_candidate(&stmts, index, &cand, env, &escaped, &counts) {
+            let mut info = CandTrace::default();
+            let next = apply_candidate(&stmts, index, &cand, env, &escaped, &counts, &mut info);
+            if crate::trace::on() {
+                info.emit(&cand, next.is_some(), &mut traced);
+            }
+            if let Some(next) = next {
                 stmts = next;
                 counts = Counts::new(&stmts);
                 changed = true;
@@ -777,6 +785,39 @@ fn lhs_bad(n: &N) -> bool {
     }
 }
 
+/// What `apply_candidate` decided, for the `collapse` trace event (terser's
+/// `get_lhs` result, `abort`, `replaced`, `value_def`).
+#[derive(Default)]
+struct CandTrace {
+    /// Set when the candidate is dropped before its scan (terser `get_lhs` gives no lhs).
+    skip: Option<&'static str>,
+    /// Dropped before the scan for a reason of the port's own.
+    port_skip: Option<&'static str>,
+    abort: bool,
+    replaced: usize,
+    value_def: bool,
+}
+
+impl CandTrace {
+    fn emit(&self, cand: &Cand, applied: bool, seen: &mut HashSet<String>) {
+        let code = crate::trace::code(&cand.node);
+        let replaced = if applied { self.replaced } else { 0 };
+        if !applied {
+            let key = format!("{code}\u{0}{:?}{:?}{}", self.skip, self.port_skip, self.value_def);
+            if !seen.insert(key) {
+                return;
+            }
+        }
+        use crate::trace::trace;
+        match (self.skip, self.port_skip) {
+            (Some(why), _) => trace!("collapse", cand = code, ok = false, why = why),
+            (None, Some(why)) => trace!("collapse", cand = code, ok = true, abort = false, replaced = 0, value_def = self.value_def, why = why),
+            (None, None) => trace!("collapse", cand = code, ok = true, abort = self.abort, replaced = replaced, value_def = self.value_def),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn apply_candidate(
     stmts: &[N],
     index: usize,
@@ -784,6 +825,7 @@ fn apply_candidate(
     env: &Env<'_>,
     escaped: &HashSet<String>,
     counts: &Counts,
+    info: &mut CandTrace,
 ) -> Option<Vec<N>> {
     // In a nested block: the block's own `let` / `const`, or an assignment
     // to a function local that is moved (never dropped: reads after the
@@ -809,9 +851,11 @@ fn apply_candidate(
             if REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()) == Some(total))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
     if env.block_only && !block_assign && !block_var && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
+        info.port_skip = Some("block");
         return None;
     }
     if total == 0 {
+        info.skip = Some("no_lhs");
         return None;
     }
     let declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
@@ -823,6 +867,7 @@ fn apply_candidate(
             let stale = REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied());
             if let Some(referenced) = stale {
                 if referenced > total && referenced > 1 && !(declared <= 1 && is_mangleable(&cand.value, &cand.name, env)) {
+                    info.skip = Some("no_lhs");
                     return None;
                 }
             }
@@ -837,6 +882,7 @@ fn apply_candidate(
     if cand.kind == Kind::Var {
         let ok = (declared > 1) || if total > 1 { mangleable } else { !exposed };
         if !ok {
+            info.skip = Some("no_lhs");
             return None;
         }
     }
@@ -845,8 +891,10 @@ fn apply_candidate(
         Kind::Post | Kind::Pre => true,
         _ => expr_effects(&cand.value, env.declared),
     };
+    info.value_def = mangleable;
     // A value_def collapse that cannot see every reference is cancelled.
     if mangleable && hidden > 0 {
+        info.port_skip = Some("hidden_refs");
         return None;
     }
     // The assignment is the value's only use, and nothing else observes the write.
@@ -936,6 +984,7 @@ fn apply_candidate(
             scan_node(stmt, &mut scan);
         }
     }
+    info.abort = scan.abort;
     if scan.sites.is_empty() {
         return None;
     }
@@ -960,6 +1009,7 @@ fn apply_candidate(
     if rw.hit != sites.len() || !rw.saw_cand {
         return None;
     }
+    info.replaced = rw.hit;
     if env.unused {
         next = sweep_duplicate_vars(next);
     }
