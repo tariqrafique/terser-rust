@@ -26,6 +26,10 @@ pub(crate) fn drop_unused_cx(root: &N, toplevel_vars: bool, toplevel_funcs: bool
 }
 
 fn drop_unused_in(root: &N, toplevel_vars: bool, toplevel_funcs: bool, cx: Option<&crate::Cx>) -> N {
+    // `if (self.pinned()) return`: a direct `eval` or a `with` anywhere inside.
+    if pinned(root) {
+        return Rc::clone(root);
+    }
     let table = syms::bind(root);
     let saved = NESTED.with(|d| d.replace(0));
     let saved_root = ROOT.with(|r| r.replace(ptr(root)));
@@ -391,6 +395,25 @@ fn lambda_pinned(body: &[N]) -> bool {
         }
     }
     body.iter().any(rec)
+}
+
+/// terser `AST_Scope.pinned()` of `n`: `uses_with` or `uses_eval`, which a `with` or an
+/// `eval` reference whose parent is a call sets on every enclosing scope.
+fn pinned(n: &N) -> bool {
+    let is_eval = |n: &N| matches!(&n.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "eval");
+    let mut hit = false;
+    ast::walk(n, &mut |c| {
+        if hit {
+            return true;
+        }
+        hit = match &c.data {
+            Data::With { .. } => true,
+            Data::Call { expr, args, .. } => is_eval(expr) || args.iter().any(is_eval),
+            _ => false,
+        };
+        hit
+    });
+    hit
 }
 
 /// terser `uses_arguments`: `arguments` read in the lambda or in an arrow inside it.

@@ -329,7 +329,10 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             walk(body, scope, scopes, table);
         }
         Data::Call { expr, args, .. } => {
-            if sym(expr).as_deref() == Some("eval") && resolve(scopes, scope, "eval").is_none() {
+            // terser `scope.js`: an `eval` reference whose parent is a call (the callee
+            // or an argument) sets `uses_eval`, whatever `eval` resolves to.
+            let is_eval = |n: &N| matches!(&n.data, Data::Symbol { kind: SymKind::Ref, name, .. } if name == "eval");
+            if is_eval(expr) || args.iter().any(is_eval) {
                 pin_fn(table, scopes, scope);
             }
             // `AST_Call._walk`: the arguments, then the callee.
