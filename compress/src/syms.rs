@@ -55,10 +55,21 @@ pub struct SymbolDef {
     pub recursive_refs: u32,
     /// The `SymbolRef` nodes read or written, by id.
     pub references: Vec<NodeId>,
+    /// References a `clone(true, toplevel)` copy added during compress: terser
+    /// `figure_out_scope` on the copy pushes each of its outside references
+    /// onto the definition.
+    pub clone_refs: Cell<u32>,
     pub single_use: SingleUse,
     pub replaced: Cell<u32>,
     /// terser `SymbolDef.orig.length`. A parameter redeclared in the body is more than one.
     pub orig_count: u32,
+}
+
+impl SymbolDef {
+    /// terser `def.references.length`.
+    pub fn ref_count(&self) -> usize {
+        self.references.len() + self.clone_refs.get() as usize
+    }
 }
 
 pub struct SymTable {
@@ -81,6 +92,13 @@ pub struct SymTable {
     pub fixed_of_node: ast::IdMap<Vec<usize>>,
     /// terser `INLINED` on a scope after a cross-scope `"f"` inline.
     pub inlined_scopes: RefCell<HashSet<usize>>,
+    /// Names `flatten_fn` added to a scope's `variables` (`append_var`), by
+    /// scope id. Their definitions stay the callee's.
+    pub injected_vars: RefCell<HashMap<usize, HashSet<String>>>,
+    /// Name nodes of `var`s declared inside a block scope (a block, loop, `switch`,
+    /// `try` or `catch`): terser leaves their `sym.scope` on that block scope
+    /// (`figure_out_scope` only moves references to the defun scope).
+    pub block_vars: ast::IdSet,
 }
 
 struct Scope {
@@ -111,6 +129,8 @@ pub fn bind(root: &N) -> SymTable {
         scope_pinned: Vec::new(),
         fixed_of_node: ast::IdMap::default(),
         inlined_scopes: RefCell::new(HashSet::new()),
+        injected_vars: RefCell::new(HashMap::new()),
+        block_vars: ast::IdSet::default(),
     };
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
@@ -251,6 +271,9 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     continue;
                 };
                 define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
+                if dest != scope {
+                    table.block_vars.insert(name.id());
+                }
                 if let Some(value) = value {
                     walk(value, scope, scopes, table);
                 }
@@ -547,6 +570,7 @@ fn define(
         direct_access: false,
         recursive_refs: 0,
         references: Vec::new(),
+        clone_refs: Cell::new(0),
         single_use: SingleUse::No,
         replaced: Cell::new(0),
         orig_count: 1,
@@ -629,6 +653,7 @@ impl SymTable {
                     direct_access: false,
                     recursive_refs: 0,
                     references: Vec::new(),
+                    clone_refs: Cell::new(0),
                     single_use: SingleUse::No,
                     replaced: Cell::new(0),
                     orig_count: 0,
@@ -768,7 +793,7 @@ fn replaced_decl(def: &N, table: &SymTable) -> bool {
     let Data::VarDef { name, value } = &def.data else { return false };
     let Some(id) = table.def_of(name) else { return false };
     let d = &table.defs[id];
-    if d.references.is_empty() || d.replaced.get() < d.references.len() as u32 {
+    if d.ref_count() == 0 || (d.replaced.get() as usize) < d.ref_count() {
         return false;
     }
     if d.assignments > 0 || d.undeclared || d.exported || d.export_listed || (d.global && !DROP_GLOBALS.with(|g| g.get())) {

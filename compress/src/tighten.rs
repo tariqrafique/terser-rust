@@ -325,16 +325,24 @@ pub(crate) fn set_defuns(set: HashSet<String>) {
 
 /// `function` statement names in a body that nothing else declares there.
 pub(crate) fn defun_names(params: &[N], body: &[N]) -> (HashSet<String>, HashSet<String>) {
+    // `export function f` is an `AST_SymbolDefun` too.
+    fn defun(s: &N) -> Option<&N> {
+        match &s.data {
+            Data::Func { kind: ast::FuncKind::Decl, .. } => Some(s),
+            Data::Export { definition: Some(d), .. } if matches!(d.data, Data::Func { kind: ast::FuncKind::Decl, .. }) => Some(d),
+            _ => None,
+        }
+    }
     let mut defuns = HashSet::new();
     for s in body {
-        if let Data::Func { kind: ast::FuncKind::Decl, name: Some(nm), .. } = &s.data {
+        if let Some(Data::Func { name: Some(nm), .. }) = defun(s).map(|d| &d.data) {
             if let Some(n) = sym_name(nm) {
                 defuns.insert(n.to_string());
             }
         }
     }
     let mut others = HashSet::new();
-    let without: Vec<N> = body.iter().filter(|s| !matches!(s.data, Data::Func { kind: ast::FuncKind::Decl, .. })).cloned().collect();
+    let without: Vec<N> = body.iter().filter(|s| defun(s).is_none()).cloned().collect();
     let bound = scope_bindings(params, &without);
     for n in &defuns {
         if bound.contains(n) {

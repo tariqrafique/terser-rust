@@ -1257,6 +1257,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     mark_optimized(cx, &out);
     if same {
         mark_squeezed(cx, &out);
+    } else if !cx.squeezed.contains(&(Rc::as_ptr(&out) as usize)) {
+        // terser: a replacement is `OPTIMIZED` but not `SQUEEZED`, so a later
+        // descend (the one after the enclosing scope's `drop_unused`) still
+        // walks its children.
+        cx.fresh.borrow_mut().insert(Rc::as_ptr(&out) as usize, Rc::clone(&out));
     }
     cx.stack.pop();
     cx.leave(entered);
