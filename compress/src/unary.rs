@@ -645,14 +645,22 @@ fn drop_assign(n: &N, logical: bool, left: &N, right: &N, cx: &Cx, first: bool) 
 }
 
 /// terser `drop-side-effect-free.js` `AST_Class`.
+/// terser `drop_side_effect_free(AST_DefClass)`: the class's effects as a statement.
+pub(crate) fn drop_class_statement(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Class { stmt: true, name, extends, props } = &n.data else { return Some(Rc::clone(n)) };
+    let out = drop_class(n, name.as_ref(), extends.as_ref(), props, cx)?;
+    if Rc::ptr_eq(&out, n) {
+        return Some(out);
+    }
+    Some(atom(n, Data::Simple { body: out }))
+}
+
+/// terser `drop_side_effect_free(AST_Class)`.
 fn drop_class(n: &N, name: Option<&N>, extends: Option<&N>, props: &[N], cx: &Cx) -> Option<N> {
+    if class_self_referential(name, extends, props, cx) && may_side_effect(n, cx) {
+        return Some(Rc::clone(n));
+    }
     let mut effects = Vec::new();
-    // `is_self_referential() && has_side_effects()`: the class name read in a
-    // part that runs at definition time.
-    let self_name = name.and_then(|nm| match &nm.data {
-        Data::Symbol { name, .. } => Some(name.clone()),
-        _ => None,
-    });
     if let Some(e) = extends {
         if let Some(k) = drop_side_effect_free(e, cx, false) {
             push_flat(&mut effects, k);
@@ -660,12 +668,13 @@ fn drop_class(n: &N, name: Option<&N>, extends: Option<&N>, props: &[N], cx: &Cx
     }
     for p in props {
         match &p.data {
-            // `AST_ClassStaticBlock`: any body is treated as a side effect.
-            Data::StaticBlock { body } => {
-                if !body.is_empty() {
+            // `AST_ClassStaticBlock`: kept whole when it has side effects.
+            Data::StaticBlock { .. } => {
+                if prop_may_effect(p, cx) {
                     return Some(Rc::clone(n));
                 }
             }
+            // `AST_ClassProperty`: the computed key, then a static initializer.
             Data::Field { key, value, static_, .. } => {
                 if let ast::Key::Computed(k) = key {
                     if let Some(k) = drop_side_effect_free(k, cx, false) {
@@ -674,17 +683,13 @@ fn drop_class(n: &N, name: Option<&N>, extends: Option<&N>, props: &[N], cx: &Cx
                 }
                 if *static_ {
                     if let Some(v) = value {
-                        // A static initializer that reads the class through
-                        // `this` keeps the class (`is_self_referential`).
-                        if crate::eval::contains_this(v) {
-                            return Some(Rc::clone(n));
-                        }
                         if let Some(v) = drop_side_effect_free(v, cx, false) {
                             push_flat(&mut effects, v);
                         }
                     }
                 }
             }
+            // `AST_ConciseMethod` and the accessors: the computed key.
             Data::Prop { key: ast::Key::Computed(k), .. } => {
                 if let Some(k) = drop_side_effect_free(k, cx, false) {
                     push_flat(&mut effects, k);
@@ -693,32 +698,54 @@ fn drop_class(n: &N, name: Option<&N>, extends: Option<&N>, props: &[N], cx: &Cx
             _ => {}
         }
     }
-    if !effects.is_empty() {
-        if let Some(sn) = &self_name {
-            let reads_self = |v: &N| reads_name(v, sn);
-            let referential = extends.is_some_and(reads_self)
-                || props.iter().any(|p| match &p.data {
-                    Data::Field { key, value, static_, .. } => {
-                        matches!(key, ast::Key::Computed(k) if reads_self(k)) || (*static_ && value.as_ref().is_some_and(reads_self))
-                    }
-                    Data::Prop { key: ast::Key::Computed(k), .. } => reads_self(k),
-                    _ => false,
-                });
-            if referential {
-                return Some(Rc::clone(n));
-            }
-        }
-    }
     seq_from_parts(n, effects)
 }
 
-fn reads_name(n: &N, name: &str) -> bool {
-    if matches!(&n.data, Data::Symbol { name: got, kind: SymKind::Ref, .. } if got == name) {
-        return true;
+/// terser `AST_Class.is_self_referential`: a part run at definition time (`extends`,
+/// static blocks, computed keys, static initializers) reads the class name or the
+/// class's `this` (outside a non-arrow function).
+fn class_self_referential(name: Option<&N>, extends: Option<&N>, props: &[N], cx: &Cx) -> bool {
+    fn rec(n: &N, own: Option<(&str, Option<usize>)>, class_this: bool, cx: &Cx) -> bool {
+        match &n.data {
+            Data::This => return class_this,
+            Data::Symbol { kind: SymKind::Ref, name, .. } => {
+                return own.is_some_and(|(own_name, own_id)| match (own_id, cx.syms.as_ref().and_then(|t| t.def_of(n))) {
+                    (Some(a), Some(b)) => a == b,
+                    _ => name == own_name,
+                });
+            }
+            Data::Func { kind, .. } if *kind != FuncKind::Arrow => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c, own, false, cx));
+                return hit;
+            }
+            _ => {}
+        }
+        let mut hit = false;
+        ast::walk_children(n, &mut |c| hit = hit || rec(c, own, class_this, cx));
+        hit
     }
-    let mut hit = false;
-    ast::transform_children(n, &mut |c| hit = hit || reads_name(c, name));
-    hit
+    let own = name.and_then(|nm| match &nm.data {
+        Data::Symbol { name, .. } => Some((name.as_str(), cx.syms.as_ref().and_then(|t| t.def_of(nm)))),
+        _ => None,
+    });
+    let mut parts: Vec<&N> = extends.into_iter().collect();
+    for p in props {
+        match &p.data {
+            Data::StaticBlock { .. } => parts.push(p),
+            Data::Field { key, value, static_, .. } => {
+                if let ast::Key::Computed(k) = key {
+                    parts.push(k);
+                }
+                if let (true, Some(v)) = (*static_, value) {
+                    parts.push(v);
+                }
+            }
+            Data::Prop { key: ast::Key::Computed(k), .. } => parts.push(k),
+            _ => {}
+        }
+    }
+    parts.into_iter().any(|p| rec(p, own, true, cx))
 }
 
 /// terser `drop_side_effect_free(AST_Call)`. A pure annotation keeps argument

@@ -610,7 +610,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     }
     // terser `size.js`: a mangleable symbol is one character when mangle options exist.
     if let Some(mangle_toplevel) = mangle {
-        let table = syms::bind(root);
+        let table = syms::bind_strict(root, module);
         let mut set = ast::IdSet::default();
         for (nid, id) in table.node_def.borrow().iter() {
             let d = &table.defs[*id];
@@ -626,7 +626,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         eval::set_known_symbols(ast::IdSet::default(), false);
     }
     if reduce_vars_on {
-        let mut table = syms::bind(root);
+        let mut table = syms::bind_strict(root, module);
         reduce_vars::analyze(
             &mut table,
             root,
@@ -642,7 +642,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     };
     let _ = collapse_vars;
     check_ids("transform", &out);
-    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs) } else { out };
+    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs, module) } else { out };
     check_ids("drop_unused", &out);
     out
 }
@@ -1456,6 +1456,11 @@ fn optimize(n: &N, ptr: usize, cx: &Cx) -> Option<N> {
     match &n.data {
         Data::Debugger if cx.opts.drop_debugger => Some(empty(n)),
         Data::Directive { value, .. } if cx.opts.directives && cx.drop_directive(value, ptr) => Some(empty(n)),
+        // terser `def_optimize(AST_Class)`: empty static blocks are removed.
+        Data::Class { stmt, name, extends, props } if props.iter().any(|p| matches!(&p.data, Data::StaticBlock { body } if body.is_empty())) => {
+            let props = props.iter().filter(|p| !matches!(&p.data, Data::StaticBlock { body } if body.is_empty())).cloned().collect();
+            Some(n.rebuild(Data::Class { stmt: *stmt, name: name.clone(), extends: extends.clone(), props }))
+        }
         _ => None,
     }
 }
@@ -1588,7 +1593,14 @@ fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
             if !cx.keep_block && next.is_empty() {
                 return empty(&n);
             }
-            if !cx.keep_block && next.len() == 1 && can_evict(&next[0]) {
+            // terser `def_optimize(AST_BlockStatement)`: outside strict mode an `if` branch
+            // also gives up its block for a function declaration (`can_be_extracted_from_if_block`).
+            let from_if = || {
+                cx.lookup("use strict").is_none()
+                    && matches!(cx.parent().map(|p| &p.data), Some(Data::If { .. }))
+                    && !matches!(next[0].data, Data::Class { .. } | Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, .. })
+            };
+            if !cx.keep_block && next.len() == 1 && (from_if() || can_evict(&next[0])) {
                 return Rc::clone(&next[0]);
             }
             if same_stmts(body, &next) {
