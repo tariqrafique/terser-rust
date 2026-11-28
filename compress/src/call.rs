@@ -118,7 +118,7 @@ fn fixed_lambda(expr: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     let table = cx.syms.as_ref()?;
-    let id = table.lookup(&crate::syms::ptr(expr))?;
+    let id = table.def_of(expr)?;
     let fixed = table.defs[id].fixed.clone()?;
     matches!(fixed.data, Data::Func { .. }).then_some(fixed)
 }
@@ -127,7 +127,7 @@ fn def_flag(expr: &N, cx: &Cx, f: impl FnOnce(&crate::syms::SymbolDef) -> bool) 
     let Some(table) = cx.syms.as_ref() else {
         return false;
     };
-    let Some(id) = table.lookup(&crate::syms::ptr(expr)) else {
+    let Some(id) = table.def_of(expr) else {
         return false;
     };
     f(&table.defs[id])
@@ -147,7 +147,7 @@ fn note_replaced(expr: &N, cx: &Cx) {
     let Some(table) = cx.syms.as_ref() else {
         return;
     };
-    let Some(id) = table.lookup(&crate::syms::ptr(expr)) else {
+    let Some(id) = table.def_of(expr) else {
         return;
     };
     let def = &table.defs[id];
@@ -380,7 +380,7 @@ fn inside_own_lambda(expr: &N, func: &N, cx: &Cx) -> bool {
 /// reads from outside must resolve to the same binding at the call site.
 fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     let Some(table) = cx.syms.as_ref() else { return false };
-    let site = cx.parents.iter().rev().find_map(|p| table.scope_lookup(&crate::syms::ptr(p)));
+    let site = cx.parents.iter().rev().find_map(|p| table.scope_of(p));
     let Some(site) = site else { return false };
     let mut free: Vec<N> = Vec::new();
     fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut Vec<N>) {
@@ -416,7 +416,7 @@ fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     rec(func, &mut Vec::new(), &mut free);
     for r in free {
         let Data::Symbol { name, .. } = &r.data else { continue };
-        let target = table.lookup(&crate::syms::ptr(&r)).map(|id| table.defs[id].scope);
+        let target = table.def_of(&r).map(|id| table.defs[id].scope);
         let mut cur = Some(site);
         while let Some(sc) = cur {
             if Some(sc) == target {
@@ -469,7 +469,8 @@ fn ref_sym(span: &N, name: &str) -> N {
 /// parameter's (or var's) definition.
 fn same_def(from: &N, to: &N, cx: &Cx) {
     if let Some(table) = cx.syms.as_ref() {
-        if let Some(id) = table.lookup(&(Rc::as_ptr(from) as usize)) {
+        table.copy_binding(from, to);
+        if let Some(id) = table.def_of(from) {
             table.alias.borrow_mut().insert(Rc::as_ptr(to) as usize, (id, Rc::clone(to)));
         }
     }
@@ -618,7 +619,7 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         _ => {}
     }
     // Names earlier flattens added to this scope (`scope.variables`).
-    let key = cx.syms.as_ref().and_then(|t| t.scope_lookup(&(Rc::as_ptr(scope) as usize))).map(|s| s | (1 << 60)).unwrap_or(Rc::as_ptr(scope) as usize);
+    let key = cx.syms.as_ref().and_then(|t| t.scope_of(scope)).map(|s| s | (1 << 60)).unwrap_or(Rc::as_ptr(scope) as usize);
     if let Some(names) = cx.injected.borrow().get(&key) {
         taken.extend(names.iter().cloned());
         scope_vars.extend(names.iter().cloned());
@@ -863,7 +864,7 @@ fn undeclared(expr: &N, cx: &Cx, names: &[&str]) -> bool {
     if !names.contains(&name.as_str()) || cx.shadowed(name) {
         return false;
     }
-    match cx.syms.as_ref().and_then(|t| t.lookup(&crate::syms::ptr(expr))) {
+    match cx.syms.as_ref().and_then(|t| t.def_of(expr)) {
         Some(id) => cx.syms.as_ref().is_some_and(|t| t.defs[id].undeclared),
         None => true,
     }
@@ -925,7 +926,9 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
     // callee sees none.
-    let processed = direct || cx.squeezed.contains(&(Rc::as_ptr(func) as usize)) || cx.optimized.contains(&(Rc::as_ptr(func) as usize));
+    let flagged = cx.squeezed.contains(&(Rc::as_ptr(func) as usize)) || cx.optimized.contains(&(Rc::as_ptr(func) as usize));
+    crate::audit_flags(cx, "callee_processed", func, flagged, true, true);
+    let processed = direct || flagged;
     let inside_callee = !processed || cx.parents.iter().any(|p| {
         Rc::ptr_eq(p, func)
             || matches!((&p.data, &func.data), (Data::Func { name: Some(a), .. }, Data::Func { name: Some(b), .. }) if sym_str(a).is_some() && sym_str(a) == sym_str(b) && params_same(p, func))

@@ -227,7 +227,7 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
     if let Data::Defs { kind: DefKind::Var | DefKind::Let | DefKind::Const, defs, .. } = &n.data {
         for def in defs {
             let Data::VarDef { name, value: Some(value) } = &def.data else { continue };
-            let Some(id) = table.lookup(&syms::ptr(name)) else { continue };
+            let Some(id) = table.def_of(name) else { continue };
             let d = &table.defs[id];
             let exposed = d.exported || d.export_listed || (d.global && if d.is_defun { false } else { !toplevel_vars });
             if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain == Some(d.name.as_str()) {
@@ -311,7 +311,7 @@ fn prop_of(table: &SymTable, n: &N, id: usize) -> bool {
 }
 
 fn is_ref_of(table: &SymTable, n: &N, id: usize) -> bool {
-    table.lookup(&syms::ptr(n)) == Some(id)
+    table.def_of(n) == Some(id)
 }
 
 fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, String>>) -> N {
@@ -321,7 +321,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             let mut changed = false;
             for def in defs {
                 if let Data::VarDef { name, value: Some(value) } = &def.data {
-                    if let Some(id) = table.lookup(&syms::ptr(name)) {
+                    if let Some(id) = table.def_of(name) {
                         if let Some(keys) = plan.get(&id) {
                             if let Data::Object { props } = &value.data {
                                 for prop in props {
@@ -348,7 +348,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             edit(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
         }
         Data::Dot { expr, prop, .. } if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(prop)) => {
-            let id = table.lookup(&syms::ptr(expr)).unwrap();
+            let id = table.def_of(expr).unwrap();
             let fresh = expr_plan(table, expr, plan).unwrap().get(prop).unwrap();
             let r = sym_ref_named(n, fresh);
             CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
@@ -357,7 +357,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
         Data::Sub { expr, prop, .. } => {
             if let Data::String { value, .. } = &prop.data {
                 if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(value)) {
-                    let id = table.lookup(&syms::ptr(expr)).unwrap();
+                    let id = table.def_of(expr).unwrap();
                     let fresh = expr_plan(table, expr, plan).unwrap().get(value).unwrap();
                     let r = sym_ref_named(n, fresh);
                     CREATED.with(|c| c.borrow_mut().push((fresh.clone(), id, Rc::clone(&r))));
@@ -371,7 +371,7 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
 }
 
 fn expr_plan<'a>(table: &SymTable, expr: &N, plan: &'a HashMap<usize, HashMap<String, String>>) -> Option<&'a HashMap<String, String>> {
-    let id = table.lookup(&syms::ptr(expr))?;
+    let id = table.def_of(expr)?;
     plan.get(&id)
 }
 

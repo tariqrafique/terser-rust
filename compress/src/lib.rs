@@ -6,6 +6,7 @@
 //! prints exactly like the input tree.
 
 mod assign;
+mod audit;
 mod body;
 mod call;
 mod conditional;
@@ -20,7 +21,7 @@ mod reduce_vars;
 mod syms;
 mod unary;
 
-use ast::{Data, Key, N, Node, Seg};
+use ast::{Data, Key, N, Node, NodeId, Seg};
 use serde_json::{Map, Value};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -503,6 +504,7 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if expression {
         tree = process_expression(&tree, false);
     }
+    audit::flush();
     tree
 }
 
@@ -588,6 +590,9 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         consts: vec![HashMap::new()],
         syms: None,
         squeezed: HashSet::new(),
+        squeezed_ids: HashSet::new(),
+        optimized_ids: RefCell::new(HashSet::new()),
+        redescend: 0,
         optimized: HashSet::new(),
         sealed: RefCell::new(Vec::new()),
         seal: RefCell::new(HashSet::new()),
@@ -685,6 +690,12 @@ struct Cx {
     syms: Option<syms::SymTable>,
     /// terser `SQUEEZED` (`index.js` `Compressor.before`): `before` returns the node.
     squeezed: HashSet<usize>,
+    /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` by id, set only where terser sets
+    /// the flag, never by the pointer carry-overs. Nothing decides by them yet.
+    squeezed_ids: HashSet<NodeId>,
+    optimized_ids: RefCell<HashSet<NodeId>>,
+    /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
+    redescend: u32,
     /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
     optimized: HashSet<usize>,
     /// Nodes `def_optimize` already returned, so a later `before` must not run
@@ -858,8 +869,14 @@ impl Cx {
 
     /// Mark `n` so a later `transform` does not run `def_optimize` on it again.
     pub(crate) fn seal_optimized(&self, n: &N) {
+        self.optimized_ids.borrow_mut().insert(n.id());
         self.seal.borrow_mut().insert(Rc::as_ptr(n) as usize);
         self.seal_keep.borrow_mut().push(Rc::clone(n));
+    }
+
+    /// An audit decision's label: `@redescend` inside the descend after `drop_unused`.
+    fn stage(&self, decision: &'static str) -> String {
+        if self.redescend > 0 { format!("{decision}@redescend") } else { decision.to_string() }
     }
 
     /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
@@ -1061,7 +1078,11 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
     let orig_ptr = ptr;
-    if cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr) {
+    let entry = cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr);
+    if audit::on() {
+        audit::check(&cx.stage("entry"), n, entry, cx.squeezed_ids.contains(&n.id()));
+    }
+    if entry {
         return Rc::clone(n);
     }
     // terser `Compressor.before`: hoist before descending. An enclosing `use asm` skips it.
@@ -1105,6 +1126,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
     // part of it. A node made by an optimizer was already optimized there.
     let already = cx.optimized.contains(&orig_ptr) || is_sealed(cx, n) || cx.seal.borrow().contains(&orig_ptr);
+    if audit::on() {
+        audit::check(&cx.stage("already"), n, already, cx.optimized_ids.borrow().contains(&n.id()));
+    }
     let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
     let pre_node;
     let n = if pre {
@@ -1140,6 +1164,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
     let sealed = is_sealed(cx, n);
     let switch_sealed = cx.seal.borrow().contains(&twice_ptr) || cx.seal.borrow().contains(&ptr);
+    if audit::on() {
+        let skip = sealed || cx.optimized.contains(&twice_ptr) || switch_sealed;
+        audit::check(&cx.stage("skip_optimize"), &twice, skip, cx.optimized_ids.borrow().contains(&twice.id()));
+    }
     let mut out = if sealed {
         if !is_sealed(cx, &twice) {
             seal(cx, &twice);
@@ -1171,6 +1199,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         }
     }
     let same = Rc::ptr_eq(&out, &twice);
+    if audit::on() {
+        // terser `opt === node` (index.js 506).
+        audit::check(&cx.stage("same"), &twice, same, out.id() == twice.id());
+    }
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
         // Nodes built by this optimize (a switch turned into `if`, then a comma
         // pulled into its condition) are already in their final shape. Terser
@@ -1180,7 +1212,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         let dropped = drop_unused::drop_unused_cx(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs, cx);
         transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
+        cx.redescend += 1;
         out = map_children(&dropped, cx);
+        cx.redescend -= 1;
         set_parent(cx, &out);
         // The scope's `before` is finished. Squeezing it matches terser setting
         // `SQUEEZED` on the same scope object after `drop_unused`.
@@ -1235,8 +1269,8 @@ fn was_scope(data: &Data) -> bool {
 fn mark_tree_squeezed(n: &N, cx: &mut Cx) {
     let fresh = cx.fresh.borrow_mut().remove(&(Rc::as_ptr(n) as usize)).is_some();
     if !fresh {
-        mark_squeezed(cx, n);
-        mark_optimized(cx, n);
+        carry_squeezed(cx, n);
+        carry_optimized(cx, n);
     }
     for child in child_refs(&n.data) {
         mark_tree_squeezed(child, cx);
@@ -1278,10 +1312,10 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         retarget(cx, ptr, new);
     }
     if cx.squeezed.contains(&ptr) {
-        mark_squeezed(cx, new);
+        carry_squeezed(cx, new);
     }
     if cx.optimized.contains(&ptr) {
-        mark_optimized(cx, new);
+        carry_optimized(cx, new);
     }
     let (left, right) = (child_refs(&old.data), child_refs(&new.data));
     let same_shape = left.len() == right.len()
@@ -1409,6 +1443,7 @@ fn child_refs(data: &Data) -> Vec<&N> {
 
 fn seal(cx: &Cx, n: &N) {
     cx.sealed.borrow_mut().push(Rc::clone(n));
+    cx.optimized_ids.borrow_mut().insert(n.id());
 }
 
 fn is_sealed(cx: &Cx, n: &N) -> bool {
@@ -1417,6 +1452,12 @@ fn is_sealed(cx: &Cx, n: &N) -> bool {
 }
 
 fn mark_optimized(cx: &mut Cx, n: &N) {
+    carry_optimized(cx, n);
+    cx.optimized_ids.borrow_mut().insert(n.id());
+}
+
+/// `OPTIMIZED` by pointer only: a carry-over onto a rebuilt node.
+fn carry_optimized(cx: &mut Cx, n: &N) {
     cx.optimized.insert(Rc::as_ptr(n) as usize);
     cx.flag_keep.push(Rc::clone(n));
 }
@@ -1437,7 +1478,22 @@ pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
     }
 }
 
+/// Shadow audit of a flag read outside `transform`: `by_ptr` is the pointer answer for
+/// "`n` is SQUEEZED (when `squeezed`) or OPTIMIZED (when `optimized`)".
+pub(crate) fn audit_flags(cx: &Cx, decision: &str, n: &N, by_ptr: bool, squeezed: bool, optimized: bool) {
+    if audit::on() {
+        let by_id = (squeezed && cx.squeezed_ids.contains(&n.id())) || (optimized && cx.optimized_ids.borrow().contains(&n.id()));
+        audit::check(decision, n, by_ptr, by_id);
+    }
+}
+
 fn mark_squeezed(cx: &mut Cx, n: &N) {
+    carry_squeezed(cx, n);
+    cx.squeezed_ids.insert(n.id());
+}
+
+/// `SQUEEZED` by pointer only: a carry-over onto a rebuilt node.
+fn carry_squeezed(cx: &mut Cx, n: &N) {
     cx.squeezed.insert(Rc::as_ptr(n) as usize);
     cx.flag_keep.push(Rc::clone(n));
 }

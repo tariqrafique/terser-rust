@@ -67,7 +67,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return None;
     }
     let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
-    let id = table.lookup(&syms::ptr(n))?;
+    let id = table.def_of(n)?;
     let (scope, mut single, assignments, references, name_len, exposed_now) = {
         let def = &table.defs[id];
         if def.suppress_fixed.get() || def.fixed.is_none() {
@@ -124,7 +124,9 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
             let copy = ast::deep_clone(&fixed);
             table.alias_copy(&fixed, &copy);
             let out = expr_value(&copy);
-            if let Some(sc) = table.scope_lookup(&syms::ptr(&fixed)) {
+            // `make_node(AST_Function, fixed, fixed)` copies the scope (il 247-250).
+            table.copy_binding(&copy, &out);
+            if let Some(sc) = table.scope_of(&fixed) {
                 table.alias_scope.borrow_mut().insert(syms::ptr(&out), (sc, Rc::clone(&out)));
             }
             return Some(out);
@@ -554,7 +556,7 @@ fn walk_children(n: &N, tw: &mut Tw) {
             if let (Some(names), None) = (names, module_name) {
                 for m in names {
                     let Data::NameMap { name, .. } = &m.data else { continue };
-                    if let Some(id) = tw.table.lookup(&syms::ptr(name)) {
+                    if let Some(id) = tw.table.def_of(name) {
                         on_ref(tw, id, name);
                     }
                 }
@@ -1248,7 +1250,7 @@ fn contains_break(n: &N) -> bool {
 }
 
 fn def_of(tw: &Tw, n: &N) -> Option<usize> {
-    tw.table.lookup(&syms::ptr(n))
+    tw.table.def_of(n)
 }
 
 fn sym_ref(n: &N) -> Option<()> {
@@ -1372,7 +1374,7 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     if sym_str(named).as_deref() != Some(name) {
         return false;
     }
-    if table.lookup(&syms::ptr(named)) == Some(id) {
+    if table.def_of(named) == Some(id) {
         return true;
     }
     match table.node_scope.get(&syms::ptr(node)).copied() {
@@ -1386,7 +1388,7 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
 fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
     // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
     // pointer is not in `node_scope`.
-    parents.iter().rev().skip(1).find_map(|n| table.scope_lookup(&syms::ptr(n))).or(Some(0))
+    parents.iter().rev().skip(1).find_map(|n| table.scope_of(n)).or(Some(0))
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref` lambda and class checks.
@@ -1510,7 +1512,7 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
         Data::Func { name: Some(n), .. } | Data::Class { name: Some(n), .. } => n,
         _ => return false,
     };
-    if let Some(id) = table.lookup(&syms::ptr(name_node)) {
+    if let Some(id) = table.def_of(name_node) {
         if table.defs[id].recursive_refs > 0 {
             return true;
         }
@@ -1531,7 +1533,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
             return;
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
-        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
+        let Some(id) = table.def_of(node) else { return };
         if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
             return;
         }
@@ -1547,7 +1549,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
 fn nested_scopes(func: &N, table: &SymTable) -> std::collections::HashSet<usize> {
     let mut nested = std::collections::HashSet::new();
     each_node(func, &mut |node| {
-        if let Some(sc) = table.scope_lookup(&syms::ptr(node)) {
+        if let Some(sc) = table.scope_of(node) {
             nested.insert(sc);
         }
     });
@@ -1657,7 +1659,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
             return;
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
-        let Some(id) = table.lookup(&syms::ptr(node)) else { return };
+        let Some(id) = table.def_of(node) else { return };
         // Locals and names defined in a nested function are not free references.
         if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
             return;

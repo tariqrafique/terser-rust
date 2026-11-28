@@ -407,7 +407,9 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
             ) {
                 // terser `fixed.optimize(compressor)`: a lambda that was not yet
                 // optimized gets its one `tighten_body` now.
-                if matches!(value.data, Data::Func { .. }) && !cx.optimized.contains(&(Rc::as_ptr(&value) as usize)) {
+                let optimized = cx.optimized.contains(&(Rc::as_ptr(&value) as usize));
+                crate::audit_flags(cx, "fixed_optimized", &value, optimized, false, true);
+                if matches!(value.data, Data::Func { .. }) && !optimized {
                     cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
                 }
                 return Some(value);
@@ -423,7 +425,7 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
 /// terser `inference.js` `is_undeclared_ref`.
 fn is_undeclared_ref(n: &N, name: &str, cx: &Cx) -> bool {
     if let Some(table) = &cx.syms {
-        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
+        if let Some(id) = table.def_of(n) {
             return table.defs[id].undeclared;
         }
     }
@@ -1925,10 +1927,10 @@ fn same_object_ref(left: &N, right: &N, cx: &Cx) -> bool {
     let Some(table) = &cx.syms else {
         return false;
     };
-    let Some(idl) = table.lookup(&crate::syms::ptr(left)) else {
+    let Some(idl) = table.def_of(left) else {
         return false;
     };
-    let Some(idr) = table.lookup(&crate::syms::ptr(right)) else {
+    let Some(idr) = table.def_of(right) else {
         return false;
     };
     if idl != idr {
@@ -2247,7 +2249,7 @@ fn read_is_pure(n: &N, cx: &Cx) -> bool {
         // one of `pure_prop_access_globals`, is pure.
         Data::Symbol { name, kind: ast::SymKind::Ref, .. } => {
             if let Some(table) = &cx.syms {
-                if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
+                if let Some(id) = table.def_of(n) {
                     // The table leaves destructured bindings undeclared; the
                     // scope stack still knows them.
                     return !table.defs[id].undeclared
@@ -2536,7 +2538,7 @@ fn safe_to_flatten(value: &N, cx: &Cx) -> bool {
 
 fn fixed_of<'a>(n: &N, cx: &'a Cx) -> Option<&'a N> {
     let table = cx.syms.as_ref()?;
-    let id = table.lookup(&crate::syms::ptr(n))?;
+    let id = table.def_of(n)?;
     table.defs.get(id)?.fixed.as_ref()
 }
 
