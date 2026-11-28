@@ -1156,7 +1156,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         // mutates them in place and leaves `OPTIMIZED` set, so the descend after
         // `drop_unused` does not fold them again.
         mark_tree_squeezed(&out, cx);
-        let dropped = drop_unused::drop_unused(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs);
+        let dropped = drop_unused::drop_unused_cx(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs, cx);
         transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
         out = map_children(&dropped, cx);

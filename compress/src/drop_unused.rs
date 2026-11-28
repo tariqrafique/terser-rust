@@ -26,6 +26,56 @@ pub fn drop_unused(root: &N, toplevel_vars: bool, toplevel_funcs: bool) -> N {
 }
 
 thread_local! {
+    /// Values `drop_unused` kept for their side effects, while `drop_unused_cx` runs.
+    static KEPT: std::cell::RefCell<Option<Vec<N>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// `drop_unused` inside a compress pass: a dropped definition's value is
+/// `drop_side_effect_free(compressor)`'d as in drop-unused.js.
+pub(crate) fn drop_unused_cx(root: &N, toplevel_vars: bool, toplevel_funcs: bool, cx: &crate::Cx) -> N {
+    let prev = KEPT.with(|k| k.replace(Some(Vec::new())));
+    let out = drop_unused(root, toplevel_vars, toplevel_funcs);
+    let kept = KEPT.with(|k| k.replace(prev)).unwrap_or_default();
+    if kept.is_empty() {
+        return out;
+    }
+    let mut map: HashMap<usize, N> = HashMap::new();
+    for v in &kept {
+        let r = crate::unary::drop_side_effect_free(v, cx, false).unwrap_or_else(|| num0(v));
+        if !Rc::ptr_eq(&r, v) {
+            map.insert(ptr(v), r);
+        }
+    }
+    if map.is_empty() { out } else { replace_kept(&out, &map) }
+}
+
+fn replace_kept(n: &N, map: &HashMap<usize, N>) -> N {
+    if let Some(r) = map.get(&ptr(n)) {
+        return Rc::clone(r);
+    }
+    let mut changed = false;
+    let out = ast::map_children(n, &mut |c| {
+        let m = replace_kept(c, map);
+        changed |= !Rc::ptr_eq(&m, c);
+        m
+    });
+    if changed { out } else { Rc::clone(n) }
+}
+
+/// terser `def.value.drop_side_effect_free(compressor)` (finished by `drop_unused_cx`).
+fn value_effects(v: &N) -> Option<N> {
+    if !has_side_effects(v) {
+        return None;
+    }
+    KEPT.with(|k| {
+        if let Some(list) = k.borrow_mut().as_mut() {
+            list.push(Rc::clone(v));
+        }
+    });
+    Some(Rc::clone(v))
+}
+
+thread_local! {
     /// Depth of function scopes below the one `drop_unused` runs on.
     /// drop-unused.js `if (scope !== self) return;`: nested scopes only have
     /// their uses counted, their declarations are left for their own call.
@@ -334,8 +384,8 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             } else {
                 changed = true;
                 if let Some(v) = value2 {
-                    if has_side_effects(&v) {
-                        side.push(v);
+                    if let Some(kept) = value_effects(&v) {
+                        side.push(kept);
                     }
                 }
                 if let Some(id) = id {
