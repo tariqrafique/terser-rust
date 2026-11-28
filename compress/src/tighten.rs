@@ -242,7 +242,8 @@ thread_local! {
     /// Assignment and `++` / `--` targets (by node) that resolve to a `let` / `const`
     /// in any enclosing scope: terser `get_lhs` `is_ref_of` gives no lhs for them.
     static LEXICAL_TARGETS: std::cell::RefCell<HashSet<usize>> = Default::default();
-    /// terser `def.references.length - def.replaced` by declaration name node.
+    /// terser `def.references.length - def.replaced` by declaration name node
+    /// (`usize::MAX` when the name is not in `def.orig`).
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// See `set_visible`.
     static VISIBLE: std::cell::RefCell<Option<HashSet<String>>> = Default::default();
@@ -825,6 +826,11 @@ fn apply_candidate(
     if cand.kind == Kind::Var {
         if let Data::VarDef { name, .. } = &cand.node.data {
             let stale = REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied());
+            // terser `if (!member(expr.name, def.orig)) return;`
+            if stale == Some(usize::MAX) {
+                info.skip = Some("no_lhs");
+                return None;
+            }
             if let Some(referenced) = stale {
                 if referenced > total && referenced > 1 && !(declared <= 1 && is_mangleable(&cand.value, &cand.name, env)) {
                     info.skip = Some("no_lhs");

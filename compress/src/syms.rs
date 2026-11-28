@@ -104,6 +104,17 @@ pub struct SymTable {
     pub block_vars: ast::IdSet,
     /// Scope indexes of classes (block scopes in this table, scopes of their own in terser).
     pub class_scopes: HashSet<usize>,
+    /// Declaration names copied by a plain `clone(true)` (flatten's
+    /// `expressions.map(exp => exp.clone(true))`, a returned constant): the copy keeps
+    /// `thedef`, but `def.orig` lists the original only, so `get_lhs` gives no lhs
+    /// (`member(expr.name, def.orig)`) until the next pass binds again.
+    pub copied_decls: RefCell<ast::IdSet>,
+    /// terser `clone(true, toplevel)` of a lambda inlined into another scope:
+    /// `figure_out_scope` on the copy gives each of its own names a new definition
+    /// whose `references` are the copy's. By declaration name node of the copy:
+    /// those references, and the original definition's `replaced` at the time
+    /// (later replacements of the shared record count against the copy).
+    pub fresh_refs: RefCell<ast::IdMap<(usize, u32)>>,
 }
 
 struct Scope {
@@ -138,6 +149,8 @@ pub fn bind(root: &N) -> SymTable {
         injected_vars: RefCell::new(HashMap::new()),
         block_vars: ast::IdSet::default(),
         class_scopes: HashSet::new(),
+        copied_decls: RefCell::new(ast::IdSet::default()),
+        fresh_refs: RefCell::new(ast::IdMap::default()),
     };
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
@@ -723,6 +736,30 @@ impl SymTable {
     /// terser `clone(true)`: new nodes that keep their definitions and scopes.
     pub fn clone_deep(&self, n: &N) -> N {
         ast::deep_clone_with(n, &mut |old, new| self.copy_binding(old, new))
+    }
+
+    /// terser `clone(true)` without `figure_out_scope`: as `clone_deep`, and the
+    /// copied declaration names are not in their definition's `orig`.
+    pub fn clone_plain(&self, n: &N) -> N {
+        ast::deep_clone_with(n, &mut |old, new| {
+            self.copy_binding(old, new);
+            if matches!(&old.data, Data::Symbol { kind, .. } if !matches!(kind, SymKind::Ref)) && self.def_of(old).is_some() {
+                self.copied_decls.borrow_mut().insert(new.id());
+            }
+        })
+    }
+
+    /// terser `get_lhs` `def.references.length - def.replaced` for declaration name
+    /// `name` (`None` when `member(expr.name, def.orig)` fails).
+    pub fn referenced(&self, name: &N) -> Option<usize> {
+        if self.copied_decls.borrow().contains(&name.id()) {
+            return None;
+        }
+        let d = &self.defs[self.def_of(name)?];
+        if let Some(&(refs, replaced_then)) = self.fresh_refs.borrow().get(&name.id()) {
+            return Some(refs.saturating_sub(d.replaced.get().saturating_sub(replaced_then) as usize));
+        }
+        Some(d.ref_count().saturating_sub(d.replaced.get() as usize))
     }
 }
 

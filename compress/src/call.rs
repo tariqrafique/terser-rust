@@ -222,10 +222,11 @@ pub(crate) fn pure_effects(n: &N) -> Option<Vec<N>> {
     Some(args.iter().filter(|a| !eval::is_pure(a)).cloned().collect())
 }
 
-/// terser `node.clone(true)`: new nodes that keep their definitions and scopes.
+/// terser `node.clone(true)`: new nodes that keep their definitions and scopes
+/// (copied declarations are not in `def.orig`).
 fn fresh_copy(v: &N, cx: &Cx) -> N {
     match cx.syms.as_ref() {
-        Some(table) => table.clone_deep(v),
+        Some(table) => table.clone_plain(v),
         None => ast::deep_clone(v),
     }
 }

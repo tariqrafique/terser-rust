@@ -1161,9 +1161,9 @@ fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::coll
     match &n.data {
         Data::Func { .. } | Data::Class { .. } => {}
         Data::VarDef { name, .. } => {
-            if let Some(id) = table.def_of(name) {
-                let d = &table.defs[id];
-                out.insert(crate::syms::ptr(name), d.ref_count().saturating_sub(d.replaced.get() as usize));
+            if table.def_of(name).is_some() {
+                // `usize::MAX`: the name is not in `def.orig` (a plain copy).
+                out.insert(crate::syms::ptr(name), table.referenced(name).unwrap_or(usize::MAX));
             }
         }
         _ => {
