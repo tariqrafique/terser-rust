@@ -91,7 +91,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
     match &n.data {
         Data::Toplevel { body } => {
             let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
-            node(n, Data::Toplevel { body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
+            renode(n, Data::Toplevel { body: passes(&body, table, table.node_scope.get(&ptr(n)).copied(), drop_vars, drop_funcs) })
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let original = body;
@@ -112,7 +112,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 _ => name.clone(),
             };
             let body = if is_root { passes(&body, table, table.node_scope.get(&ptr(n)).copied(), true, true) } else { body };
-            node(n, Data::Func {
+            renode(n, Data::Func {
                 kind: *kind,
                 name,
                 args: args.clone(),
@@ -129,7 +129,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
             } else {
                 body
             };
-            node(n, Data::Block { body })
+            renode(n, Data::Block { body })
         }
         other => map_scope(n, other, table, drop_vars, drop_funcs),
     }
@@ -346,6 +346,8 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                     if count > 1 && (value2.is_none() || idx > elim) {
                         if let Some(v) = value2 {
                             let sym = match &name.data {
+                                // copy: `make_node(AST_SymbolRef, def.name, def.name)` (du 343)
+                                // keeps `thedef`.
                                 Data::Symbol { name: nm, quote, .. } => node(name, Data::Symbol { name: nm.clone(), kind: SymKind::Ref, quote: *quote }),
                                 _ => Rc::clone(name),
                             };
@@ -372,7 +374,7 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                             changed = true;
                         }
                         let same = value.as_ref().is_some_and(|a| Rc::ptr_eq(a, &v));
-                        tail.push(if same { Rc::clone(def) } else { node(def, Data::VarDef { name: Rc::clone(name), value: Some(v) }) });
+                        tail.push(if same { Rc::clone(def) } else { renode(def, Data::VarDef { name: Rc::clone(name), value: Some(v) }) });
                     }
                     None => {
                         if !tail.is_empty() {
@@ -399,7 +401,7 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         }
         if !head.is_empty() || !tail.is_empty() {
             head.extend(tail);
-            body.push(node(n, Data::Defs { kind: *kind, defs: head, await_: *await_ }));
+            body.push(renode(n, Data::Defs { kind: *kind, defs: head, await_: *await_ }));
         }
         if !side.is_empty() {
             body.push(simple(n, seq(n, side)));
@@ -423,7 +425,7 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                 });
                 // The body is rewritten too (its definitions are this scope's).
                 let body = one(body, table, u, scope_id, drop_vars);
-                out.push(node(n, Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body }));
+                out.push(renode(n, Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body }));
                 return;
             }
         }
@@ -579,7 +581,7 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         },
         _ => return Some(Rc::clone(n)),
     };
-    Some(node(n, data))
+    Some(renode(n, data))
 }
 
 fn name_read(body: &[N], args: &[N], table: &SymTable, id: usize) -> bool {
@@ -752,8 +754,16 @@ fn ptr(n: &N) -> usize {
     Rc::as_ptr(n) as usize
 }
 
+/// new: terser `make_node(X, orig, ..)`.
 fn node(orig: &N, data: Data) -> N {
     Node::make(orig, data)
+}
+
+/// keep: drop-unused.js's `TreeTransformer` edits in place: the scope walk and `descend`,
+/// `node.definitions = ..` (du 391), a kept definition's `def.value = ..` and the `for`
+/// init (du 419-425).
+fn renode(orig: &N, data: Data) -> N {
+    orig.rebuild(data)
 }
 
 fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
@@ -799,5 +809,5 @@ fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: 
             return if changed { out } else { Rc::clone(n) };
         }
     };
-    node(n, rebuilt)
+    renode(n, rebuilt)
 }
