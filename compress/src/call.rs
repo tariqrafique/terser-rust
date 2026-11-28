@@ -250,13 +250,13 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
     if let Some(stat) = body.first() {
         if let Data::Return { value } = &stat.data {
             let constant = value.as_ref().map(is_constant_expr).unwrap_or(true);
-            if constant && args.iter().all(|a| !matches!(a.data, Data::Spread { .. })) {
+            if constant {
                 let mut exprs: Vec<N> = args.to_vec();
                 // terser `returned.clone(true)`: a fresh copy without optimizer
                 // flags, so a returned lambda is compressed again.
                 exprs.push(value.as_ref().map(|v| fresh_copy(v, cx)).unwrap_or_else(|| void0(n)));
                 crate::trace::set_how("const_return");
-                return Some(finish_seq(n, exprs, cx));
+                return Some(crate::sequence::make_and_optimize(n, exprs, cx));
             }
             if params.len() == 1
                 && is_simple_funarg(&params[0])
@@ -404,7 +404,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     // `expressions.map(exp => exp.clone(true))` (inline.js 673): copies without
     // optimizer flags, so a later descend optimizes them again.
     let exprs = exprs.iter().map(|e| fresh_copy(e, cx)).collect();
-    let out = finish_seq(n, exprs, cx);
+    let out = crate::sequence::make_and_optimize(n, exprs, cx);
     // terser `make_sequence(self, ...).optimize(compressor)`: a lone lambda
     // (the returned `stat.value.clone(true)`) gets its `tighten_body` now.
     if matches!(out.data, Data::Func { .. }) {
@@ -920,7 +920,7 @@ fn drop_empty_call(n: &N, func: &N, args: &[N], cx: &Cx) -> Option<N> {
     }
     let mut exprs: Vec<N> = args.to_vec();
     exprs.push(void0(n));
-    Some(finish_seq(n, exprs, cx))
+    Some(crate::sequence::make_and_optimize(n, exprs, cx))
 }
 
 fn is_empty_stmt(n: &N) -> bool {
