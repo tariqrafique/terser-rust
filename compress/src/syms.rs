@@ -300,9 +300,20 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     }
                     continue;
                 };
-                define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
+                define(table, scopes, dest, sym_name.clone(), name, sk, value.clone(), false);
                 if dest != scope {
                     table.block_vars.insert(name.id());
+                    // terser `scope.js`: a `var` declared in a block scope takes
+                    // `scope.find_variable(node)` as its `thedef`. That differs from the
+                    // function's definition only for a `catch` parameter of the same
+                    // name: `catch (a) { var a }` declares `a` on the function, but the
+                    // `var`'s name is the catch parameter's.
+                    if let Some(found) = resolve(scopes, scope, &sym_name) {
+                        let d = &table.defs[found];
+                        if d.block_scoped && !d.lexical && found != table.def_of(name).unwrap_or(found) {
+                            table.bind_def(name, found);
+                        }
+                    }
                 }
                 if let Some(value) = value {
                     walk(value, scope, scopes, table);

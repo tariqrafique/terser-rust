@@ -16,63 +16,32 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub fn drop_unused(root: &N, toplevel_vars: bool, toplevel_funcs: bool) -> N {
-    let table = syms::bind(root);
-    let saved = NESTED.with(|d| d.replace(0));
-    let saved_root = ROOT.with(|r| r.replace(ptr(root)));
-    let out = scope(root, &table, toplevel_vars, toplevel_funcs);
-    NESTED.with(|d| d.set(saved));
-    ROOT.with(|r| r.set(saved_root));
-    out
-}
-
-thread_local! {
-    /// Values `drop_unused` kept for their side effects, while `drop_unused_cx` runs.
-    static KEPT: std::cell::RefCell<Option<Vec<N>>> = const { std::cell::RefCell::new(None) };
+    drop_unused_in(root, toplevel_vars, toplevel_funcs, None)
 }
 
 /// `drop_unused` inside a compress pass: a dropped definition's value is
 /// `drop_side_effect_free(compressor)`'d as in drop-unused.js.
 pub(crate) fn drop_unused_cx(root: &N, toplevel_vars: bool, toplevel_funcs: bool, cx: &crate::Cx) -> N {
-    let prev = KEPT.with(|k| k.replace(Some(Vec::new())));
-    let out = drop_unused(root, toplevel_vars, toplevel_funcs);
-    let kept = KEPT.with(|k| k.replace(prev)).unwrap_or_default();
-    if kept.is_empty() {
-        return out;
-    }
-    let mut map: HashMap<usize, N> = HashMap::new();
-    for v in &kept {
-        let r = crate::unary::drop_side_effect_free(v, cx, false).unwrap_or_else(|| num0(v));
-        if !Rc::ptr_eq(&r, v) {
-            map.insert(ptr(v), r);
-        }
-    }
-    if map.is_empty() { out } else { replace_kept(&out, &map) }
+    drop_unused_in(root, toplevel_vars, toplevel_funcs, Some(cx))
 }
 
-fn replace_kept(n: &N, map: &HashMap<usize, N>) -> N {
-    if let Some(r) = map.get(&ptr(n)) {
-        return Rc::clone(r);
-    }
-    let mut changed = false;
-    let out = ast::map_children(n, &mut |c| {
-        let m = replace_kept(c, map);
-        changed |= !Rc::ptr_eq(&m, c);
-        m
-    });
-    if changed { out } else { Rc::clone(n) }
+fn drop_unused_in(root: &N, toplevel_vars: bool, toplevel_funcs: bool, cx: Option<&crate::Cx>) -> N {
+    let table = syms::bind(root);
+    let saved = NESTED.with(|d| d.replace(0));
+    let saved_root = ROOT.with(|r| r.replace(ptr(root)));
+    let out = scope(root, &table, toplevel_vars, toplevel_funcs, cx);
+    NESTED.with(|d| d.set(saved));
+    ROOT.with(|r| r.set(saved_root));
+    out
 }
 
-/// terser `def.value.drop_side_effect_free(compressor)` (finished by `drop_unused_cx`).
-fn value_effects(v: &N) -> Option<N> {
-    if !has_side_effects(v) {
-        return None;
+/// terser `def.value.drop_side_effect_free(compressor)`. Outside a compress pass the
+/// value is kept whole when it may have side effects.
+fn value_effects(v: &N, u: &Use) -> Option<N> {
+    match u.cx {
+        Some(cx) => crate::unary::drop_side_effect_free(v, cx, false),
+        None => has_side_effects(v).then(|| Rc::clone(v)),
     }
-    KEPT.with(|k| {
-        if let Some(list) = k.borrow_mut().as_mut() {
-            list.push(Rc::clone(v));
-        }
-    });
-    Some(Rc::clone(v))
 }
 
 thread_local! {
@@ -87,11 +56,11 @@ fn nested() -> bool {
     NESTED.with(|d| d.get() > 0)
 }
 
-fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
+fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool, cx: Option<&crate::Cx>) -> N {
     match &n.data {
         Data::Toplevel { body: original } => {
-            let body: Vec<N> = original.iter().map(|s| scope(s, table, true, true)).collect();
-            renode(n, Data::Toplevel { body: passes(&body, original, table, table.scope_of(n).as_ref().copied(), drop_vars, drop_funcs, true) })
+            let body: Vec<N> = original.iter().map(|s| scope(s, table, true, true, cx)).collect();
+            renode(n, Data::Toplevel { body: passes(&body, original, &[], table, table.scope_of(n).as_ref().copied(), drop_vars, drop_funcs, true, cx) })
         }
         Data::Func { kind, name, args, body, async_, generator } => {
             let original = body;
@@ -101,7 +70,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
             if !is_root {
                 NESTED.with(|d| d.set(d.get() + 1));
             }
-            let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true)).collect();
+            let body: Vec<N> = body.iter().map(|s| scope(s, table, true, true, cx)).collect();
             if !is_root {
                 NESTED.with(|d| d.set(d.get() - 1));
             }
@@ -111,7 +80,7 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
                 (ast::FuncKind::Expr, Some(nm)) if !outer_nested && def_id(table, nm).is_some_and(|id| !name_read(original, args, table, id)) => None,
                 _ => name.clone(),
             };
-            let body = if is_root { passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, true, true) } else { body };
+            let body = if is_root { passes(&body, original, args, table, table.scope_of(n).as_ref().copied(), true, true, true, cx) } else { body };
             renode(n, Data::Func {
                 kind: *kind,
                 name,
@@ -122,20 +91,22 @@ fn scope(n: &N, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
             })
         }
         Data::Block { body: original } => {
-            let body: Vec<N> = original.iter().map(|s| scope(s, table, drop_vars, drop_funcs)).collect();
+            let body: Vec<N> = original.iter().map(|s| scope(s, table, drop_vars, drop_funcs, cx)).collect();
             let body = if let (Some(&id), false) = (table.scope_of(n).as_ref(), nested()) {
                 let _ = id;
-                passes(&body, original, table, table.scope_of(n).as_ref().copied(), true, drop_funcs, false)
+                passes(&body, original, &[], table, table.scope_of(n).as_ref().copied(), true, drop_funcs, false, cx)
             } else {
                 body
             };
             renode(n, Data::Block { body })
         }
-        other => map_scope(n, other, table, drop_vars, drop_funcs),
+        other => map_scope(n, other, table, drop_vars, drop_funcs, cx),
     }
 }
 
-struct Use {
+struct Use<'a> {
+    /// The compressor, inside a compress pass.
+    cx: Option<&'a crate::Cx>,
     in_use: HashSet<usize>,
     /// def id → initializer nodes (`initializations` in drop-unused.js).
     inits: HashMap<usize, Vec<N>>,
@@ -160,12 +131,13 @@ struct Use {
 /// `original` is the body before nested scopes were rewritten: its loop nodes still have their scope ids.
 /// `lambdas`: `stmts` is the body of the scope itself (not a block in it), whose lambdas
 /// have their parameters trimmed (du 262-285).
-fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool, lambdas: bool) -> Vec<N> {
+fn passes(stmts: &[N], original: &[N], params: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: bool, drop_funcs: bool, lambdas: bool, cx: Option<&crate::Cx>) -> Vec<N> {
     // `self.pinned()`: `with` keeps every name.
     if contains_with(stmts) {
         return stmts.to_vec();
     }
     let mut u = Use {
+        cx,
         in_use: HashSet::new(),
         inits: HashMap::new(),
         fixed: HashSet::new(),
@@ -177,13 +149,23 @@ fn passes(stmts: &[N], original: &[N], table: &SymTable, scope_id: Option<usize>
         loop_scopes: loop_scopes(original, table),
     };
     {
+        // terser `var_defs_by_id`: the scope's parameters (`AST_SymbolFunarg`, walked
+        // before the body), then its `var` definitions.
         let mut by_id: HashMap<usize, Vec<usize>> = HashMap::new();
+        for p in params {
+            collect_funargs(p, table, &mut by_id);
+        }
         for stmt in stmts {
-            collect_var_defs(stmt, table, &mut by_id);
+            collect_var_defs(stmt, table, cx, &mut by_id);
         }
         for (id, list) in &by_id {
-            // A parameter or function name is `orig[0]` before the `var`s.
-            let offset = usize::from(table.defs[*id].funarg || table.defs[*id].is_defun);
+            // `sym.orig.indexOf(def.name)`: a function name is `orig[0]` before the
+            // `var`s; a parameter is in the list itself.
+            let offset = usize::from(table.defs[*id].is_defun);
+            // A catch parameter's `orig` is the parameter alone: its `var`s are not in it (-1).
+            if is_catch_def(table, *id) {
+                continue;
+            }
             for (i, p) in list.iter().enumerate() {
                 u.orig_index.insert(*p, i + offset);
             }
@@ -312,6 +294,7 @@ fn has_iife(n: &N) -> bool {
 /// Passes 1 and 2 of `drop_unused` over `nodes`, for `in_use_ids` only.
 fn scan_in_use(nodes: &[N], table: &SymTable) -> HashSet<usize> {
     let mut u = Use {
+        cx: None,
         in_use: HashSet::new(),
         inits: HashMap::new(),
         fixed: HashSet::new(),
@@ -531,7 +514,7 @@ fn loop_scopes(stmts: &[N], table: &SymTable) -> HashSet<usize> {
     fn rec(n: &N, table: &SymTable, out: &mut HashSet<usize>) {
         match &n.data {
             Data::Func { .. } | Data::Class { .. } => return,
-            Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } | Data::Switch { .. } => {
+            Data::For { .. } | Data::ForIn { .. } | Data::ForOf { .. } | Data::While { .. } | Data::Do { .. } | Data::Switch { .. } | Data::Catch { .. } => {
                 if let Some(id) = table.scope_of(n) {
                     out.insert(id);
                 }
@@ -621,10 +604,20 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                         head.push(Rc::clone(def));
                     }
                 }
+            } else if id.is_some_and(|id| is_catch_def(table, id)) {
+                // du 369: `sym.orig[0] instanceof AST_SymbolCatch` (a `var` naming the
+                // catch parameter): the name stays, its value goes.
+                changed = true;
+                if let Some(v) = value2 {
+                    if let Some(kept) = value_effects(&v, u) {
+                        side.push(kept);
+                    }
+                }
+                head.push(if value.is_some() { renode(def, Data::VarDef { name: Rc::clone(name), value: None }) } else { Rc::clone(def) });
             } else {
                 changed = true;
                 if let Some(v) = value2 {
-                    if let Some(kept) = value_effects(&v) {
+                    if let Some(kept) = value_effects(&v, u) {
                         side.push(kept);
                     }
                 }
@@ -780,7 +773,11 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         },
         Data::Array { elements } => Data::Array { elements: elements.iter().map(|e| go(e, false)).collect() },
         Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond, false), cons: go(cons, false), alt: go(alt, false) },
-        Data::If { cond, body, alt } => Data::If { cond: go(cond, false), body: go(body, false), alt: alt.as_ref().map(|a| go(a, false)) },
+        Data::If { cond, body, alt } => Data::If {
+            cond: go(cond, false),
+            body: one(body, table, u, scope_id, drop_vars),
+            alt: alt.as_ref().map(|a| one(a, table, u, scope_id, drop_vars)),
+        },
         Data::Block { body } => {
             let mut stmts = Vec::new();
             for stmt in body {
@@ -898,45 +895,51 @@ fn seq(span: &N, mut exprs: Vec<N>) -> N {
     node(span, Data::Seq { exprs })
 }
 
-/// `var` definitions of this scope, outside nested functions and classes.
-fn collect_var_defs(n: &N, table: &SymTable, out: &mut HashMap<usize, Vec<usize>>) {
-    collect_var_defs_in(n, table, out, &mut Vec::new());
-}
-
-/// A `var` that redeclares an enclosing `catch` parameter belongs to that
-/// parameter in terser (`redefined_catch_def`), so it is not counted.
-fn collect_var_defs_in(n: &N, table: &SymTable, out: &mut HashMap<usize, Vec<usize>>, catch_names: &mut Vec<String>) {
+/// `var` definitions of this scope, outside nested functions and classes. A `var`
+/// naming an enclosing `catch` parameter is that parameter's (`syms.rs`).
+///
+/// terser binds once per pass: a `var` that named a catch parameter keeps that
+/// definition after the `try` is gone (dead code after a `return`), and is not one of
+/// the parameter's `var_defs`.
+fn collect_var_defs(n: &N, table: &SymTable, cx: Option<&crate::Cx>, out: &mut HashMap<usize, Vec<usize>>) {
     match &n.data {
         Data::Func { .. } | Data::Class { .. } => {}
-        Data::Catch { arg, body } => {
-            let pushed = match arg.as_ref().map(|a| &a.data) {
-                Some(Data::Symbol { name, .. }) => {
-                    catch_names.push(name.clone());
-                    true
-                }
-                _ => false,
-            };
-            collect_var_defs_in(body, table, out, catch_names);
-            if pushed {
-                catch_names.pop();
-            }
-        }
         Data::Defs { kind: DefKind::Var, defs, .. } => {
             for d in defs {
                 if let Data::VarDef { name, value } = &d.data {
-                    let redef = matches!(&name.data, Data::Symbol { name: nm, .. } if catch_names.contains(nm));
-                    if !redef {
-                        if let Some(id) = def_id(table, name) {
-                            out.entry(id).or_default().push(ptr(d));
-                        }
+                    let stale_catch = cx
+                        .and_then(|cx| cx.syms.as_ref())
+                        .and_then(|t| t.def_of(name).map(|id| is_catch_def(t, id)))
+                        .unwrap_or(false);
+                    if let Some(id) = def_id(table, name).filter(|id| !stale_catch || is_catch_def(table, *id)) {
+                        out.entry(id).or_default().push(ptr(d));
                     }
                     if let Some(v) = value {
-                        collect_var_defs_in(v, table, out, catch_names);
+                        collect_var_defs(v, table, cx, out);
                     }
                 }
             }
         }
-        _ => ast::walk_children(n, &mut |c| collect_var_defs_in(c, table, out, catch_names)),
+        _ => ast::walk_children(n, &mut |c| collect_var_defs(c, table, cx, out)),
+    }
+}
+
+/// A catch parameter's definition (`orig[0] instanceof AST_SymbolCatch`).
+fn is_catch_def(table: &SymTable, id: usize) -> bool {
+    table.defs[id].block_scoped && !table.defs[id].lexical
+}
+
+/// The parameter names under a parameter (`AST_SymbolFunarg`, also inside patterns),
+/// by symbol node pointer.
+fn collect_funargs(n: &N, table: &SymTable, out: &mut HashMap<usize, Vec<usize>>) {
+    match &n.data {
+        Data::Symbol { kind: SymKind::Funarg, .. } => {
+            if let Some(id) = def_id(table, n) {
+                out.entry(id).or_default().push(ptr(n));
+            }
+        }
+        Data::Func { .. } | Data::Class { .. } => {}
+        _ => ast::walk_children(n, &mut |c| collect_funargs(c, table, out)),
     }
 }
 
@@ -1064,8 +1067,8 @@ fn renode(orig: &N, data: Data) -> N {
     orig.rebuild(data)
 }
 
-fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: bool) -> N {
-    let go = |c: &N| scope(c, table, drop_vars, drop_funcs);
+fn map_scope(n: &N, data: &Data, table: &SymTable, drop_vars: bool, drop_funcs: bool, cx: Option<&crate::Cx>) -> N {
+    let go = |c: &N| scope(c, table, drop_vars, drop_funcs, cx);
     let rebuilt = match data {
         Data::Simple { body } => Data::Simple { body: go(body) },
         Data::Return { value } => Data::Return { value: value.as_ref().map(go) },
