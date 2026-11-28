@@ -1245,6 +1245,11 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             out = dropped;
         }
     }
+    if cx.opts.unused && !cx.in_asm() {
+        if let Some(trimmed) = drop_unused::trim_class_iifes(&out) {
+            out = trimmed;
+        }
+    }
     cx.set_optimized(&out);
     if same {
         mark_squeezed(cx, &out);
