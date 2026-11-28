@@ -230,7 +230,7 @@ fn optimize_chain(n: &N, cx: &Cx) -> Option<N> {
     let Data::Chain { expr } = &n.data else {
         return None;
     };
-    if is_nullish_node(expr, cx) {
+    if is_nullish(expr, cx) {
         if cx.parent().is_some_and(|p| matches!(&p.data, Data::Unary { op, .. } if op == "delete")) {
             return Some(num(n, 0.0));
         }
