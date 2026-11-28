@@ -2762,6 +2762,13 @@ fn eval_length(span: &N, expr: &N, cx: &Cx) -> Option<N> {
         let len = js_str_len(&s, string_units(expr));
         return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
     }
+    // A reference evaluates through its fixed value (`AST_SymbolRef._eval`).
+    if let Some(table) = cx.syms.as_ref().filter(|_| cx.opts.reduce_vars) {
+        if let Some(Lit::Str(s)) = crate::reduce_vars::fixed_eval(expr, table) {
+            let len = js_str_len(&s, None);
+            return Some(prefer(span, lit_node(span, Lit::Num(len), cx)));
+        }
+    }
     let Data::Array { elements } = &expr.data else {
         return None;
     };

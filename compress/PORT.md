@@ -120,3 +120,5 @@ Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStateme
 A lambda flagged `INLINED` (another lambda was inlined into it across scopes) is not `is_constant_expression`, so `flatten_fn` does not take it as a single-use fixed callee (`call.rs` `fn_inlined`): `_createClass` stays a function once `_defineProperties` is inlined into it.
 
 A lambda in `pre_tighten` (`Cx.foreign_lambda`) is tightened as terser does from the reference that inlined it: `defun_scope` is the enclosing scope, so its names are not local, `shadows` sees an enclosing binding of a name it rebinds (`FOREIGN_SHADOW`), and `handle_if_return` has `in_lambda` false.
+
+A switch branch is collapsed like a block. `x.length` evaluates through the fixed value of `x` (`reduce_vars.rs` `fixed_eval`, terser `AST_SymbolRef._eval`).

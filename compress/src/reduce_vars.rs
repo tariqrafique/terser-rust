@@ -183,6 +183,19 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     None
 }
 
+/// terser `evaluate.js` `AST_SymbolRef._eval`: the evaluated `fixed_value()`
+/// of a reference, or `None` when it has none or it does not evaluate.
+pub fn fixed_eval(n: &N, table: &SymTable) -> Option<crate::eval::Lit> {
+    let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
+    let id = table.lookup(&syms::ptr(n))?;
+    let def = &table.defs[id];
+    if def.suppress_fixed.get() {
+        return None;
+    }
+    let fixed = def.fixed.as_ref()?;
+    crate::eval::eval_lit(fixed).or_else(|| eval_num(fixed).map(crate::eval::Lit::Num))
+}
+
 /// Numeric value of a fixed constant expression. terser `evaluate.js` for `+`, `-`, and arithmetic.
 fn eval_num(n: &N) -> Option<f64> {
     match &n.data {
