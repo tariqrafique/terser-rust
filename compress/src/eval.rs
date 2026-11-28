@@ -600,6 +600,11 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     if matches!(n.data, Data::Cond { .. } | Data::Unary { prefix: true, .. }) {
         return None;
     }
+    // A literal has no `def_optimize` in terser: it stays the same node, so the
+    // parent it sits in is not rebuilt (and optimized again).
+    if matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::Null | Data::RegExp { .. }) {
+        return None;
+    }
     finish_constant(n, eval(n)?, cx)
 }
 
@@ -2253,7 +2258,7 @@ fn prec(op: &str) -> i32 {
     }
 }
 
-fn is_constant(n: &N) -> bool {
+pub(crate) fn is_constant(n: &N) -> bool {
     match &n.data {
         Data::Number { .. }
         | Data::String { .. }
@@ -3112,12 +3117,18 @@ fn symbol_read_pure(n: &N, name: &str, cx: &Cx) -> bool {
     cx.declared_ref(n, name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
 }
 
-/// terser `lib/compress/inference.js` `may_throw_on_access`.
+/// terser `lib/compress/inference.js` `may_throw_on_access`: `!pure_getters || _dot_throw`.
 pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
-    if cx.opts.pure_getters == crate::PureGetters::Off {
-        return true;
-    }
+    cx.opts.pure_getters == crate::PureGetters::Off || dot_throw(n, cx)
+}
+
+/// terser `inference.js` `_dot_throw`: the node may be null, undefined or hold a getter.
+/// `is_strict` is `pure_getters` `"strict"`; the default `AST_Node` answer is `is_strict`.
+pub(crate) fn dot_throw(n: &N, cx: &Cx) -> bool {
+    let strict = cx.opts.pure_getters == crate::PureGetters::Strict;
     match &n.data {
+        Data::Null => true,
+        // `AST_Constant` (atoms included) and `AST_Array`.
         Data::Number { .. }
         | Data::String { .. }
         | Data::True
@@ -3125,17 +3136,101 @@ pub(crate) fn may_throw_on_access(n: &N, cx: &Cx) -> bool {
         | Data::BigInt { .. }
         | Data::Infinity
         | Data::RegExp { .. }
-        | Data::Array { .. }
-        | Data::Func { .. }
-        | Data::Class { .. } => false,
-        // `AST_SymbolRef`: `arguments` whose scope is a function.
-        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" && scope_is_lambda(cx) => false,
-        Data::Unary { op, .. } if op == "void" => true,
-        Data::Unary { .. } => false,
+        | Data::Hole
+        | Data::Array { .. } => false,
+        Data::Object { props } => strict && props.iter().rev().any(|p| dot_throw(p, cx)),
+        // Classes are not held to the object rule (terser issue 724).
+        Data::Class { .. } => false,
+        Data::Prop { method: Some(ast::MethodKind::Get), .. } => true,
+        Data::Prop { .. } => false,
+        Data::Spread { expr } | Data::Chain { expr } => dot_throw(expr, cx),
+        // `AST_Function` and `AST_Arrow`; a declaration or an accessor is `AST_Node`.
+        Data::Func { kind: FuncKind::Expr | FuncKind::Arrow, .. } => false,
+        Data::Unary { prefix: false, .. } => false,
+        Data::Unary { op, .. } => op == "void",
+        Data::Binary { op, left, right } => {
+            matches!(op.as_str(), "&&" | "||" | "??") && (dot_throw(left, cx) || dot_throw(right, cx))
+        }
+        Data::Assign { logical: true, .. } => true,
+        Data::Assign { op, right, .. } => op == "=" && dot_throw(right, cx),
+        Data::Cond { cons, alt, .. } => dot_throw(cons, cx) || dot_throw(alt, cx),
+        Data::Dot { expr, prop, .. } => {
+            if !strict {
+                return false;
+            }
+            if prop == "prototype" {
+                return !matches!(expr.data, Data::Func { kind: FuncKind::Expr | FuncKind::Arrow, .. } | Data::Class { .. });
+            }
+            true
+        }
+        Data::Seq { exprs } => exprs.last().is_some_and(|e| dot_throw(e, cx)),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => {
+            if name == "arguments" && scope_is_lambda(cx) {
+                return false;
+            }
+            if !strict {
+                return false;
+            }
+            let Some(table) = &cx.syms else { return true };
+            let Some(id) = table.def_of(n) else { return true };
+            if symbol_is_immutable(table, id) {
+                return false;
+            }
+            let def = &table.defs[id];
+            if def.suppress_fixed.get() {
+                return true;
+            }
+            // `!fixed || fixed._dot_throw(compressor)`
+            match &def.fixed {
+                Some(fixed) => dot_throw(fixed, cx),
+                None => true,
+            }
+        }
+        _ => strict,
+    }
+}
+
+/// terser `inference.js` `is_nullish`: `is_null_or_undefined` or a short-circuited `?.` chain.
+pub(crate) fn is_nullish(n: &N, cx: &Cx) -> bool {
+    is_null_or_undefined(n, cx) || is_nullish_shortcircuited(n, cx)
+}
+
+fn is_nullish_shortcircuited(n: &N, cx: &Cx) -> bool {
+    match &n.data {
+        Data::Dot { expr, optional, .. } | Data::Sub { expr, optional, .. } | Data::Call { expr, optional, .. } => {
+            (*optional && is_null_or_undefined(expr, cx)) || is_nullish_shortcircuited(expr, cx)
+        }
+        Data::Chain { expr } => is_nullish_shortcircuited(expr, cx),
+        _ => false,
+    }
+}
+
+/// terser `inference.js` `is_null_or_undefined`: `null`, `is_undefined`, or a reference
+/// whose fixed value `is_nullish`.
+fn is_null_or_undefined(n: &N, cx: &Cx) -> bool {
+    match &n.data {
         Data::Null => true,
-        Data::Object { props } => props.iter().any(|p| !plain_keyval(p)),
-        Data::Seq { exprs } => exprs.last().is_some_and(|e| may_throw_on_access(e, cx)),
-        _ => true,
+        Data::Unary { op, expr, prefix: true } if op == "void" => !crate::unary::may_side_effect(expr, cx),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => {
+            if name == "undefined" && !cx.declared_ref(n, name) {
+                return true;
+            }
+            fixed_of(n, cx).is_some_and(|f| is_nullish(f, cx))
+        }
+        _ => false,
+    }
+}
+
+/// terser `AST_SymbolRef.is_immutable`: the only declaration is a function expression's
+/// own name (`AST_SymbolLambda`).
+fn symbol_is_immutable(table: &crate::syms::SymTable, id: usize) -> bool {
+    let def = &table.defs[id];
+    if def.orig_count != 1 {
+        return false;
+    }
+    match def.init.as_ref().map(|i| &i.data) {
+        Some(Data::Func { kind: FuncKind::Expr, name: Some(name), .. }) => table.def_of(name) == Some(id),
+        _ => false,
     }
 }
 
