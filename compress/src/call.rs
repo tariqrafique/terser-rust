@@ -21,13 +21,13 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
     if OPT_DEPTH.with(|d| d.get()) > 6 {
         return None;
     }
-    let Data::Call { expr, args, optional, is_new } = &n.data else {
+    let Data::Call { expr, args, is_new, .. } = &n.data else {
         return None;
     };
     if *is_new {
         return optimize_new(n, cx);
     }
-    if *optional || cx.in_computed_key() {
+    if cx.in_computed_key() {
         return None;
     }
     let (args, spread) = inline_array_like_spread(args);
@@ -38,6 +38,19 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         Some(func) if cx.opts.unused && !uses_arguments(func) => trim_unused(func, &args, resolved.direct, cx),
         _ => (resolved.func, args, false),
     };
+    // `console.assert(c, ..)` with a condition that evaluates to `1` or `true`
+    // is `void 0` (index.js 1744).
+    if let Data::Dot { expr: obj, prop, .. } = &expr.data {
+        if prop == "assert" && matches!(&obj.data, Data::Symbol { name, kind: SymKind::Ref, .. } if name == "console" && !cx.declared_ref(obj, name)) {
+            if let Some(cond) = args.first() {
+                let table = cx.syms.as_ref().filter(|_| cx.opts.reduce_vars);
+                let value = if cx.opts.evaluate { eval::eval_lit(cond, table, &cx.parents) } else { None };
+                if matches!(value, Some(eval::Lit::Bool(true))) || matches!(value, Some(eval::Lit::Num(v)) if v == 1.0) {
+                    return Some(polish(void0(n), cx));
+                }
+            }
+        }
+    }
     // A pure call in statement position contributes only its arguments' side effects.
     if ann.pure && cx.opts.side_effects && cx.parent_is_simple() {
         let effects: Vec<N> = args.iter().filter(|a| !eval::is_pure(a)).cloned().collect();
@@ -108,10 +121,13 @@ fn finish_call(n: &N, expr: &N, args: &[N], trimmed: bool, spread: bool) -> Opti
     if !trimmed && !spread {
         return None;
     }
+    let Data::Call { optional, .. } = &n.data else {
+        return None;
+    };
     // keep: `self.args.length = pos` and `inline_array_like_spread(self.args)` edit the call (index.js 1696, 1741).
     Some(edit(
         n,
-        Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false },
+        Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: *optional, is_new: false },
     ))
 }
 
