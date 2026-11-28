@@ -196,6 +196,9 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             if let Some(arg) = arg {
                 if let Some(sym_name) = sym(arg) {
                     define(table, scopes, id, sym_name, arg, SymKind::Catch, None, false);
+                } else {
+                    // A destructuring parameter: its defaults and computed keys are uses.
+                    walk(arg, id, scopes, table);
                 }
             }
             walk(body, id, scopes, table);
@@ -224,18 +227,20 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 }
             }
         }
-        Data::With { body, .. } => {
+        Data::With { expr, body } => {
             pin_fn(table, scopes, scope);
+            walk(expr, scope, scopes, table);
             walk(body, scope, scopes, table);
         }
         Data::Call { expr, args, .. } => {
             if sym(expr).as_deref() == Some("eval") && resolve(scopes, scope, "eval").is_none() {
                 pin_fn(table, scopes, scope);
             }
-            walk(expr, scope, scopes, table);
+            // `AST_Call._walk`: the arguments, then the callee.
             for arg in args {
                 walk(arg, scope, scopes, table);
             }
+            walk(expr, scope, scopes, table);
         }
         Data::Symbol { name, kind: SymKind::Ref, .. } => {
             if resolve(scopes, scope, name).is_none() {
@@ -273,7 +278,8 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                 }
             }
         }
-        other => walk_children(other, scope, scopes, table),
+        // Every other node: terser's `_walk` order.
+        _ => ast::walk_children(n, &mut |c| walk(c, scope, scopes, table)),
     }
 }
 
@@ -501,139 +507,6 @@ fn resolve(scopes: &[Scope], mut scope: usize, name: &str) -> Option<usize> {
     }
 }
 
-fn walk_children(data: &Data, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
-    match data {
-        Data::Toplevel { body } | Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => {
-            for s in body {
-                walk(s, scope, scopes, table);
-            }
-        }
-        Data::If { cond, body, alt } => {
-            walk(cond, scope, scopes, table);
-            walk(body, scope, scopes, table);
-            if let Some(alt) = alt {
-                walk(alt, scope, scopes, table);
-            }
-        }
-        Data::Binary { left, right, .. }
-        | Data::Assign { left, right, .. }
-        | Data::DefaultAssign { left, right } => {
-            walk(left, scope, scopes, table);
-            walk(right, scope, scopes, table);
-        }
-        Data::Unary { expr, .. }
-        | Data::Return { value: Some(expr) }
-        | Data::Throw { value: expr }
-        | Data::Simple { body: expr }
-        |         Data::Dot { expr, .. }
-        | Data::Await { expr }
-        | Data::Spread { expr }
-        | Data::Chain { expr } => walk(expr, scope, scopes, table),
-        Data::Sub { expr, prop, .. } => {
-            walk(expr, scope, scopes, table);
-            walk(prop, scope, scopes, table);
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => {
-            for e in exprs {
-                walk(e, scope, scopes, table);
-            }
-        }
-        Data::Cond { cond, cons, alt } => {
-            walk(cond, scope, scopes, table);
-            walk(cons, scope, scopes, table);
-            walk(alt, scope, scopes, table);
-        }
-        Data::For { init, cond, step, body } => {
-            if let Some(init) = init {
-                walk(init, scope, scopes, table);
-            }
-            if let Some(cond) = cond {
-                walk(cond, scope, scopes, table);
-            }
-            if let Some(step) = step {
-                walk(step, scope, scopes, table);
-            }
-            walk(body, scope, scopes, table);
-        }
-        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
-            walk(init, scope, scopes, table);
-            walk(object, scope, scopes, table);
-            walk(body, scope, scopes, table);
-        }
-        Data::While { cond, body } | Data::Do { body, cond } => {
-            walk(cond, scope, scopes, table);
-            walk(body, scope, scopes, table);
-        }
-        Data::Switch { expr, body } => {
-            walk(expr, scope, scopes, table);
-            for arm in body {
-                walk(arm, scope, scopes, table);
-            }
-        }
-        Data::Case { expr, body } => {
-            walk(expr, scope, scopes, table);
-            for s in body {
-                walk(s, scope, scopes, table);
-            }
-        }
-        Data::Try { body, catch, finally } => {
-            walk(body, scope, scopes, table);
-            if let Some(catch) = catch {
-                walk(catch, scope, scopes, table);
-            }
-            if let Some(finally) = finally {
-                walk(finally, scope, scopes, table);
-            }
-        }
-        Data::Template { segments } => {
-            for seg in segments {
-                if let ast::Seg::Expr(expr) = seg {
-                    walk(expr, scope, scopes, table);
-                }
-            }
-        }
-        Data::TaggedTemplate { tag, template } => {
-            walk(tag, scope, scopes, table);
-            walk(template, scope, scopes, table);
-        }
-        Data::Destructuring { names, .. } => {
-            for name in names {
-                walk(name, scope, scopes, table);
-            }
-        }
-        Data::Object { props } => {
-            for p in props {
-                walk(p, scope, scopes, table);
-            }
-        }
-        Data::Prop { key, value, .. } => {
-            if let ast::Key::Computed(expr) = key {
-                walk(expr, scope, scopes, table);
-            }
-            walk(value, scope, scopes, table);
-        }
-        // A class field initializer is a use (`static _ = (cls) => cls` reads the name).
-        Data::Field { key, value, .. } => {
-            if let ast::Key::Computed(expr) = key {
-                walk(expr, scope, scopes, table);
-            }
-            if let Some(value) = value {
-                walk(value, scope, scopes, table);
-            }
-        }
-        // `yield`, `await`, labels, and anything else: every child.
-        Data::Labeled { body, .. } => walk(body, scope, scopes, table),
-        Data::Break { .. } | Data::Continue { .. } | Data::NameMap { .. } | Data::Import { .. } => {}
-        _ => {
-            let node = Rc::new(ast::Node { start: None, end: None, data: data.clone() });
-            let _ = ast::map_children(&node, &mut |c| {
-                walk(c, scope, scopes, table);
-                Rc::clone(c)
-            });
-        }
-    }
-}
-
 fn sym(n: &N) -> Option<String> {
     match &n.data {
         Data::Symbol { name, .. } => Some(name.clone()),
@@ -731,15 +604,9 @@ impl SymTable {
             }
         }
         let mut a = Vec::new();
-        let _ = ast::map_children(orig, &mut |c| {
-            a.push(Rc::clone(c));
-            Rc::clone(c)
-        });
+        ast::transform_children(orig, &mut |c| a.push(Rc::clone(c)));
         let mut b = Vec::new();
-        let _ = ast::map_children(copy, &mut |c| {
-            b.push(Rc::clone(c));
-            Rc::clone(c)
-        });
+        ast::transform_children(copy, &mut |c| b.push(Rc::clone(c)));
         for (x, y) in a.iter().zip(b.iter()) {
             self.alias_copy(x, y);
         }

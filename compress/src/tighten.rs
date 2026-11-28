@@ -265,10 +265,7 @@ pub(crate) fn lexical_names_deep(body: &[N]) -> HashSet<String> {
                 }
             }
             _ => {
-                let _ = ast::map_children(n, &mut |c| {
-                    rec(c, out);
-                    Rc::clone(c)
-                });
+                ast::walk_children(n, &mut |c| rec(c, out));
             }
         }
     }
@@ -2049,7 +2046,7 @@ impl Counts {
             }
             if let Some(name) = ref_name(n) {
                 if own.iter().any(|b| b.contains(name)) {
-                    each_child(&n.data, |c| refs_rec(c, Some(n), hidden, out, own));
+                    ast::walk_children(n, &mut |c| refs_rec(c, Some(n), hidden, out, own));
                     return;
                 }
                 let e = out.entry(name.to_string()).or_insert((0, 0, 0));
@@ -2061,16 +2058,16 @@ impl Counts {
                     e.0 += 1;
                 }
             }
-            each_child(&n.data, |c| refs_rec(c, Some(n), hidden, out, own));
+            ast::walk_children(n, &mut |c| refs_rec(c, Some(n), hidden, out, own));
         }
         fn decls_rec(n: &N, out: &mut HashMap<String, usize>) {
             match &n.data {
                 Data::Func { .. } | Data::Class { .. } => {}
                 Data::VarDef { name: sym, .. } if sym_name(sym).is_some() => {
                     *out.entry(sym_name(sym).unwrap().to_string()).or_insert(0) += 1;
-                    each_child(&n.data, |c| decls_rec(c, out));
+                    ast::walk_children(n, &mut |c| decls_rec(c, out));
                 }
-                other => each_child(other, |c| decls_rec(c, out)),
+                _ => ast::walk_children(n, &mut |c| decls_rec(c, out)),
             }
         }
         let mut refs = HashMap::new();
@@ -2114,7 +2111,7 @@ fn count_refs(stmts: &[N], name: &str) -> (usize, usize, usize) {
                 *reads += 1;
             }
         }
-        each_child(&n.data, |c| {
+        ast::walk_children(n, &mut |c| {
             rec(c, Some(n), name, hidden, reads, writes, hid)
         });
     }
@@ -2131,10 +2128,10 @@ fn count_decls(stmts: &[N], name: &str) -> usize {
         match &n.data {
             Data::Func { .. } | Data::Class { .. } => 0,
             Data::VarDef { name: sym, .. } if sym_name(sym) == Some(name) => 1,
-            other => {
-                let mut n = 0;
-                each_child(other, |c| n += rec(c, name));
-                n
+            _ => {
+                let mut k = 0;
+                ast::walk_children(n, &mut |c| k += rec(c, name));
+                k
             }
         }
     }
@@ -2155,150 +2152,12 @@ fn escaped_names(stmts: &[N]) -> HashSet<String> {
                 out.insert(name.to_string());
             }
         }
-        each_child(&n.data, |c| rec(c, in_fn, out));
+        ast::walk_children(n, &mut |c| rec(c, in_fn, out));
     }
     for s in stmts {
         rec(s, false, &mut out);
     }
     out
-}
-
-fn each_child(data: &Data, mut f: impl FnMut(&N)) {
-    match data {
-        Data::Block { body }
-        | Data::Default { body }
-        | Data::StaticBlock { body } => body.iter().for_each(&mut f),
-        Data::Switch { expr, body } | Data::Case { expr, body } => {
-            f(expr);
-            body.iter().for_each(&mut f);
-        }
-        Data::Simple { body }
-        | Data::Throw { value: body }
-        | Data::Unary { expr: body, .. }
-        | Data::Dot { expr: body, .. }
-        | Data::Await { expr: body }
-        | Data::Spread { expr: body }
-        | Data::Chain { expr: body }
-        | Data::Return { value: Some(body) } => f(body),
-        Data::If { cond, body, alt } => {
-            f(cond);
-            f(body);
-            if let Some(a) = alt {
-                f(a);
-            }
-        }
-        Data::Binary { left, right, .. }
-        | Data::Assign { left, right, .. }
-        | Data::DefaultAssign { left, right } => {
-            f(left);
-            f(right);
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } | Data::Defs { defs: exprs, .. } => {
-            exprs.iter().for_each(&mut f)
-        }
-        Data::VarDef { name, value } => {
-            f(name);
-            if let Some(v) = value {
-                f(v);
-            }
-        }
-        Data::For {
-            init,
-            cond,
-            step,
-            body,
-        } => {
-            if let Some(v) = init {
-                f(v);
-            }
-            if let Some(v) = cond {
-                f(v);
-            }
-            if let Some(v) = step {
-                f(v);
-            }
-            f(body);
-        }
-        Data::ForIn { init, object, body }
-        | Data::ForOf {
-            init, object, body, ..
-        } => {
-            f(init);
-            f(object);
-            f(body);
-        }
-        Data::While { cond, body } | Data::Do { body, cond } => {
-            f(cond);
-            f(body);
-        }
-        Data::Call { expr, args, .. } => {
-            f(expr);
-            args.iter().for_each(&mut f);
-        }
-        Data::Cond { cond, cons, alt } => {
-            f(cond);
-            f(cons);
-            f(alt);
-        }
-        Data::Try {
-            body,
-            catch,
-            finally,
-        } => {
-            f(body);
-            if let Some(c) = catch {
-                f(c);
-            }
-            if let Some(f2) = finally {
-                f(f2);
-            }
-        }
-        Data::Catch { arg, body } => {
-            if let Some(arg) = arg {
-                f(arg);
-            }
-            f(body);
-        }
-        Data::Finally { body } | Data::Labeled { body, .. } => f(body),
-        Data::With { expr, body } => {
-            f(expr);
-            f(body);
-        }
-        Data::Sub { expr, prop, .. } => {
-            f(expr);
-            f(prop);
-        }
-        Data::Object { props } => props.iter().for_each(&mut f),
-        Data::Prop { key, value, .. } => {
-            if let Key::Computed(expr) = key {
-                f(expr);
-            }
-            f(value);
-        }
-        Data::Class { extends, props, .. } => {
-            if let Some(e) = extends {
-                f(e);
-            }
-            props.iter().for_each(&mut f);
-        }
-        Data::Yield { expr, .. } => {
-            if let Some(e) = expr {
-                f(e);
-            }
-        }
-        Data::Template { segments } => {
-            for seg in segments {
-                if let ast::Seg::Expr(expr) = seg {
-                    f(expr);
-                }
-            }
-        }
-        Data::TaggedTemplate { tag, template } => {
-            f(tag);
-            f(template);
-        }
-        _ => {}
-    }
 }
 
 /// terser `get_lvalues` / `is_modified`: symbols the value reads, and whether it writes them.
@@ -2315,16 +2174,7 @@ fn lvalues_of(value: &N) -> HashMap<String, bool> {
         }
         stack.push(Rc::clone(n));
         // terser's `get_lvalues` walker enters nested functions too.
-        if let Data::Func { args, body, .. } = &n.data {
-            args.iter().for_each(|c| rec(c, stack, out));
-            body.iter().for_each(|c| rec(c, stack, out));
-        } else if let Data::Call { expr, args, .. } = &n.data {
-            // `AST_Call._walk` visits the arguments before the callee.
-            args.iter().for_each(|c| rec(c, stack, out));
-            rec(expr, stack, out);
-        } else {
-            each_child(&n.data, |c| rec(c, stack, out));
-        }
+        ast::walk_children(n, &mut |c| rec(c, stack, out));
         stack.pop();
     }
     rec(value, &mut stack, &mut out);
@@ -2362,19 +2212,9 @@ fn inner_lvalue_names(value: &N) -> HashSet<String> {
             false
         };
         stack.push(Rc::clone(n));
-        if let Data::Call { expr, args, .. } = &n.data {
-            // `AST_Call._walk` visits the arguments before the callee, so an
-            // inlined function's own names are the last entries.
-            for a in args {
-                rec(a, bound, last, stack);
-            }
-            rec(expr, bound, last, stack);
-        } else {
-            let _ = ast::map_children(n, &mut |c| {
-                rec(c, bound, last, stack);
-                Rc::clone(c)
-            });
-        }
+        // `AST_Call._walk` visits the arguments before the callee, so an inlined function's own
+        // names are the last entries.
+        ast::walk_children(n, &mut |c| rec(c, bound, last, stack));
         stack.pop();
         if pushed {
             bound.pop();
@@ -2672,10 +2512,7 @@ fn collect_locals(stmts: &[N], names: &mut HashSet<String>) {
                 names.insert(name.clone());
             }
             _ => {
-                let _ = ast::map_children(n, &mut |c| {
-                    rec(c, names);
-                    Rc::clone(c)
-                });
+                ast::walk_children(n, &mut |c| rec(c, names));
             }
         }
     }

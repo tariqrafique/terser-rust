@@ -163,6 +163,7 @@ dependencies = [
  "ast",
  "regex",
  "ryu",
+ "serde_json",
 ]
 
 [[package]]
