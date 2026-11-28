@@ -139,8 +139,11 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     }
     use crate::eval::Lit;
     let lit = if is_literal(&fixed) { None } else { crate::eval::eval_lit(&fixed).or_else(|| eval_num(&fixed).map(Lit::Num)) };
+    // terser compares `replace.size(compressor)` and `fixed.size(compressor)`: mangled names
+    // count 1, and the stack's top is this reference.
+    let size = |node: &N| crate::size::size_in(node, std::slice::from_ref(n), true);
     let (replace, replace_len) = if is_literal(&fixed) {
-        (Rc::clone(&fixed), codegen::print(&fixed).len())
+        (Rc::clone(&fixed), size(&fixed))
     } else {
         match lit? {
             Lit::Num(num) if num.is_finite() => {
@@ -149,12 +152,12 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
                 } else {
                     span_node(&fixed, Data::Number { value: num, raw: String::new() })
                 };
-                let len = codegen::print(&node).len();
+                let len = size(&node);
                 (node, len)
             }
             Lit::Str(v) => {
                 let node = span_node(&fixed, Data::String { value: v, quote: '"', units: None });
-                let len = codegen::print(&node).len();
+                let len = size(&node);
                 (node, len)
             }
             // `make_node_from_constant` gives `AST_True` / `AST_False`. The
@@ -169,7 +172,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     if reads == 0 {
         return None;
     }
-    let fixed_len = codegen::print(&fixed).len();
+    let fixed_len = size(&fixed);
     let overhead = if at.env.unused && !exposed_now {
         (name_len + 2 + fixed_len) as f64 / reads as f64
     } else {
