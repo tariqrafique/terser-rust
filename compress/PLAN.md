@@ -23,7 +23,7 @@ Recent fixes fell into three classes, none of them missing optimizations:
 - [x] Commit the tools (`tools/`) and this plan.
 - [ ] Trace diff: log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
 - [ ] Canonical traversals: walk and transform child orders per node type, generated from terser's `ast.js` / `transform.js`, in `ast`; replace the hand-written walkers with them.
-- [ ] Stable node ids: an id in every node; rebuilding with new children keeps it (terser's in-place edit), `make_node` and `clone(true)` make new ones (`clone(true)` copies definitions). Side tables keyed by id; retire the identity work-arounds one by one.
+- [ ] Stable node ids (design: `NODE_IDS.md`): an id in every node; rebuilding with new children keeps it (terser's in-place edit), `make_node` and `clone(true)` make new ones (`clone(true)` copies definitions). Side tables keyed by id; retire the identity work-arounds one by one.
 - [ ] Complete the compressor's binder (patterns, defaults, hoisted and injected names), then make collapse definition-based (`is_lhs_local`, `may_modify`, `shadows` by definition) and drop the name sets.
 - [ ] Back to case-by-case parity, starting from the trace diff's first divergence on each failing lwc-rollup bundle.
 
