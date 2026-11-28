@@ -84,6 +84,7 @@ r R6c-inlined-class-body-reoptimized 'class A{f(r){for(;;){const[n,{p}]=S;if(v){
 r R7a-hoist-props-symbol-values 'import l from "x";const i18n={a:l};export function b(){return i18n.a+i18n.a}'
 r R7b-hoist-props-param-values 'export function s(x,y){const p={x:x,y:y};x=p.x+1;y=p.y-1;g(x,y)}'
 r R8-or-chain-not-reassociated 'export function h(){if(a)return;if(!b)c?d:e()}'
+r R8b-or-chain-in-sequence 'export function m(){x();if(a)return;b||c()}'
 r R9-fn-not-inlined-into-constructor 'function tk(value){const tv=[..."Gy"];const tokens=[];let esc=false;[...value].forEach(char=>{const t=tv.indexOf(char)>=0?char:undefined;if(t!==undefined&&!esc){if(tokens.length>0){let l=tokens[0].length;l=l===undefined?1:l+1}}})}function ge(p,d,c){const tokens=tk(p);for(let i=0;i<tokens.length;i++){}}class D{constructor(o){this.expr=ge(this.p,this.d,this.c)}}export function g(o){cache.set(o,new D(o))}'
 r R10-recursive-local-defun-not-inlined 'export function e(el,t){function h(){el.r("m",h)}if(!t){el.a("m",h)}}'
 r R11-const-not-collapsed-in-copy 'function co({items:t,c:w}){const a=t.reduce((s,i)=>s+i.w,0);if(a<=w||w<=0){return{v:t}}for(let i=0;i<n;i++){const it=t[i];if(x.v===it.v){}else{}}}export function r(){const o=co({items:this.a})}'

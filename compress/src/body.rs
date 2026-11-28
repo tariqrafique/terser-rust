@@ -649,8 +649,13 @@ fn sequencesize(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
         }
         let exprs = std::mem::take(seq);
         let first = Rc::clone(&exprs[0]);
+        // terser `make_sequence` and `make_node(AST_SimpleStatement)`: new
+        // nodes with no flags, so the descend after the scope's `drop_unused`
+        // optimizes them (and an `a||(b||c)` an if-return put in the sequence).
+        let many = exprs.len() > 1;
         let body = make_sequence(&first, exprs);
-        out.push(eval::simple(&body, body.clone()));
+        let body = if many { crate::unary::made_fresh(cx, body) } else { body };
+        out.push(crate::unary::made_fresh(cx, eval::simple(&body, body.clone())));
     };
     for stat in stmts.iter() {
         match &stat.data {
