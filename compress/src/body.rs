@@ -925,7 +925,7 @@ fn join_object_assignments(defn: &N, body: &N, cx: &Cx, phantom: &mut std::colle
                 let key = match &prop.data {
                     Data::String { value, .. } => value.clone(),
                     Data::Number { value, .. } => crate::eval::js_num_tostring(*value),
-                    _ => match crate::eval::eval_lit(prop) {
+                    _ => match crate::eval::eval_lit(prop, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars), &cx.parents) {
                         Some(crate::eval::Lit::Num(v)) => crate::eval::js_num_tostring(v),
                         Some(crate::eval::Lit::Str(v)) => v,
                         _ => break,
