@@ -171,6 +171,33 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     // Multiple reads: terser `fixed.evaluate` and `make_node_from_constant`,
     // kept when it is not longer than the name plus the declaration overhead
     // `unused` can remove.
+    // terser: `fixed instanceof AST_This` is the replacement when every
+    // reference is in the definition's own scope (and it is not a parameter).
+    if matches!(fixed.data, Data::This) {
+        let def = &table.defs[id];
+        if def.funarg {
+            return None;
+        }
+        let same_scope = def.references.iter().all(|r| {
+            table.ref_scope.borrow().get(r).copied().map(|s| if def.block_scoped { s } else { table.fn_of.get(s).copied().unwrap_or(s) }) == Some(def.scope)
+        });
+        if !same_scope {
+            return None;
+        }
+        let size = |node: &N| crate::size::size_in(node, std::slice::from_ref(n), true);
+        let replace_len = size(&fixed);
+        let reads = references.saturating_sub(assignments);
+        let overhead = if at.env.unused && !exposed_now && reads > 0 {
+            (name_len + 2 + replace_len) as f64 / reads as f64
+        } else {
+            0.0
+        };
+        if replace_len as f64 <= name_len as f64 + overhead {
+            def.replaced.set(def.replaced.get().saturating_add(1));
+            return Some(fixed);
+        }
+        return None;
+    }
     if !at.env.evaluate {
         return None;
     }
