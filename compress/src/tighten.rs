@@ -247,6 +247,8 @@ thread_local! {
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// terser `def.orig.length` by declaration name node.
     static ORIG: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// See `set_spread_refs`.
+    static SPREAD_REFS: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// See `set_table_escaped`.
     static TABLE_ESCAPED: std::cell::RefCell<HashSet<String>> = Default::default();
     /// See `set_visible`.
@@ -390,6 +392,11 @@ pub(crate) fn defun_names(params: &[N], body: &[N]) -> (HashSet<String>, HashSet
         }
     }
     (defuns, others)
+}
+
+/// `def.references.length` of each spread symbol (`...x`), by node.
+pub(crate) fn set_spread_refs(map: HashMap<usize, usize>) {
+    SPREAD_REFS.with(|s| *s.borrow_mut() = map);
 }
 
 /// Names of the defun scope with a reference bound in another defun scope
@@ -1351,11 +1358,12 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
         }
         Data::While { .. } | Data::Do { .. } | Data::ForIn { .. } | Data::ForOf { .. } => true,
         Data::Break { .. } | Data::Continue { .. } => true,
+        // terser: `node.expression.definition().references.length > 1`.
         Data::Spread { expr } => match &expr.data {
             Data::This => true,
             Data::Symbol {
                 kind: SymKind::Ref, ..
-            } => true,
+            } => SPREAD_REFS.with(|s| s.borrow().get(&ptr(expr)).is_none_or(|&c| c > 1)),
             _ => false,
         },
         Data::Prop {
@@ -1885,6 +1893,9 @@ fn rewrite(
             right: rewrite(right, cand, sites, mode, Some(n), rw)
                 .unwrap_or_else(|| Rc::clone(right)),
             logical: *logical,
+        },
+        Data::Spread { expr } => Data::Spread {
+            expr: rewrite(expr, cand, sites, mode, Some(n), rw).unwrap_or_else(|| Rc::clone(expr)),
         },
         Data::Unary { op, expr, prefix } => Data::Unary {
             op: op.clone(),

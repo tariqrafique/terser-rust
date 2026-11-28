@@ -109,7 +109,13 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                         collect_declared_refs(st, table, &mut declared);
                     }
                     crate::tighten::set_declared_refs(declared);
+                    let mut spread = std::collections::HashMap::new();
+                    for st in &stmts {
+                        collect_spread_refs(st, table, &mut spread);
+                    }
+                    crate::tighten::set_spread_refs(spread);
                 } else {
+                    crate::tighten::set_spread_refs(Default::default());
                     crate::tighten::set_table_escaped(Default::default());
                     crate::tighten::set_lexical_targets(Default::default());
                     crate::tighten::set_declared_refs(Default::default());
@@ -1191,6 +1197,17 @@ fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::
 }
 
 /// terser `is_declared` of every reference here the symbol table knows.
+/// `def.references.length` of each symbol spread in an argument list or array
+/// (`...x`): the collapse scanner stops at one with more than one reference.
+fn collect_spread_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {
+    if let Data::Spread { expr } = &n.data {
+        if let (Data::Symbol { kind: ast::SymKind::Ref, .. }, Some(id)) = (&expr.data, table.def_of(expr)) {
+            out.insert(crate::syms::ptr(expr), table.defs[id].ref_count());
+        }
+    }
+    ast::walk_children(n, &mut |c| collect_spread_refs(c, table, out));
+}
+
 fn collect_declared_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, bool>) {
     if let Data::Symbol { kind: ast::SymKind::Ref | ast::SymKind::Export, .. } = &n.data {
         if let Some(id) = table.def_of(n) {
