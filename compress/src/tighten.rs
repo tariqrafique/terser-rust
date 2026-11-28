@@ -1186,7 +1186,9 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
 }
 
 fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
-    match &n.data {
+    // terser ORs every clause: a node that fails its own test can still stop
+    // the scan through the closing `may_throw` one.
+    let own = match &n.data {
         Data::Call { .. } => true,
         Data::Return { .. } | Data::Throw { .. } => {
             st.side_effects || may_modify(&st.cand.name, st)
@@ -1206,21 +1208,23 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
         } => sym_name(name).is_some_and(|sym| {
             st.lvalues.contains_key(sym) || (st.side_effects && may_modify(sym, st))
         }),
-        Data::Assign { left, .. } | Data::Unary { expr: left, .. } => {
+        // `is_lhs(node.left, node)`: an assignment target, the operand of
+        // `++` / `--` / `delete`, or a `for…in` init.
+        Data::Assign { left, .. } => is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym)),
+        Data::Unary { op, expr: left, .. } if matches!(op.as_str(), "++" | "--" | "delete") => {
             is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym))
         }
         Data::ForIn { init, .. } | Data::ForOf { init, .. } => {
             is_prop(init) || ref_name(init).is_some_and(|sym| st.lvalues.contains_key(sym))
         }
-        _ => {
-            st.may_throw
-                && if st.in_try {
-                    expr_effects(n, st.declared)
-                } else {
-                    side_effects_external(n, st.locals)
-                }
+        _ => false,
+    };
+    own || st.may_throw
+        && if st.in_try {
+            expr_effects(n, st.declared)
+        } else {
+            side_effects_external(n, st.locals)
         }
-    }
 }
 
 fn may_modify(name: &str, st: &Scan<'_>) -> bool {

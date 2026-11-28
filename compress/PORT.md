@@ -114,3 +114,5 @@ Export and collapse board: `export { x }` is a reference (`AST_SymbolExport` ext
 - `functions/issue_2657`: terser never re-collapses the body after the flatten; here an injected var is only treated as a local inside a nested block.
 
 `drop_unused` pass 1 skips an `=` target only when it is the scope's own binding (`self.variables.get(name) === def`); an undeclared global never is. `assign_as_unused` does not look through a statement, so the rhs of `x = v` is walked and `v` stays in use.
+
+Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStatement`), not only one with a `let` / `const` or a `var` with a value, so an assignment to a function `var` collapses into a `for…in` object there. `find_stop`'s stop test ORs all clauses: an assignment that is not an lvalue of the candidate still stops the scan when the candidate may throw inside `try` (`collapse_vars/issue_2891_1`).

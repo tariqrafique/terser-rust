@@ -132,8 +132,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
 }
 
 /// Locals of this body, every enclosing scope's bindings, and whether it is a
-/// function. `None` for a block: `collapse` here is name based and a block's
-/// `var` belongs to the function, so blocks are not collapsed on their own.
+/// function. A nested block gets its loop and try state.
 #[allow(clippy::type_complexity)]
 fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<String>, std::collections::HashSet<String>, bool, Option<(bool, bool)>)> {
     let me = self_node(cx)?;
@@ -141,17 +140,12 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         Data::Func { args, .. } => (crate::tighten::scope_bindings(args, stmts), true, None),
         Data::Toplevel { .. } => (crate::tighten::scope_bindings(&[], stmts), false, None),
         Data::StaticBlock { .. } => (crate::tighten::scope_bindings(&[], stmts), true, None),
-        // A nested block: only its own `let` / `const` (they cannot be read
-        // outside it). terser `find_loop_scope_try` gives the loop and try state.
+        // A nested block: its own `let` / `const`, a `var` whose counts are
+        // all here (`tighten.rs` `block_var`), or an assignment to a function
+        // local (`block_assign`). terser collapses every block.
+        // terser `find_loop_scope_try` gives the loop and try state.
         Data::Block { .. } => {
             let names = crate::tighten::block_lexicals(stmts);
-            // A `var` with a value here can collapse too, when its counts
-            // are all in this block (`tighten.rs` `block_var`).
-            let has_var = stmts.iter().any(|s| matches!(&s.data, Data::Defs { kind: DefKind::Var, defs, .. }
-                if defs.iter().any(|d| matches!(d.data, Data::VarDef { value: Some(_), .. }))));
-            if names.is_empty() && !has_var {
-                return None;
-            }
             let (mut in_loop, mut in_try) = (false, false);
             let len = cx.parents.len();
             for (i, p) in cx.parents[..len.saturating_sub(1)].iter().enumerate().rev() {
