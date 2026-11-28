@@ -603,6 +603,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         foreign_lambda: None,
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
+        label_refs: RefCell::new(loops::collect_label_refs(root)),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -728,6 +729,8 @@ struct Cx {
     /// was appended to: the parameter's reads in the inlined body plus the
     /// injected assignment.
     injected_refs: RefCell<HashMap<(ScopeKey, String), usize>>,
+    /// terser `AST_Label.references`, by label id (`loops.rs` `collect_label_refs`).
+    label_refs: RefCell<ast::IdMap<ast::IdSet>>,
 }
 
 impl Cx {
@@ -1228,13 +1231,21 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // inlined lambda copy, a switch-built block): its `tighten_body` runs now,
     // on its children as they are.
     if cx.pre_tighten.borrow_mut().remove(&out.id()) {
-        cx.parents.push(Rc::clone(&out));
+        // A block an optimizer made is optimized with the optimizer's `self` on the stack
+        // (`make_node(AST_BlockStatement, ..).optimize(compressor)`): `compressor.self()` is
+        // the node being optimized, not the block.
+        let lambda = matches!(out.data, Data::Func { .. });
+        if lambda {
+            cx.parents.push(Rc::clone(&out));
+        }
         let entered = cx.enter(&out);
-        let saved = std::mem::replace(&mut cx.foreign_lambda, matches!(out.data, Data::Func { .. }).then(|| out.id()));
+        let saved = std::mem::replace(&mut cx.foreign_lambda, lambda.then(|| out.id()));
         let tightened = after_descend(Rc::clone(&out), &out, cx);
         cx.foreign_lambda = saved;
         cx.leave(entered);
-        cx.parents.pop();
+        if lambda {
+            cx.parents.pop();
+        }
         if !Rc::ptr_eq(&tightened, &out) {
             out = tightened;
         }

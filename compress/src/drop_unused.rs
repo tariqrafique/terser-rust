@@ -755,20 +755,17 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             }
         }
     }
-    // drop-unused.js `tt` `AST_LabeledStatement` around an `AST_For`: a block the
-    // loop became (its init's `var` moved out) takes the label inside, on the loop.
+    // drop-unused.js `tt` `AST_LabeledStatement` with an `AST_For` body: what the loop's
+    // init left in front of the loop goes in front of the label.
     if let Data::Labeled { label, body } = &n.data {
         if matches!(body.data, Data::For { .. }) {
             let mut tmp = Vec::new();
             rewrite_stmt(body, table, u, scope_id, drop_vars, drop_funcs, &mut tmp);
-            if tmp.len() > 1 {
-                let last = tmp.pop().unwrap();
+            if let Some(last) = tmp.pop() {
                 out.extend(tmp);
-                out.push(renode(n, Data::Labeled { label: Rc::clone(label), body: last }));
-                return;
+                let same = Rc::ptr_eq(&last, body);
+                out.push(if same { Rc::clone(n) } else { renode(n, Data::Labeled { label: Rc::clone(label), body: last }) });
             }
-            let body = tmp.pop().unwrap_or_else(|| node(body, Data::Empty));
-            out.push(renode(n, Data::Labeled { label: Rc::clone(label), body }));
             return;
         }
     }

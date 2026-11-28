@@ -121,6 +121,8 @@ fn opt_table(n: &N, cx: &Cx) -> Option<N> {
         // terser `def_optimize(AST_VarDef)` / `def_optimize(AST_Definitions)`.
         Data::VarDef { .. } => optimize_vardef(n, cx),
         Data::Defs { .. } => optimize_defs(n),
+        // terser `def_optimize(AST_LabeledStatement)`.
+        Data::Labeled { .. } => crate::loops::optimize_labeled(n, cx),
         _ => None,
     }
 }
@@ -849,28 +851,12 @@ fn dead_if(span: &N, cond: &N, body: &N, alt: Option<&N>, truthy: bool, cx: &Cx)
     finish_block(span, stmts, cx)
 }
 
+/// terser `make_node(AST_BlockStatement, self, { body }).optimize(compressor)`: the block's
+/// `tighten_body` runs when `transform` takes the result (`pre_tighten`).
 fn finish_block(span: &N, body: Vec<N>, cx: &Cx) -> N {
-    let mut out = Vec::new();
-    for stat in body {
-        if matches!(stat.data, Data::Empty) {
-            continue;
-        }
-        if cx.opts.side_effects {
-            if let Data::Simple { body } = &stat.data {
-                if statement_pure(body, cx) {
-                    continue;
-                }
-            }
-        }
-        out.push(stat);
-    }
-    if out.is_empty() {
-        return empty(span);
-    }
-    if out.len() == 1 && super::can_evict(&out[0]) {
-        return out.pop().unwrap();
-    }
-    atom(span, Data::Block { body: out })
+    let block = atom(span, Data::Block { body });
+    cx.pre_tighten.borrow_mut().insert(block.id());
+    block
 }
 
 /// terser `make_node(AST_SimpleStatement, ...).optimize(compressor)`: the
@@ -2126,8 +2112,8 @@ fn is_boolean(n: &N) -> bool {
 pub(crate) fn is_number(n: &N) -> bool {
     match &n.data {
         Data::Number { .. } => true,
-        Data::Unary { op, expr, prefix: true } => {
-            matches!(op.as_str(), "+" | "-" | "~") && is_number(expr)
+        Data::Unary { op, expr, .. } => {
+            matches!(op.as_str(), "+" | "-" | "~" | "++" | "--") && is_number(expr)
         }
         Data::Binary { op, left, right } => {
             if op == "+" {
@@ -2138,6 +2124,12 @@ pub(crate) fn is_number(n: &N) -> bool {
                 false
             }
         }
+        Data::Assign { op, right, .. } => {
+            (op == "=" || matches!(op.strip_suffix('='), Some("-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" | ">>>")))
+                && is_number(right)
+        }
+        Data::Seq { exprs } => exprs.last().is_some_and(is_number),
+        Data::Cond { cons, alt, .. } => is_number(cons) && is_number(alt),
         _ => false,
     }
 }
