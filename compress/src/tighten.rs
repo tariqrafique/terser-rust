@@ -53,6 +53,11 @@ fn child_env<'a>(env: &Env<'a>, in_loop: bool, in_try: bool) -> Env<'a> {
     }
 }
 
+/// The candidates moved since the last call (`MOVED_WRITES`).
+pub(crate) fn take_moved_writes() -> Vec<ast::NodeId> {
+    MOVED_WRITES.with(|m| std::mem::take(&mut *m.borrow_mut()))
+}
+
 fn walk(n: &N, env: &Env<'_>) -> N {
     match &n.data {
         Data::Toplevel { body } => renode(
@@ -225,6 +230,9 @@ pub(crate) fn collapse_step(stmts: Vec<N>, unused: bool, toplevel_vars: bool, lo
 }
 
 thread_local! {
+    /// Assignments and prefix updates a collapse moved to their use (terser
+    /// `clear_flag(candidate, WRITE_ONLY)`); the caller clears their flags.
+    static MOVED_WRITES: std::cell::RefCell<Vec<ast::NodeId>> = Default::default();
     static PHANTOM: std::cell::RefCell<HashMap<String, usize>> = Default::default();
     /// `let` / `const` names of the enclosing function: terser `get_lhs`
     /// never takes an assignment to one.
@@ -977,6 +985,9 @@ fn apply_candidate(
         return None;
     }
     info.replaced = rw.hit;
+    if mode == Mode::Move && matches!(cand.kind, Kind::Assign | Kind::Pre) {
+        MOVED_WRITES.with(|m| m.borrow_mut().push(cand.node.id()));
+    }
     if env.unused {
         next = sweep_duplicate_vars(next);
     }

@@ -621,6 +621,7 @@ fn drop_assign(n: &N, logical: bool, left: &N, right: &N, cx: &Cx, first: bool) 
     if may_side_effect(left, cx) || strict_const {
         return Some(Rc::clone(n));
     }
+    cx.set_write_only(n, true);
     let mut obj = left;
     while let Data::Dot { expr, .. } | Data::Sub { expr, .. } = &obj.data {
         obj = expr;
@@ -786,6 +787,7 @@ fn drop_access(n: &N, expr: &N, prop: Option<&N>, optional: bool, cx: &Cx, first
 
 fn drop_unary(n: &N, op: &str, expr: &N, cx: &Cx, first: bool) -> Option<N> {
     if matches!(op, "delete" | "++" | "--") {
+        cx.set_write_only(n, !may_side_effect(expr, cx));
         return Some(Rc::clone(n));
     }
     if op == "typeof" && matches!(expr.data, Data::Symbol { kind: SymKind::Ref, .. }) {

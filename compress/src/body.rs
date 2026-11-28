@@ -121,6 +121,9 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     scope.3,
                 );
                 stmts = next;
+                for id in crate::tighten::take_moved_writes() {
+                    cx.write_only.borrow_mut().remove(&id);
+                }
                 if changed {
                     st.changed = true;
                     collapsed = true;
