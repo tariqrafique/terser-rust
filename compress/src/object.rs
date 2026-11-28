@@ -71,9 +71,11 @@ fn optimize_concise_method(n: &N, cx: &Cx) -> Option<N> {
         async_: *fn_async || *async_,
         generator: false,
     });
+    // `lift_key(self, compressor)` runs first, so the arrow's key is the lifted one.
+    let key = if cx.opts.computed_props { eval::lift_key(key, cx).unwrap_or_else(|| key.clone()) } else { key.clone() };
     Some(atom(n, Data::Prop {
         method: None,
-        key: key.clone(),
+        key,
         value: arrow,
         static_: false,
         private: false,

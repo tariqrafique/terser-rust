@@ -810,7 +810,7 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                                 alt: a,
                             },
                         );
-                        cx.fresh.borrow_mut().insert(Rc::as_ptr(&made) as usize, Rc::clone(&made));
+                        cx.fresh.borrow_mut().insert(made.id());
                         out.push(made);
                         prev = None;
                         st.changed = true;

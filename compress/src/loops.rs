@@ -126,7 +126,7 @@ fn optimize_for(n: &N, cx: &Cx) -> Option<N> {
                     stmts.push(eval::simple(n, c));
                     // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
                     let block = eval::atom(n, Data::Block { body: stmts });
-                    cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&block) as usize, Rc::clone(&block));
+                    cx.pre_tighten.borrow_mut().insert(block.id());
                     return Some(block);
                 }
             }
@@ -941,23 +941,19 @@ fn switch_two(span: &N, expr: &N, arms: &[Arm], marker: u32, cx: &Cx) -> Option<
     Some(finish_switch_block(span, vec![iff, always], cx))
 }
 
-/// One statement stays a statement so the second descend does not rebuild the `if`.
-fn stable_body(span: &N, stmts: Vec<N>, cx: &Cx) -> N {
-    let mut stmts = crate::tighten(stmts, cx);
-    stmts.retain(|s| !matches!(s.data, Data::Empty));
-    if stmts.is_empty() {
-        eval::empty(span)
-    } else if stmts.len() == 1 && crate::can_evict(&stmts[0]) {
-        stmts.pop().unwrap()
-    } else {
-        eval::atom(span, Data::Block { body: stmts })
-    }
+/// `make_node(AST_BlockStatement, branch, { body: branch.body })`: the branch stays a block
+/// here; the descend optimizes it later, and the `OPTIMIZED` `if` around it is not folded again.
+fn stable_body(span: &N, stmts: Vec<N>, _cx: &Cx) -> N {
+    eval::atom(span, Data::Block { body: stmts })
 }
 
+/// `make_node(AST_If, ..).optimize(compressor)`: the `if` is optimized where it is made and
+/// its result is `OPTIMIZED`, so the second descend does not turn `if (c) { s }` into `c && s`.
 fn sealed_if(span: &N, cond: N, body: N, alt: Option<N>, cx: &Cx) -> N {
     let iff = eval::atom(span, Data::If { cond, body, alt });
-    cx.seal_optimized(&iff);
-    iff
+    let out = eval::fold(&iff, cx);
+    cx.seal_optimized(&out);
+    out
 }
 
 fn nested_break(arms: &[Arm], root: &N) -> bool {
@@ -1030,7 +1026,7 @@ fn finish_switch_block(span: &N, stmts: Vec<N>, cx: &Cx) -> N {
     } else {
         // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
         let block = eval::atom(span, Data::Block { body: stmts });
-        cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&block) as usize, Rc::clone(&block));
+        cx.pre_tighten.borrow_mut().insert(block.id());
         block
     }
 }

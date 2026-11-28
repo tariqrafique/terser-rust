@@ -100,34 +100,43 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         single = false;
     }
     // A class is not inlined into another scope (`inline.js`).
-    if matches!(fixed.data, Data::Class { .. }) && symbol_scope(table, at.parents) != Some(scope) {
+    if matches!(fixed.data, Data::Class { .. }) && self_scope(table, at.parents, n) != Some(scope) {
         return None;
     }
     if single && is_lambda_or_class(&fixed) {
-        single = lambda_inline_ok(table, at, id, &fixed);
+        single = lambda_inline_ok(table, at, id, &fixed, n);
     }
     if single && is_lambda_or_class(&fixed) {
-        let sym_scope = symbol_scope(table, at.parents);
-        let conflict = sym_scope.is_some_and(|s| scope_encloses_conflict(table, s, &fixed));
+        // `scope_encloses_variables_in_this_scope(nearest_scope, fixed)`: the scope the
+        // reference sits in now; `def.scope === self.scope`: the one it was bound in.
+        let nearest = symbol_scope(table, at.parents);
+        let conflict = nearest.is_some_and(|s| scope_encloses_conflict(table, s, &fixed));
         let direct_call = parent.is_some_and(|p| call_targets(p, n));
         let recursive_name = named_recursive(table, &fixed);
-        single = (sym_scope == Some(scope) && !conflict) || (direct_call && !conflict && !recursive_name);
+        single = (self_scope(table, at.parents, n) == Some(scope) && !conflict) || (direct_call && !conflict && !recursive_name);
     }
     if single {
         let def = &table.defs[id];
         def.replaced.set(def.replaced.get().saturating_add(1));
         // terser `fixed.clone(true)` when the lambda moves to another scope:
         // fresh nodes (no optimizer flags) that keep their definitions.
-        if (is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope))
-            || matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. })
-        {
+        // A self-recursive declaration is copied whole as well: terser moves its inner
+        // references to the lambda's name (il 251-267), which the port does by copying.
+        let recursive = matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. }) && def.recursive_refs > 0;
+        if (is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope)) || recursive {
             let copy = table.clone_deep(&fixed);
             let out = expr_value(&copy);
             // `make_node(AST_Function, fixed, fixed)` copies the scope (il 247-250).
             table.copy_binding(&copy, &out);
             return Some(out);
         }
-        return Some(expr_value(&fixed));
+        // `make_node(AST_Function, fixed, fixed)` (il 247-250): a copy of the top node
+        // only; the body is the declaration's, flags and all.
+        let out = expr_value(&fixed);
+        if !Rc::ptr_eq(&out, &fixed) {
+            table.copy_binding(&fixed, &out);
+        }
+        return Some(out);
     }
     // Multiple reads: terser `fixed.evaluate` and `make_node_from_constant`,
     // kept when it is not longer than the name plus the declaration overhead
@@ -1426,6 +1435,13 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     }
 }
 
+/// terser `self.scope` of reference `n`: the scope it was bound in, which an optimizer
+/// that moves the reference (a flatten, a collapse) does not change.
+fn self_scope(table: &SymTable, parents: &[N], n: &N) -> Option<usize> {
+    table.ref_scope_of(n).or_else(|| symbol_scope(table, parents))
+}
+
+/// terser `compressor.find_scope()`: the scope around the node being optimized.
 fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
     // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
     // pointer is not in `node_scope`.
@@ -1433,7 +1449,7 @@ fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref` lambda and class checks.
-fn lambda_inline_ok(table: &SymTable, at: &At, id: usize, fixed: &N) -> bool {
+fn lambda_inline_ok(table: &SymTable, at: &At, id: usize, fixed: &N, sym: &N) -> bool {
     if retain_top(at, fixed) {
         return false;
     }
@@ -1441,7 +1457,7 @@ fn lambda_inline_ok(table: &SymTable, at: &At, id: usize, fixed: &N) -> bool {
         let def = &table.defs[id];
         (def.scope, def.escaped, def.funarg)
     };
-    let sym_scope = symbol_scope(table, at.parents);
+    let sym_scope = self_scope(table, at.parents, sym);
     let cross = sym_scope != Some(def_scope);
     if cross && (escaped == 1 || scope_is_inlined(table, fixed) || within_array_or_object(at.parents) || !at.reduce_funcs) {
         return false;

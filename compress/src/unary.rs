@@ -811,7 +811,7 @@ fn drop_sequence(n: &N, exprs: &[N], cx: &Cx) -> Option<N> {
 /// terser `make_node` / `clone()` in `drop_side_effect_free`: a node with no
 /// flags, so the descend after the scope's `drop_unused` optimizes it.
 pub(crate) fn made_fresh(cx: &Cx, n: N) -> N {
-    cx.fresh.borrow_mut().insert(Rc::as_ptr(&n) as usize, Rc::clone(&n));
+    cx.fresh.borrow_mut().insert(n.id());
     n
 }
 
