@@ -1607,6 +1607,7 @@ fn named_recursive(table: &SymTable, func: &N) -> bool {
 /// terser `lib/compress/inline.js` `scope_encloses_variables_in_this_scope`.
 fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
     let Some(&func_scope) = table.node_scope.get(&syms::ptr(func)) else { return true };
+    let nested = nested_scopes(func, table);
     let mut conflict = false;
     each_node(func, &mut |node| {
         if conflict {
@@ -1614,7 +1615,7 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
         }
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
-        if defined_inside(table, id, func_scope) {
+        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
             return;
         }
         if find_var(table, nearest, name).is_some_and(|found| found != id) {
@@ -1622,6 +1623,18 @@ fn scope_encloses_conflict(table: &SymTable, nearest: usize, func: &N) -> bool {
         }
     });
     conflict
+}
+
+/// Scope ids of the scope nodes inside `func` by position. An inlined copy
+/// keeps its original scope id, whose parent chain does not pass through `func`.
+fn nested_scopes(func: &N, table: &SymTable) -> std::collections::HashSet<usize> {
+    let mut nested = std::collections::HashSet::new();
+    each_node(func, &mut |node| {
+        if let Some(sc) = table.scope_lookup(&syms::ptr(node)) {
+            nested.insert(sc);
+        }
+    });
+    nested
 }
 
 fn defined_inside(table: &SymTable, def_id: usize, func_scope: usize) -> bool {
@@ -1712,6 +1725,9 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         return CExpr::No;
     }
     let arrow = matches!(func.data, Data::Func { kind: FuncKind::Arrow, .. });
+    // Scopes nested in `func` by position: an inlined copy keeps its original
+    // scope id, whose parent chain does not pass through `func`.
+    let nested = nested_scopes(func, table);
     let mut result = CExpr::Yes;
     let mut abort = false;
     each_node(func, &mut |node| {
@@ -1726,7 +1742,7 @@ fn all_refs_local(func: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         let Data::Symbol { name, kind: SymKind::Ref, .. } = &node.data else { return };
         let Some(id) = table.lookup(&syms::ptr(node)) else { return };
         // Locals and names defined in a nested function are not free references.
-        if defined_inside(table, id, func_scope) {
+        if nested.contains(&table.defs[id].scope) || defined_inside(table, id, func_scope) {
             return;
         }
         match scope {
