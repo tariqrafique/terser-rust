@@ -122,7 +122,7 @@ fn optimize_for(n: &N, cx: &Cx) -> Option<N> {
     if cx.opts.side_effects {
         if let Some(i) = &init {
             if !matches!(i.data, Data::Defs { .. }) {
-                let dropped = drop_expr(i, cx);
+                let dropped = crate::unary::drop_side_effect_free(i, cx, false);
                 if !opt_eq(&dropped, &init) {
                     init = dropped;
                     changed = true;
@@ -285,29 +285,6 @@ fn as_statement(n: &N) -> N {
 }
 
 /// `drop_side_effect_free` for a `for` init that is an expression.
-fn drop_expr(n: &N, cx: &Cx) -> Option<N> {
-    if eval::statement_pure(n, cx) {
-        return None;
-    }
-    let Data::Seq { exprs } = &n.data else {
-        return Some(Rc::clone(n));
-    };
-    let mut kept = Vec::new();
-    for (i, e) in exprs.iter().enumerate() {
-        let last = i + 1 == exprs.len();
-        if last {
-            kept.push(Rc::clone(e));
-        } else if let Some(d) = drop_expr(e, cx) {
-            kept.push(d);
-        }
-    }
-    match kept.len() {
-        0 => None,
-        1 => kept.pop(),
-        _ => Some(eval::atom(n, Data::Seq { exprs: kept })),
-    }
-}
-
 fn smaller_constant(orig: &N, lit: Lit, cx: &Cx) -> N {
     let made = eval::fold(&eval::lit_node(orig, lit, cx), cx);
     if crate::size::size(&made) > crate::size::size(orig) {
