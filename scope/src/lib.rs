@@ -92,10 +92,19 @@ pub fn mangle_map_with(root: &N, opts: &MangleOptions) -> Result<(HashMap<usize,
     let printed = codegen::print_without_comments(root);
     let mut freq = Freq::new();
     freq.consider(&printed, 1);
-    let mangleable = a.mangleable_nodes();
+    // terser's print hook subtracts a symbol at each place it is printed; the
+    // compressor can put one node at several places (collapse's `multi_replacer`).
+    let mangleable: HashMap<usize, String> = a.mangleable_nodes().into_iter().collect();
+    fn uses(n: &N, out: &mut HashMap<usize, usize>) {
+        *out.entry(Rc::as_ptr(n) as usize).or_insert(0) += 1;
+        ast::walk_children(n, &mut |c| uses(c, out));
+    }
+    let mut counts = HashMap::new();
+    uses(root, &mut counts);
     for (ptr, name) in &mangleable {
-        let _ = ptr;
-        freq.consider(name, -1);
+        for _ in 0..counts.get(ptr).copied().unwrap_or(1).max(1) {
+            freq.consider(name, -1);
+        }
     }
     freq.sort();
     a.assign(&freq);
