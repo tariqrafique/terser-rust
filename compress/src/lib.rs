@@ -12,6 +12,7 @@ mod conditional;
 mod drop_unused;
 mod eval;
 mod sequence;
+mod size;
 mod hoist;
 mod loops;
 mod object;

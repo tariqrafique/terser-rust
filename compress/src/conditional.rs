@@ -709,39 +709,22 @@ fn negate(n: &N, first: bool, cx: &Cx) -> N {
     }
 }
 
+/// terser `inference.js` `negate` `best`: only `alt` is wrapped in a statement when first.
 fn best_negation(orig: &N, alt: N, first: bool, cx: &Cx) -> N {
+    let _ = cx;
     let negated = unary(orig, "!", Rc::clone(orig));
-    if first {
-        let stat = atom(orig, Data::Simple { body: Rc::clone(&alt) });
-        if node_size(&negated, cx) > node_size(&stat, cx) {
-            alt
-        } else {
-            negated
-        }
-    } else if node_size(&negated, cx) > node_size(&alt, cx) {
-        alt
-    } else {
-        negated
-    }
+    let alt_size = if first { crate::size::statement_size(&alt) } else { crate::size::size(&alt) };
+    if crate::size::size(&negated) > alt_size { alt } else { negated }
 }
 
 /// terser `lib/compress/common.js` `best_of`. Equal sizes keep `left`.
 pub(crate) fn best_of(cx: &Cx, left: &N, right: &N) -> N {
-    if smaller_than(left, right, cx) {
-        Rc::clone(right)
-    } else {
-        Rc::clone(left)
-    }
+    crate::size::best_of(first_in_statement(cx), left, right)
 }
 
+/// `best_of(compressor, orig, negated) === negated`.
 fn smaller_than(orig: &N, negated: &N, cx: &Cx) -> bool {
-    if first_in_statement(cx) {
-        let a = atom(orig, Data::Simple { body: Rc::clone(orig) });
-        let b = atom(orig, Data::Simple { body: Rc::clone(negated) });
-        node_size(&a, cx) > node_size(&b, cx)
-    } else {
-        node_size(orig, cx) > node_size(negated, cx)
-    }
+    Rc::ptr_eq(&best_of(cx, orig, negated), negated)
 }
 
 fn in_boolean_context(cx: &Cx) -> bool {
@@ -787,7 +770,7 @@ fn bool_bubble(parent: &N, node: &N) -> bool {
     }
 }
 
-fn first_in_statement(cx: &Cx) -> bool {
+pub(crate) fn first_in_statement(cx: &Cx) -> bool {
     let stack = &cx.parents;
     if stack.is_empty() {
         return false;
@@ -837,283 +820,6 @@ fn left_edge(parent: &N, node: &N) -> bool {
         Data::Unary { expr, prefix: false, .. } => Rc::ptr_eq(expr, node),
         _ => false,
     }
-}
-
-fn node_size(n: &N, cx: &Cx) -> usize {
-    // terser `ast.size()` from `best_of` has no stack: the root has no parent.
-    let _ = cx;
-    size_walk(n, &[], &[])
-}
-
-fn size_walk(n: &N, walk: &[N], comp: &[N]) -> usize {
-    let own = own_size(n, walk, comp);
-    let mut next = Vec::with_capacity(walk.len() + 1);
-    next.extend_from_slice(walk);
-    next.push(Rc::clone(n));
-    own + child_size(n, &next, comp)
-}
-
-fn child_size(n: &N, walk: &[N], comp: &[N]) -> usize {
-    let mut total = 0usize;
-    let mut add = |child: &N| total += size_walk(child, walk, comp);
-    match &n.data {
-        Data::Unary { expr, .. }
-        | Data::Dot { expr, .. }
-        | Data::Chain { expr }
-        | Data::Spread { expr }
-        | Data::Await { expr }
-        | Data::Simple { body: expr }
-        | Data::Return { value: Some(expr) }
-        | Data::Throw { value: expr } => add(expr),
-        Data::Binary { left, right, .. }
-        | Data::Assign { left, right, .. }
-        | Data::DefaultAssign { left, right } => {
-            add(left);
-            add(right);
-        }
-        Data::Cond { cond, cons, alt } => {
-            add(cond);
-            add(cons);
-            add(alt);
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => exprs.iter().for_each(&mut add),
-        Data::Call { expr, args, .. } => {
-            add(expr);
-            args.iter().for_each(&mut add);
-        }
-        Data::Sub { expr, prop, .. } => {
-            add(expr);
-            add(prop);
-        }
-        Data::Object { props } => props.iter().for_each(&mut add),
-        Data::Prop { key, value, .. } => {
-            if let Key::Computed(expr) = key {
-                add(expr);
-            }
-            add(value);
-        }
-        Data::Field { key, value, .. } => {
-            if let Key::Computed(expr) = key {
-                add(expr);
-            }
-            if let Some(value) = value {
-                add(value);
-            }
-        }
-        Data::Func { name, args, body, .. } => {
-            if let Some(name) = name {
-                add(name);
-            }
-            args.iter().for_each(&mut add);
-            body.iter().for_each(&mut add);
-        }
-        Data::Template { segments } => {
-            for seg in segments {
-                if let Seg::Expr(expr) = seg {
-                    add(expr);
-                }
-            }
-        }
-        _ => {}
-    }
-    total
-}
-
-fn own_size(n: &N, walk: &[N], comp: &[N]) -> usize {
-    match &n.data {
-        Data::Binary { op, right, .. } | Data::Assign { op, right, .. } => {
-            let mut size = if op == "in" { 4 } else { op.len() };
-            if op == "+" || op == "-" {
-                if let Data::Unary { op: rop, prefix: true, .. } = &right.data {
-                    if rop == op {
-                        size += 1;
-                    }
-                }
-            }
-            size + usize::from(binary_parens(n, op, walk, comp)) * 2
-        }
-        Data::Unary { op, .. } => match op.as_str() {
-            "typeof" => 7,
-            "void" => 5,
-            _ => op.len(),
-        },
-        Data::Number { value, .. } => number_size(*value),
-        Data::String { value, units, .. } => units.as_ref().map(|u| u.len()).unwrap_or_else(|| utf16_len(value)) + 2,
-        Data::True | Data::This => 4,
-        Data::False => 5,
-        Data::Null => 4,
-        Data::Infinity => 8,
-        Data::Super => 5,
-        Data::NewTarget => 10,
-        Data::Symbol { name, .. } => {
-            if name == "arguments" {
-                9
-            } else {
-                utf16_len(name)
-            }
-        }
-        Data::BigInt { value } => value.len(),
-        Data::RegExp { source, flags } => source.len() + flags.len() + 2,
-        Data::Cond { .. } => 3,
-        Data::Seq { exprs } => exprs.len().saturating_sub(1),
-        Data::Array { elements } => 2 + elements.len().saturating_sub(1),
-        Data::Call { args, optional, is_new, .. } => {
-            let base = if *is_new {
-                6
-            } else if *optional {
-                4
-            } else {
-                2
-            };
-            base + args.len().saturating_sub(1)
-        }
-        Data::Dot { prop, optional, private, .. } => {
-            prop.len()
-                + if *private {
-                    if *optional { 3 } else { 2 }
-                } else if *optional {
-                    2
-                } else {
-                    1
-                }
-        }
-        Data::Sub { optional, .. } => {
-            if *optional {
-                4
-            } else {
-                2
-            }
-        }
-        Data::Object { props } => {
-            let mut base = 2 + props.len().saturating_sub(1);
-            if first_at(n, walk, comp) {
-                base += 2;
-            }
-            base
-        }
-        Data::Prop { key, .. } => key_len(key) + 1,
-        Data::Func { kind, args, body, async_, generator, .. } => {
-            let mods = usize::from(*generator) + if *async_ { 6 } else { 0 };
-            let arg_commas = args.len().saturating_sub(1);
-            let body_commas = body.len().saturating_sub(1);
-            match kind {
-                FuncKind::Arrow => {
-                    let mut args_and_arrow = 2 + arg_commas;
-                    let single = args.len() == 1 && matches!(args.first().map(|a| &a.data), Some(Data::Symbol { .. }));
-                    if !single {
-                        args_and_arrow += 2;
-                    }
-                    let body_over = if body.len() == 1 && matches!(body[0].data, Data::Return { .. }) {
-                        0
-                    } else {
-                        body_commas + 2
-                    };
-                    mods + args_and_arrow + body_over
-                }
-                FuncKind::Decl => mods + 13 + arg_commas + body_commas,
-                _ => usize::from(first_at(n, walk, comp)) * 2 + mods + 12 + arg_commas + body_commas,
-            }
-        }
-        Data::Await { .. } | Data::Yield { .. } => 6,
-        Data::Spread { .. } => 3,
-        _ => 0,
-    }
-}
-
-fn key_len(key: &Key) -> usize {
-    match key {
-        Key::Static { name, .. } => utf16_len(name),
-        Key::Private(name) => utf16_len(name),
-        Key::Computed(_) => 0,
-    }
-}
-
-fn binary_parens(node: &N, op: &str, walk: &[N], comp: &[N]) -> bool {
-    let Some(parent) = ancestor(walk, comp, 0) else {
-        return false;
-    };
-    match &parent.data {
-        Data::Call { expr, .. } if Rc::ptr_eq(expr, node) => true,
-        Data::Unary { .. } => true,
-        Data::Dot { expr, .. } | Data::Sub { expr, .. } if Rc::ptr_eq(expr, node) => true,
-        Data::Binary { op: pop, right, .. } | Data::Assign { op: pop, right, .. } => {
-            if (op == "??" && (pop == "||" || pop == "&&")) || (pop == "??" && (op == "||" || op == "&&")) {
-                return true;
-            }
-            let pp = precedence(pop);
-            let sp = precedence(op);
-            pp > sp || (pp == sp && (Rc::ptr_eq(right, node) || pop == "**"))
-        }
-        _ => false,
-    }
-}
-
-fn precedence(op: &str) -> i32 {
-    match op {
-        "||" => 1,
-        "??" => 2,
-        "&&" => 3,
-        "|" => 4,
-        "^" => 5,
-        "&" => 6,
-        "==" | "===" | "!=" | "!==" => 7,
-        "<" | ">" | "<=" | ">=" | "in" | "instanceof" => 8,
-        ">>" | "<<" | ">>>" => 9,
-        "+" | "-" => 10,
-        "*" | "/" | "%" => 11,
-        "**" => 12,
-        _ => 0,
-    }
-}
-
-fn first_at(node: &N, walk: &[N], comp: &[N]) -> bool {
-    let mut current = node;
-    let mut i = 0usize;
-    while let Some(parent) = ancestor(walk, comp, i) {
-        if statement_body(parent, current) {
-            return true;
-        }
-        if left_edge(parent, current) {
-            current = parent;
-            i += 1;
-        } else {
-            return false;
-        }
-    }
-    false
-}
-
-fn ancestor<'a>(walk: &'a [N], comp: &'a [N], nth: usize) -> Option<&'a N> {
-    if nth < walk.len() {
-        Some(&walk[walk.len() - 1 - nth])
-    } else {
-        let j = nth - walk.len();
-        if j < comp.len() {
-            Some(&comp[comp.len() - 1 - j])
-        } else {
-            None
-        }
-    }
-}
-
-fn number_size(value: f64) -> usize {
-    if value == 0.0 {
-        return 1;
-    }
-    if value > 0.0 && value.is_finite() && value.fract() == 0.0 {
-        return (value.log10().floor() as i64 + 1).max(1) as usize;
-    }
-    if value.is_nan() {
-        return 3;
-    }
-    if value.is_infinite() {
-        return if value.is_sign_negative() { 9 } else { 8 };
-    }
-    format!("{value}").len()
-}
-
-fn utf16_len(s: &str) -> usize {
-    s.chars().map(|c| if (c as u32) > 0xFFFF { 2 } else { 1 }).sum()
 }
 
 fn is_boolean_node(n: &N) -> bool {

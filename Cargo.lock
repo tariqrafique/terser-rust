@@ -45,6 +45,7 @@ version = "0.1.0"
 dependencies = [
  "ast",
  "codegen",
+ "parser",
  "regex",
  "ryu",
  "scope",

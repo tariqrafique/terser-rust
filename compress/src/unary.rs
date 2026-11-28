@@ -8,7 +8,7 @@ use ast::{Data, FuncKind, Key, N, Seg, SymKind};
 use std::collections::HashSet;
 use std::rc::Rc;
 
-use crate::eval::{self, atom, binary, is_iife_call, is_number, num, print_len, simple, to_int32, unary, void0};
+use crate::eval::{self, atom, binary, is_iife_call, is_number, num, to_int32, unary, void0};
 use crate::Cx;
 
 pub fn optimize(n: &N, cx: &Cx) -> N {
@@ -380,40 +380,11 @@ pub(crate) fn bitwise_negate(node: &N, force_32: bool, cx: &Cx) -> N {
 }
 
 pub(crate) fn first_in_statement(cx: &Cx) -> bool {
-    if cx.parents.len() < 2 {
-        return false;
-    }
-    let mut node = Rc::clone(cx.parents.last().unwrap());
-    for i in (0..cx.parents.len() - 1).rev() {
-        let p = &cx.parents[i];
-        if matches!(&p.data, Data::Simple { body } if Rc::ptr_eq(body, &node)) {
-            return true;
-        }
-        let edge = match &p.data {
-            Data::Seq { exprs } => exprs.first().is_some_and(|e| Rc::ptr_eq(e, &node)),
-            Data::Call { expr, is_new: false, .. } | Data::TaggedTemplate { tag: expr, .. } | Data::Chain { expr } => Rc::ptr_eq(expr, &node),
-            Data::Dot { expr, .. } | Data::Sub { expr, .. } => Rc::ptr_eq(expr, &node),
-            Data::Cond { cond, .. } => Rc::ptr_eq(cond, &node),
-            Data::Binary { left, .. } => Rc::ptr_eq(left, &node),
-            Data::Unary { expr, prefix: false, .. } => Rc::ptr_eq(expr, &node),
-            _ => false,
-        };
-        if edge {
-            node = Rc::clone(p);
-        } else {
-            return false;
-        }
-    }
-    false
+    crate::conditional::first_in_statement(cx)
 }
 
 pub(crate) fn best_of(cx: &Cx, a: &N, b: &N) -> N {
-    let (la, lb) = if first_in_statement(cx) {
-        (print_len(&simple(a, Rc::clone(a))), print_len(&simple(b, Rc::clone(b))))
-    } else {
-        (print_len(a), print_len(b))
-    };
-    if la > lb { Rc::clone(b) } else { Rc::clone(a) }
+    crate::size::best_of(first_in_statement(cx), a, b)
 }
 
 /// terser `inference.js` `negate`.
@@ -468,14 +439,11 @@ fn negate_binary(n: &N, op: &str, left: &N, right: &N, cx: &Cx, first: bool) -> 
     binary(n, flipped, Rc::clone(left), Rc::clone(right))
 }
 
+/// terser `inference.js` `negate` `best`: only `alt` is wrapped in a statement when first.
 fn best_negation(orig: &N, alt: N, first: bool) -> N {
     let negated = unary(orig, "!", Rc::clone(orig));
-    let (left, right) = if first {
-        (simple(orig, Rc::clone(&negated)), simple(orig, Rc::clone(&alt)))
-    } else {
-        (Rc::clone(&negated), Rc::clone(&alt))
-    };
-    if print_len(&left) > print_len(&right) { alt } else { negated }
+    let alt_size = if first { crate::size::statement_size(&alt) } else { crate::size::size(&alt) };
+    if crate::size::size(&negated) > alt_size { alt } else { negated }
 }
 
 fn parent_of_self(cx: &Cx) -> Option<&N> {
