@@ -71,6 +71,11 @@ fn optimize_concise_method(n: &N, cx: &Cx) -> Option<N> {
         async_: *fn_async || *async_,
         generator: false,
     });
+    // copy: `make_node(AST_Arrow, self.value, self.value)` keeps the function's
+    // `variables`, `enclosed` and `parent_scope` (index.js 4040).
+    if let Some(table) = cx.syms.as_ref() {
+        table.copy_binding(value, &arrow);
+    }
     // `lift_key(self, compressor)` runs first, so the arrow's key is the lifted one.
     let key = if cx.opts.computed_props { eval::lift_key(key, cx).unwrap_or_else(|| key.clone()) } else { key.clone() };
     Some(atom(n, Data::Prop {
