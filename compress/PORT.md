@@ -122,3 +122,5 @@ String joins: `(x + "foo") + "bar"` and `(x + "foo") + ("bar" + y)` optimize the
 Switch default pruning: `def_optimize(AST_Switch)` "Prune side-effect free branches that fall into default" is `loops.rs` `prune_into_default`. When the default (or exact) body is the last body, side-effect free cases that only fall into it are spliced away (not `eliminate_branch`ed). Case tests use `has_side_effects` (`unary::may_side_effect`), so an undeclared `case qux` stays.
 
 Single-use constants: `reduce_vars` `has_side_effects` / `may_throw` treat every `AST_Constant` (regexp, bigint, `Infinity`) as free of effects, so a single-use `const w=/a/` is substituted. A multiply-read regexp is still not evaluated (`unsafe_regexp`).
+
+Lexical collapse targets: terser `get_lhs` gives no lhs for an assignment or `++` / `--` whose target is a `let` / `const` in any scope (`is_ref_of`). `SymbolDef.lexical` records it; `body.rs` `collect_lexical_targets` marks those target nodes by definition before each collapse step (`tighten.rs` `LEXICAL_TARGETS`), which covers an outer `let` that the name sets miss.

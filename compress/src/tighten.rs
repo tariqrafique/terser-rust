@@ -237,12 +237,23 @@ thread_local! {
     static LAMBDAS: std::cell::RefCell<HashSet<String>> = Default::default();
     /// Names visible here whose only declaration is a `function` statement.
     static DEFUNS: std::cell::RefCell<HashSet<String>> = Default::default();
+    /// Assignment and `++` / `--` targets (by node) that resolve to a `let` / `const`
+    /// in any enclosing scope: terser `get_lhs` `is_ref_of` gives no lhs for them.
+    static LEXICAL_TARGETS: std::cell::RefCell<HashSet<usize>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
 }
 
 pub(crate) fn set_injected(map: HashMap<String, usize>) {
     INJECTED.with(|d| *d.borrow_mut() = map);
+}
+
+pub(crate) fn set_lexical_targets(set: HashSet<usize>) {
+    LEXICAL_TARGETS.with(|d| *d.borrow_mut() = set);
+}
+
+fn lexical_target(n: &N) -> bool {
+    LEXICAL_TARGETS.with(|d| d.borrow().contains(&ptr(n)))
 }
 
 pub(crate) fn set_block_lets(set: HashSet<String>) {
@@ -627,7 +638,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                         // terser `get_lhs` takes any declared symbol (a free one has
                         // side effects and is skipped).
                         let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
-                        if !block_names.contains(name) && !read_only && (env.locals.contains(name) || env.declared.contains(name) || injected) {
+                        if !block_names.contains(name) && !read_only && !lexical_target(left) && (env.locals.contains(name) || env.declared.contains(name) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -751,7 +762,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
             }
             Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
                 if let Some(name) = ref_name(expr) {
-                    if !block_names.contains(name) && env.locals.contains(name) {
+                    if !block_names.contains(name) && !lexical_target(expr) && env.locals.contains(name) {
                         out.push(Cand {
                             path: path.clone(),
                             kind: if *prefix { Kind::Pre } else { Kind::Post },

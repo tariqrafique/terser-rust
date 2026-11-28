@@ -30,6 +30,9 @@ pub struct SymbolDef {
     /// Scope that defined this name. Function scopes hold `var` and params.
     pub scope: usize,
     pub block_scoped: bool,
+    /// An `AST_SymbolLet` / `AST_SymbolConst` / `AST_SymbolUsing` declaration (not a catch
+    /// parameter): terser `get_lhs` never takes an assignment to it (`is_ref_of`).
+    pub lexical: bool,
     pub init: Option<N>,
     /// `None` means `fixed === false`. A node means that node is the fixed value.
     pub fixed: Option<N>,
@@ -441,6 +444,7 @@ fn define(
     if let Some(&id) = scopes[scope].names.get(&name) {
         table.node_def.insert(key, id);
         table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
+        table.defs[id].lexical |= matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using);
         if table.defs[id].init.is_none() {
             table.defs[id].init = init;
         }
@@ -460,6 +464,7 @@ fn define(
         fn_scope,
         scope,
         block_scoped: matches!(kind, SymKind::Let | SymKind::Const | SymKind::Catch),
+        lexical: matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using),
         init,
         fixed: None,
         fixed_null: false,
@@ -541,6 +546,7 @@ impl SymTable {
                     fn_scope: o.fn_scope,
                     scope: o.scope,
                     block_scoped: o.block_scoped,
+                    lexical: o.lexical,
                     init: None,
                     fixed: None,
                     fixed_null: false,
