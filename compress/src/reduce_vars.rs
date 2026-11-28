@@ -1099,13 +1099,8 @@ fn suppress(n: &N, tw: &mut Tw) {
         }
         Data::VarDef { name, .. } => suppress(name, tw),
         // terser walks every symbol under the node (destructuring patterns,
-        // defaults, property values).
-        _ => {
-            let _ = ast::map_children(n, &mut |c| {
-                suppress(c, tw);
-                Rc::clone(c)
-            });
-        }
+        // defaults, property values) with its `walk(node, cb)` helper.
+        _ => ast::transform_children(n, &mut |c| suppress(c, tw)),
     }
 }
 
@@ -1311,7 +1306,11 @@ fn mentions_arguments(n: &N) -> bool {
         Data::Symbol { name, kind: SymKind::Ref, .. } if name == "arguments" => true,
         Data::Func { kind: FuncKind::Arrow, args, body, .. } => args.iter().any(mentions_arguments) || body.iter().any(mentions_arguments),
         Data::Func { .. } => false,
-        other => each_child(other, mentions_arguments),
+        _ => {
+            let mut hit = false;
+            ast::walk_children(n, &mut |c| hit = hit || mentions_arguments(c));
+            hit
+        }
     }
 }
 
@@ -1339,10 +1338,7 @@ fn func_scope_pinned(table: &SymTable, func: &N) -> bool {
             Data::Func { .. } if !top => false,
             _ => {
                 let mut hit = false;
-                let _ = ast::map_children(n, &mut |c| {
-                    hit = hit || pins(c, false);
-                    Rc::clone(c)
-                });
+                ast::walk_children(n, &mut |c| hit = hit || pins(c, false));
                 hit
             }
         }
@@ -1757,10 +1753,7 @@ fn self_recursive(name: &Option<N>, body: &[N]) -> bool {
             return true;
         }
         let mut hit = false;
-        let _ = ast::map_children(n, &mut |c| {
-            hit = hit || rec(c, nm);
-            Rc::clone(c)
-        });
+        ast::walk_children(n, &mut |c| hit = hit || rec(c, nm));
         hit
     }
     body.iter().any(|s| rec(s, &nm))
@@ -1787,178 +1780,8 @@ fn span_node(span: &N, data: Data) -> N {
     Rc::new(Node { start: span.start.clone(), end: span.end.clone(), data })
 }
 
+/// Every node under `n`, pre-order, in the order of terser's `walk(node, cb)` helper.
 fn each_node(n: &N, f: &mut impl FnMut(&N)) {
     f(n);
-    each_child(&n.data, |child| {
-        each_node(child, f);
-        false
-    });
-}
-
-fn each_child(data: &Data, mut f: impl FnMut(&N) -> bool) -> bool {
-    let mut hit = false;
-    let mut go = |n: &N| {
-        if !hit {
-            hit = f(n);
-        }
-    };
-    match data {
-        Data::Simple { body }
-        | Data::Throw { value: body }
-        | Data::Spread { expr: body }
-        | Data::Unary { expr: body, .. }
-        | Data::Await { expr: body }
-        | Data::Dot { expr: body, .. }
-        | Data::Chain { expr: body }
-        | Data::Finally { body }
-        | Data::Return { value: Some(body) } => go(body),
-        Data::Yield { expr: Some(body), .. } | Data::Break { label: Some(body) } | Data::Continue { label: Some(body) } => go(body),
-        Data::Binary { left, right, .. }
-        | Data::Assign { left, right, .. }
-        | Data::DefaultAssign { left, right } => {
-            go(left);
-            go(right);
-        }
-        Data::Seq { exprs } | Data::Array { elements: exprs } => {
-            for e in exprs {
-                go(e);
-            }
-        }
-        Data::Call { expr, args, .. } => {
-            go(expr);
-            for a in args {
-                go(a);
-            }
-        }
-        Data::Sub { expr, prop, .. } => {
-            go(expr);
-            go(prop);
-        }
-        Data::Cond { cond, cons, alt } => {
-            go(cond);
-            go(cons);
-            go(alt);
-        }
-        Data::If { cond, body, alt } => {
-            go(cond);
-            go(body);
-            if let Some(alt) = alt {
-                go(alt);
-            }
-        }
-        Data::Func { name, args, body, .. } => {
-            if let Some(name) = name {
-                go(name);
-            }
-            for a in args {
-                go(a);
-            }
-            for s in body {
-                go(s);
-            }
-        }
-        Data::Class { name, extends, props, .. } => {
-            if let Some(name) = name {
-                go(name);
-            }
-            if let Some(extends) = extends {
-                go(extends);
-            }
-            for p in props {
-                go(p);
-            }
-        }
-        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } | Data::Toplevel { body } => {
-            for s in body {
-                go(s);
-            }
-        }
-        Data::Object { props } => {
-            for p in props {
-                go(p);
-            }
-        }
-        Data::Prop { key, value, .. } => {
-            if let Key::Computed(e) = key {
-                go(e);
-            }
-            go(value);
-        }
-        Data::VarDef { name, value } => {
-            go(name);
-            if let Some(value) = value {
-                go(value);
-            }
-        }
-        Data::Defs { defs, .. } => {
-            for d in defs {
-                go(d);
-            }
-        }
-        Data::For { init, cond, step, body } => {
-            if let Some(v) = init {
-                go(v);
-            }
-            if let Some(v) = cond {
-                go(v);
-            }
-            if let Some(v) = step {
-                go(v);
-            }
-            go(body);
-        }
-        Data::While { cond, body } | Data::Do { body, cond } => {
-            go(cond);
-            go(body);
-        }
-        Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
-            go(init);
-            go(object);
-            go(body);
-        }
-        Data::Switch { expr, body } => {
-            go(expr);
-            for s in body {
-                go(s);
-            }
-        }
-        Data::Case { expr, body } => {
-            go(expr);
-            for s in body {
-                go(s);
-            }
-        }
-        Data::Try { body, catch, finally } => {
-            go(body);
-            if let Some(v) = catch {
-                go(v);
-            }
-            if let Some(v) = finally {
-                go(v);
-            }
-        }
-        Data::Catch { arg, body } => {
-            if let Some(arg) = arg {
-                go(arg);
-            }
-            go(body);
-        }
-        Data::Labeled { label, body } | Data::With { expr: label, body } => {
-            go(label);
-            go(body);
-        }
-        Data::Template { segments } => {
-            for seg in segments {
-                if let ast::Seg::Expr(e) = seg {
-                    go(e);
-                }
-            }
-        }
-        Data::TaggedTemplate { tag, template } => {
-            go(tag);
-            go(template);
-        }
-        _ => {}
-    }
-    hit
+    ast::transform_children(n, &mut |child| each_node(child, f));
 }
