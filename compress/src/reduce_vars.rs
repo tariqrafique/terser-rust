@@ -1674,9 +1674,11 @@ fn const_expr(n: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         | Data::Infinity => CExpr::Yes,
         Data::Unary { expr, .. } => const_expr(expr, table, None),
         Data::Binary { left, right, .. } => join_expr(const_expr(left, table, None), const_expr(right, table, None)),
-        Data::Array { elements } => elements.iter().fold(CExpr::Yes, |acc, el| join_expr(acc, const_expr(el, table, scope))),
-        Data::Object { props } => props.iter().fold(CExpr::Yes, |acc, prop| join_expr(acc, const_expr(prop, table, scope))),
-        Data::Prop { method: None, key: Key::Static { .. }, value, .. } => const_expr(value, table, scope),
+        // inference.js: arrays, objects and their properties do not pass
+        // `scope` down, so a lambda in them must have only local refs.
+        Data::Array { elements } => elements.iter().fold(CExpr::Yes, |acc, el| join_expr(acc, const_expr(el, table, None))),
+        Data::Object { props } => props.iter().fold(CExpr::Yes, |acc, prop| join_expr(acc, const_expr(prop, table, None))),
+        Data::Prop { method: None, key: Key::Static { .. }, value, .. } => const_expr(value, table, None),
         Data::Func { .. } => all_refs_local(n, table, scope),
         Data::Class { extends, props, .. } => {
             let mut acc = CExpr::Yes;

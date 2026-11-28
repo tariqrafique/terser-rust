@@ -2301,7 +2301,13 @@ fn lvalues_of(value: &N) -> HashMap<String, bool> {
             }
         }
         stack.push(Rc::clone(n));
-        each_child(&n.data, |c| rec(c, stack, out));
+        // terser's `get_lvalues` walker enters nested functions too.
+        if let Data::Func { args, body, .. } = &n.data {
+            args.iter().for_each(|c| rec(c, stack, out));
+            body.iter().for_each(|c| rec(c, stack, out));
+        } else {
+            each_child(&n.data, |c| rec(c, stack, out));
+        }
         stack.pop();
     }
     rec(value, &mut stack, &mut out);
