@@ -249,6 +249,8 @@ thread_local! {
     static ORIG: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// See `set_spread_refs`.
     static SPREAD_REFS: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// See `set_spread_refs`.
+    static TARGET_REFS: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
     /// See `set_table_escaped`.
     static TABLE_ESCAPED: std::cell::RefCell<HashSet<String>> = Default::default();
     /// See `set_visible`.
@@ -395,8 +397,10 @@ pub(crate) fn defun_names(params: &[N], body: &[N]) -> (HashSet<String>, HashSet
 }
 
 /// `def.references.length` of each spread symbol (`...x`), by node.
-pub(crate) fn set_spread_refs(map: HashMap<usize, usize>) {
+/// And `def.references.length - def.replaced` of each assignment or `++` / `--` target.
+pub(crate) fn set_spread_refs(map: HashMap<usize, usize>, targets: HashMap<usize, usize>) {
     SPREAD_REFS.with(|s| *s.borrow_mut() = map);
+    TARGET_REFS.with(|s| *s.borrow_mut() = targets);
 }
 
 /// Names of the defun scope with a reference bound in another defun scope
@@ -1070,12 +1074,14 @@ fn apply_candidate(
     // only other reference is that one read (the write itself is the other).
     // Block counts do not see the whole function, so `replace_all` (which
     // trusts them) is off for a block assignment.
+    // In a block, an assignment's count is the symbol table's (`def.references`).
+    let target_refs = if block_assign { TARGET_REFS.with(|t| t.borrow().get(&ptr(cand_target(cand))).copied()) } else { None };
     let replace_all = !side_effects
-        && !block_assign
+        && (!block_assign || target_refs.is_some())
         && injected.is_none_or(|count| count == 2)
         && (mangleable
             || (matches!(cand.kind, Kind::Var | Kind::Arg) && single)
-            || (matches!(cand.kind, Kind::Assign | Kind::Post | Kind::Pre) && total == 2 && hidden == 0));
+            || (matches!(cand.kind, Kind::Assign | Kind::Post | Kind::Pre) && target_refs.map_or(total == 2 && hidden == 0, |r| r == 2)));
     let mut lvalues = if matches!(cand.kind, Kind::Post | Kind::Pre) {
         HashMap::new()
     } else {
@@ -1378,10 +1384,13 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
             } => SPREAD_REFS.with(|s| s.borrow().get(&ptr(expr)).is_none_or(|&c| c > 1)),
             _ => false,
         },
+        // terser `node instanceof AST_ObjectProperty && node.key instanceof AST_Node`: a
+        // computed key, or a getter, setter or method (its key is an `AST_SymbolMethod`).
         Data::Prop {
             key: Key::Computed(_),
             ..
-        } => true,
+        }
+        | Data::Prop { method: Some(_), .. } => true,
         _ => false,
     }) || parent.is_some_and(|parent| {
         if let Data::For { init, .. } = &parent.data {

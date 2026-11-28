@@ -110,12 +110,13 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     }
                     crate::tighten::set_declared_refs(declared);
                     let mut spread = std::collections::HashMap::new();
+                    let mut targets = std::collections::HashMap::new();
                     for st in &stmts {
-                        collect_spread_refs(st, table, &mut spread);
+                        collect_spread_refs(st, table, &mut spread, &mut targets);
                     }
-                    crate::tighten::set_spread_refs(spread);
+                    crate::tighten::set_spread_refs(spread, targets);
                 } else {
-                    crate::tighten::set_spread_refs(Default::default());
+                    crate::tighten::set_spread_refs(Default::default(), Default::default());
                     crate::tighten::set_table_escaped(Default::default());
                     crate::tighten::set_lexical_targets(Default::default());
                     crate::tighten::set_declared_refs(Default::default());
@@ -1220,17 +1221,30 @@ fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::
     });
 }
 
-/// terser `is_declared` of every reference here the symbol table knows.
 /// `def.references.length` of each symbol spread in an argument list or array
 /// (`...x`): the collapse scanner stops at one with more than one reference.
-fn collect_spread_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {
+/// And `def.references.length - def.replaced` of each assignment or `++` / `--`
+/// target (`replace_all_symbols`).
+fn collect_spread_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>, targets: &mut std::collections::HashMap<usize, usize>) {
     if let Data::Spread { expr } = &n.data {
         if let (Data::Symbol { kind: ast::SymKind::Ref, .. }, Some(id)) = (&expr.data, table.def_of(expr)) {
             out.insert(crate::syms::ptr(expr), table.defs[id].ref_count());
         }
     }
-    ast::walk_children(n, &mut |c| collect_spread_refs(c, table, out));
+    let target = match &n.data {
+        Data::Assign { left, .. } => Some(left),
+        Data::Unary { op, expr, .. } if op == "++" || op == "--" => Some(expr),
+        _ => None,
+    };
+    if let Some(t) = target.filter(|t| matches!(t.data, Data::Symbol { kind: ast::SymKind::Ref, .. })) {
+        if let Some(r) = table.referenced(t) {
+            targets.insert(crate::syms::ptr(t), r);
+        }
+    }
+    ast::walk_children(n, &mut |c| collect_spread_refs(c, table, out, targets));
 }
+
+/// terser `is_declared` of every reference here the symbol table knows.
 
 fn collect_declared_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, bool>) {
     if let Data::Symbol { kind: ast::SymKind::Ref | ast::SymKind::Export, .. } = &n.data {
