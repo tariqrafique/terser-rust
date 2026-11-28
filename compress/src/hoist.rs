@@ -226,7 +226,7 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
             let Data::VarDef { name, value: Some(value) } = &def.data else { continue };
             let Some(id) = table.lookup(&syms::ptr(name)) else { continue };
             let d = &table.defs[id];
-            let exposed = d.exported || (d.global && if d.is_defun { false } else { !toplevel_vars });
+            let exposed = d.exported || d.export_listed || (d.global && if d.is_defun { false } else { !toplevel_vars });
             if d.scope != scope || d.assignments != 0 || d.direct_access || d.escaped == 1 || d.single_use != SingleUse::No || exposed || top_retain == Some(d.name.as_str()) {
                 continue;
             }

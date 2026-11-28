@@ -38,8 +38,11 @@ pub struct SymbolDef {
     /// terser `scope.js` defines `var`, `let`, `const`, `using`, and catch
     /// bindings with `init` null, so they reset to `fixed === null`.
     pub var_decl: bool,
-    /// terser `def.export`: exported by `export` or named in `export { ... }`.
+    /// terser `def.export`: an `export` declaration (`export const x`).
+    /// During compress terser leaves it 0 for a name in `export { ... }`.
     pub exported: bool,
+    /// Named in `export { ... }`: the export list still reads it.
+    pub export_listed: bool,
     /// terser `def_optimize(AST_Assign)` sets `fixed = false` while the walk continues.
     pub suppress_fixed: Cell<bool>,
     pub assignments: u32,
@@ -259,7 +262,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     let Some(local) = sym(name) else { continue };
                     if let Some(id) = resolve(scopes, scope, &local) {
                         table.node_def.insert(ptr(name), id);
-                        table.defs[id].exported = true;
+                        table.defs[id].export_listed = true;
                     }
                 }
             }
@@ -450,6 +453,7 @@ fn define(
         fixed_null: false,
         var_decl: matches!(kind, SymKind::Var | SymKind::Let | SymKind::Const | SymKind::Using | SymKind::Catch),
         exported: false,
+        export_listed: false,
         suppress_fixed: Cell::new(false),
         assignments: 0,
         escaped: 0,
@@ -663,6 +667,7 @@ impl SymTable {
                     fixed_null: false,
                     var_decl: o.var_decl,
                     exported: false,
+                    export_listed: false,
                     suppress_fixed: Cell::new(false),
                     assignments: 0,
                     escaped: 0,
@@ -826,7 +831,7 @@ fn replaced_decl(def: &N, table: &SymTable) -> bool {
     if d.references.is_empty() || d.replaced.get() < d.references.len() as u32 {
         return false;
     }
-    if d.assignments > 0 || d.undeclared || d.exported || (d.global && !DROP_GLOBALS.with(|g| g.get())) {
+    if d.assignments > 0 || d.undeclared || d.exported || d.export_listed || (d.global && !DROP_GLOBALS.with(|g| g.get())) {
         return false;
     }
     value.as_ref().map(|v| !side_effect(v)).unwrap_or(true)

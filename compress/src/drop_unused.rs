@@ -137,7 +137,7 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
     if let Some(scope_id) = scope_id {
         if let Some(ids) = table.scope_defs.get(&scope_id) {
             for id in ids {
-                if table.defs[*id].exported {
+                if table.defs[*id].exported || table.defs[*id].export_listed {
                     u.in_use.insert(*id);
                 }
             }
