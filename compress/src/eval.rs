@@ -2185,7 +2185,7 @@ fn fold_typeof(left: &N, right: &N, op: &str, span: &N, cx: &Cx) -> Option<(N, N
 
 fn typeof_target_ok(expr: &N, cx: &Cx) -> bool {
     match &expr.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.declared_ref(expr, name),
         Data::Dot { .. } | Data::Sub { .. } => !cx.opts.ie8,
         _ => true,
     }

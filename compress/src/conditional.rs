@@ -643,7 +643,7 @@ fn expr_pure(n: &N, cx: &Cx) -> bool {
         return is_pure(n);
     }
     match &n.data {
-        Data::Symbol { name, kind: SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => cx.declared_ref(n, name),
         Data::Unary { op, expr, prefix: true }
             if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") =>
         {
