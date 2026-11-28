@@ -968,7 +968,8 @@ fn switch_two(span: &N, expr: &N, arms: &[Arm], marker: u32, cx: &Cx) -> Option<
         std::mem::swap(&mut always, &mut consequent);
     }
     let cond = eval::binary(span, operator, Rc::clone(expr), case_expr);
-    let iff = sealed_if(span, cond, consequent, None, cx);
+    // `make_node(AST_If, ..)` without `.optimize`: the descend optimizes it.
+    let iff = eval::atom(span, Data::If { cond, body: consequent, alt: None });
     Some(finish_switch_block(span, vec![iff, always], cx))
 }
 
@@ -1035,47 +1036,13 @@ fn arm_last(n: &N) -> Option<&N> {
     }
 }
 
+/// terser `make_node(AST_BlockStatement, self, { body }).optimize(compressor)`: `tighten_body`
+/// runs on it in `transform` (`pre_tighten`) with the switch as `compressor.self()`, so its
+/// `eliminate_dead_code` drops the breaks that target the switch.
 fn finish_switch_block(span: &N, stmts: Vec<N>, cx: &Cx) -> N {
-    let mut stmts = stmts;
-    for _ in 0..6 {
-        let flat = flatten_evictable(stmts);
-        let next = drop_switch_aborts(flat, cx);
-        if next.len() == 0 {
-            stmts = next;
-            break;
-        }
-        stmts = next;
-        if !stmts.iter().any(|s| matches!(s.data, Data::Block { .. })) {
-            break;
-        }
-    }
-    stmts.retain(|s| !matches!(s.data, Data::Empty));
-    if stmts.is_empty() {
-        eval::empty(span)
-    } else if stmts.len() == 1 && crate::can_evict(&stmts[0]) {
-        stmts.into_iter().next().unwrap()
-    } else {
-        // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
-        let block = eval::atom(span, Data::Block { body: stmts });
-        cx.pre_tighten.borrow_mut().insert(block.id());
-        block
-    }
-}
-
-fn drop_switch_aborts(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
-    let mut out = Vec::new();
-    for (i, stat) in stmts.iter().enumerate() {
-        if !is_break_stmt(stat, cx) {
-            out.push(Rc::clone(stat));
-        }
-        if eval::aborts(stat) {
-            for rest in &stmts[i + 1..] {
-                eval::extract_unreachable(rest, &mut out, cx, false);
-            }
-            break;
-        }
-    }
-    out
+    let block = eval::atom(span, Data::Block { body: stmts });
+    cx.pre_tighten.borrow_mut().insert(block.id());
+    block
 }
 
 fn flatten_evictable(stmts: Vec<N>) -> Vec<N> {
