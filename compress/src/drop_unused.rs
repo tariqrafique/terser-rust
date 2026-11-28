@@ -142,6 +142,8 @@ struct Use {
     /// def id → the vardef that is still the fixed value (`fixed_ids`).
     fixed: HashSet<usize>,
     wrote: HashSet<usize>,
+    /// The scope `drop_unused` runs on (terser `self`).
+    scope: Option<usize>,
     /// terser `var_defs_by_id`: each `var` definition of a name, in source
     /// order, by `VarDef` pointer. The index plus `orig_offset` is the
     /// position in `sym.orig`.
@@ -162,6 +164,7 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
         inits: HashMap::new(),
         fixed: HashSet::new(),
         wrote: HashSet::new(),
+        scope: scope_id,
         var_defs: Default::default(),
         orig_index: HashMap::new(),
         eliminated: Default::default(),
@@ -232,7 +235,8 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
 
 /// `scan_ref_scoped` in drop-unused.js. `record_inits` is pass 1; pass 2 only marks refs.
 fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
-    if let Some(id) = assign_as_unused(n, table).and_then(|sym| def_id(table, sym)) {
+    // `self.variables.get(sym.name) === sym.definition()`: only this scope's own bindings.
+    if let Some(id) = assign_as_unused(n, table).and_then(|sym| owned(table, sym, u.scope)) {
         u.wrote.insert(id);
         u.fixed.remove(&id);
         if let Data::Assign { right, .. } = &n.data {
@@ -296,13 +300,16 @@ fn assign_as_unused<'a>(n: &'a N, table: &SymTable) -> Option<&'a N> {
             }
             Some(left)
         }
-        Data::Simple { body } => assign_as_unused(body, table),
         _ => None,
     }
 }
 
+/// `self.variables.get(name) === def`. An undeclared global is in `globals`, not `variables`.
 fn owned(table: &SymTable, n: &N, scope_id: Option<usize>) -> Option<usize> {
     let id = def_id(table, n)?;
+    if table.defs[id].undeclared {
+        return None;
+    }
     if scope_id.is_some_and(|s| table.defs[id].scope != s) {
         return None;
     }
