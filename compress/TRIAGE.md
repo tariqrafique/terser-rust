@@ -69,6 +69,6 @@ Same method: the 297 failing inputs, mangling off, outputs split at `;`, `{` and
 | R10 (fixed) | 12 | 229 (no change) | A local defun used once that refers to itself: terser inlines it as `function handleMouseLeave(){…}` into the call; the port keeps the declaration. | `eval.rs` single-use inline refuses a recursive lambda; terser renames it to a `SymbolLambda` (`recursive_refs > 0`, inline.js ~250). |
 | R11 | 7 | 190 | In a function inlined as an IIFE, terser collapses `const a=t.reduce(…)` into the next `if`; the port keeps it. | First `tighten_body` of an inlined copy; probably the same as the PORT.md "Open" item. |
 
-Lower counts, repros only: R12, an unused argument becomes `pt(0)` in terser and `pt()` in the port (also `setAriaRelationship(0,0,0,options)` kept as names by the port). R13, `class A{}A.v=1;` is dropped by terser; the port prints `(class{}).v=1;` (in reductions only). R14, `const t=void p.forEach(…);g(t)` is collapsed by terser, not by the port.
+Lower counts, repros only: R12 (fixed), an unused argument becomes `pt(0)` in terser and `pt()` in the port (also `setAriaRelationship(0,0,0,options)` kept as names by the port). R13, `class A{}A.v=1;` is dropped by terser; the port prints `(class{}).v=1;` (in reductions only). R14, `const t=void p.forEach(…);g(t)` is collapsed by terser, not by the port.
 
 Independent of the inlining work: R1, R3, R7, R10 (each in one function), R2a (collapse). R2b, R4, R5, R6, R8, R9 and R11 touch inlining, flatten or the optimize-once rules.

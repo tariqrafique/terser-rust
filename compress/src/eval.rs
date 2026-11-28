@@ -593,6 +593,11 @@ fn fold_value(n: &N, cx: &Cx) -> Option<N> {
     if matches!(n.data, Data::Cond { .. } | Data::Unary { prefix: true, .. }) {
         return None;
     }
+    // A literal has no `def_optimize` in terser: it stays the same node, so the
+    // parent it sits in is not rebuilt (and optimized again).
+    if matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::Null | Data::RegExp { .. }) {
+        return None;
+    }
     finish_constant(n, eval(n)?, cx)
 }
 
