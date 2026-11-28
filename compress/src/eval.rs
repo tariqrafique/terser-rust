@@ -2661,11 +2661,7 @@ fn skip_flatten(cx: &Cx) -> bool {
 }
 
 fn has_noinline(n: &N) -> bool {
-    n.start.as_ref().is_some_and(|t| {
-        t.comments_before.iter().any(|c| {
-            c.value.contains("@__NOINLINE__") || c.value.contains("#__NOINLINE__")
-        })
-    })
+    n.has_annotation(ast::ANN_NOINLINE)
 }
 
 enum PropKey {

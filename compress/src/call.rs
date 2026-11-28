@@ -188,29 +188,12 @@ struct Ann {
     noinline: bool,
 }
 
+/// terser `has_annotation(self, ..)`: the parser's `annotate` set the bits.
 fn call_ann(n: &N) -> Ann {
-    let mut ann = Ann { pure: false, inline_: false, noinline: false };
-    mark_ann(n, &mut ann);
-    if let Data::Call { expr, .. } = &n.data {
-        mark_ann(expr, &mut ann);
-    }
-    ann
-}
-
-fn mark_ann(n: &N, ann: &mut Ann) {
-    let Some(tok) = n.start.as_ref() else {
-        return;
-    };
-    for c in &tok.comments_before {
-        let v = c.value.as_str();
-        if v.contains("@__PURE__") || v.contains("#__PURE__") {
-            ann.pure = true;
-        }
-        if v.contains("@__NOINLINE__") || v.contains("#__NOINLINE__") {
-            ann.noinline = true;
-        } else if v.contains("@__INLINE__") || v.contains("#__INLINE__") {
-            ann.inline_ = true;
-        }
+    Ann {
+        pure: n.has_annotation(ast::ANN_PURE),
+        inline_: n.has_annotation(ast::ANN_INLINE),
+        noinline: n.has_annotation(ast::ANN_NOINLINE),
     }
 }
 

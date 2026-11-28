@@ -416,6 +416,8 @@ pub fn deep_clone(n: &N) -> N {
 pub fn deep_clone_with(n: &N, f: &mut dyn FnMut(&N, &N)) -> N {
     let data = map_data(n, &mut |c| deep_clone_with(c, f));
     let copy = Node::make(n, data);
+    // `clone` copies every property, `_annotations` included.
+    copy.set_annotation(n.annotations());
     f(n, &copy);
     copy
 }

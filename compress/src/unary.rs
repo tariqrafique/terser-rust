@@ -735,7 +735,7 @@ fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
         let Data::Call { args, optional, is_new, .. } = &n.data else {
             return Some(Rc::clone(n));
         };
-        return Some(atom(
+        return Some(ast::Node::copy(
             n,
             Data::Call {
                 expr: rewritten,

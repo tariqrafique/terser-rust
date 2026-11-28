@@ -1649,17 +1649,10 @@ fn call_targets(parent: &N, sym: &N) -> bool {
     }
 }
 
+/// terser `parent.is_callee_pure(compressor) || has_annotation(parent, _NOINLINE)`,
+/// the annotation half.
 fn is_pure_or_noinline_call(n: &N) -> bool {
-    let Data::Call { expr, .. } = &n.data else { return false };
-    // Same lookup as `call.rs` `call_ann`: the call's first token, then the callee's.
-    [n, expr].iter().any(|node| {
-        node.start.as_ref().is_some_and(|tok| {
-            tok.comments_before.iter().any(|c| {
-                let v = c.value.as_str();
-                v.contains("@__PURE__") || v.contains("#__PURE__") || v.contains("@__NOINLINE__") || v.contains("#__NOINLINE__")
-            })
-        })
-    })
+    matches!(n.data, Data::Call { .. }) && n.has_annotation(ast::ANN_PURE | ast::ANN_NOINLINE)
 }
 
 fn named_recursive(table: &SymTable, func: &N) -> bool {
