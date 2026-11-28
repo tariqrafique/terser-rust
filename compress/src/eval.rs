@@ -878,6 +878,10 @@ fn exit_conditional(span: &N, cond: &N, left: ExitPair, right: ExitPair, cx: &Cx
         &atom(span, Data::Cond { cond: Rc::clone(cond), cons, alt }),
         cx,
     );
+    // `.transform(compressor)`: `def_optimize` flags the conditional's result
+    // `OPTIMIZED`, so a later descend does not optimize it again (a `!a&&(!b&&c)`
+    // stays right-nested).
+    crate::seal(cx, &value);
     match left.kind {
         ExitKind::Return => {
             let value = if is_undefined_like(&value) { None } else { Some(value) };
