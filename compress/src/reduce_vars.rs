@@ -148,7 +148,7 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return None;
     }
     use crate::eval::Lit;
-    let lit = if is_literal(&fixed) { None } else { crate::eval::eval_lit(&fixed).or_else(|| eval_num(&fixed).map(Lit::Num)) };
+    let lit = if is_literal(&fixed) { None } else { crate::eval::eval_lit(&fixed, Some(table), at.parents).or_else(|| eval_num(&fixed).map(Lit::Num)) };
     // terser compares `replace.size(compressor)` and `fixed.size(compressor)`: mangled names
     // count 1, and the stack's top is this reference.
     let size = |node: &N| crate::size::size_in(node, std::slice::from_ref(n), true);
@@ -194,19 +194,6 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
         return Some(replace);
     }
     None
-}
-
-/// terser `evaluate.js` `AST_SymbolRef._eval`: the evaluated `fixed_value()`
-/// of a reference, or `None` when it has none or it does not evaluate.
-pub fn fixed_eval(n: &N, table: &SymTable) -> Option<crate::eval::Lit> {
-    let Data::Symbol { kind: SymKind::Ref, .. } = &n.data else { return None };
-    let id = table.def_of(n)?;
-    let def = &table.defs[id];
-    if def.suppress_fixed.get() {
-        return None;
-    }
-    let fixed = def.fixed.as_ref()?;
-    crate::eval::eval_lit(fixed).or_else(|| eval_num(fixed).map(crate::eval::Lit::Num))
 }
 
 /// Numeric value of a fixed constant expression. terser `evaluate.js` for `+`, `-`, and arithmetic.
@@ -328,6 +315,11 @@ fn walk(n: &N, tw: &mut Tw) {
             tw.in_loop = tw.in_loop.saturating_add(1);
             push(tw);
             walk(body, tw);
+            // A `break` / `continue` may skip the marks the body made.
+            if has_break_or_continue(n) {
+                pop(tw);
+                push(tw);
+            }
             walk(cond, tw);
             pop(tw);
             tw.in_loop = saved;
@@ -345,6 +337,10 @@ fn walk(n: &N, tw: &mut Tw) {
             }
             walk(body, tw);
             if let Some(step) = step {
+                if has_break_or_continue(n) {
+                    pop(tw);
+                    push(tw);
+                }
                 walk(step, tw);
             }
             pop(tw);
@@ -1304,6 +1300,34 @@ fn sym_str(n: &N) -> Option<String> {
         Data::Symbol { name, .. } => Some(name.clone()),
         _ => None,
     }
+}
+
+/// terser `common.js` `has_break_or_continue(loop)` (no parent): a `break` or `continue`
+/// in the body whose `loopcontrol_target` is the loop, outside nested scopes.
+fn has_break_or_continue(lp: &N) -> bool {
+    fn rec(n: &N, stack: &mut Vec<N>, lp: &N) -> bool {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } => return false,
+            Data::Break { .. } | Data::Continue { .. } => {
+                return crate::loops::loop_target(n, stack).is_some_and(|t| t.id() == lp.id());
+            }
+            _ => {}
+        }
+        stack.push(Rc::clone(n));
+        let mut found = false;
+        ast::walk_children(n, &mut |c| {
+            if !found {
+                found = rec(c, stack, lp);
+            }
+        });
+        stack.pop();
+        found
+    }
+    let body = match &lp.data {
+        Data::Do { body, .. } | Data::For { body, .. } | Data::While { body, .. } => body,
+        _ => return false,
+    };
+    rec(body, &mut vec![Rc::clone(lp)], lp)
 }
 
 fn contains_break(n: &N) -> bool {
