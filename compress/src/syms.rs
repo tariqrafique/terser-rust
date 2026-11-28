@@ -300,9 +300,16 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     }
                     continue;
                 };
-                define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
+                define(table, scopes, dest, sym_name.clone(), name, sk, value.clone(), false);
                 if dest != scope {
                     table.block_vars.insert(name.id());
+                    // terser `figure_out_scope`: a `var` in a block takes the
+                    // definition `scope.find_variable` gives there (a catch
+                    // parameter of the same name), not the function's.
+                    let here = resolve(scopes, scope, &sym_name);
+                    if here.is_some_and(|id| Some(id) != scopes[dest].names.get(&sym_name).copied()) {
+                        table.bind_def(name, here.unwrap());
+                    }
                 }
                 if let Some(value) = value {
                     walk(value, scope, scopes, table);
