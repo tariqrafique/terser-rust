@@ -33,7 +33,8 @@ fn optimize_array(n: &N, elements: &[N], cx: &Cx) -> Option<N> {
         return Some(rewritten);
     }
     let elements = inline_array_like_spread(elements)?;
-    Some(atom(n, Data::Array { elements }))
+    // keep: `inline_array_like_spread(self.elements)` splices in place (index.js 3799-3819).
+    Some(eval::edit(n, Data::Array { elements }))
 }
 
 /// terser `def_optimize(AST_Object)`.
@@ -42,7 +43,8 @@ fn optimize_object(n: &N, props: &[N], cx: &Cx) -> Option<N> {
         return Some(rewritten);
     }
     let props = inline_object_prop_spread(props)?;
-    Some(atom(n, Data::Object { props }))
+    // keep: `inline_object_prop_spread(self.properties)` splices in place (index.js 3827-3850).
+    Some(eval::edit(n, Data::Object { props }))
 }
 
 /// terser `def_optimize(AST_ConciseMethod)`: `p(){return x}` is `p:()=>x`.
@@ -124,7 +126,8 @@ fn optimize_keyval(n: &N, cx: &Cx) -> Option<N> {
     if keys_same(&key, orig_key) {
         return None;
     }
-    Some(atom(
+    // keep: `lift_key` sets `self.key` (index.js 4009-4018).
+    Some(eval::edit(
         n,
         Data::Prop {
             method: None,
@@ -181,7 +184,8 @@ fn bool_tail_to_one(n: N) -> N {
     let mut exprs = exprs.clone();
     let last = exprs.len() - 1;
     exprs[last] = eval::num(&n, 1.0);
-    atom(&n, Data::Seq { exprs })
+    // keep: the sequence's own `true` optimizes to `1` in place.
+    eval::edit(&n, Data::Seq { exprs })
 }
 
 /// terser `common.js` `merge_sequence`.

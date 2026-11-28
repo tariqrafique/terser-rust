@@ -172,7 +172,13 @@ fn trim(span: &N, exprs: Vec<N>, cx: &Cx, preserve: bool) -> N {
         }
         return reopt(bound, cx);
     }
-    eval::atom(span, Data::Seq { exprs: kept })
+    if preserve {
+        // keep: `self.expressions = expressions` (index.js 2061).
+        eval::edit(span, Data::Seq { exprs: kept })
+    } else {
+        // new: the sequence `make_sequence` made, optimized where it is made.
+        eval::atom(span, Data::Seq { exprs: kept })
+    }
 }
 
 fn reopt(n: N, cx: &Cx) -> N {

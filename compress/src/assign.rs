@@ -425,13 +425,14 @@ fn compound(n: &N, cx: &Cx) -> Option<N> {
     if let Data::Symbol { name: rname, kind: SymKind::Ref, .. } = &bl.data {
         if rname == name && assign_ops(bop) {
             let next = format!("{bop}=");
-            return Some(assign_node(n, &next, Rc::clone(left), Rc::clone(br), false));
+            // keep: `self.operator = ..; self.right = ..` (index.js 3082-3092).
+            return Some(n.rebuild(Data::Assign { op: next, left: Rc::clone(left), right: Rc::clone(br), logical: false }));
         }
     }
     if let Data::Symbol { name: rname, kind: SymKind::Ref, .. } = &br.data {
         if rname == name && assign_ops_commutative(bop) && !has_side(bl, cx) {
             let next = format!("{bop}=");
-            return Some(assign_node(n, &next, Rc::clone(left), Rc::clone(bl), false));
+            return Some(n.rebuild(Data::Assign { op: next, left: Rc::clone(left), right: Rc::clone(bl), logical: false }));
         }
     }
     None

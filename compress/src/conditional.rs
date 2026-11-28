@@ -28,7 +28,8 @@ fn opt_cond(n: &N, cx: &Cx, depth: u32) -> Option<N> {
     if let Data::Seq { exprs } = &cond.data {
         if exprs.len() >= 2 {
             let last = Rc::clone(exprs.last().unwrap());
-            let inner = cond_node(n, last, Rc::clone(cons), Rc::clone(alt));
+            // keep: `self.condition = expressions.pop(); expressions.push(self)` (index.js 3235).
+            let inner = n.rebuild(Data::Cond { cond: last, cons: Rc::clone(cons), alt: Rc::clone(alt) });
             let mut parts: Vec<N> = exprs[..exprs.len() - 1].iter().cloned().collect();
             parts.push(inner);
             return Some(make_seq(n, parts));
@@ -199,7 +200,8 @@ fn optimize_sequence(n: N, cx: &Cx, depth: u32) -> N {
             reopt(bound, cx, depth + 1)
         };
     }
-    atom(n.span_node(), Data::Seq { exprs: kept })
+    // keep: `self.expressions = expressions` (def_optimize(AST_Sequence)).
+    n.rebuild(Data::Seq { exprs: kept })
 }
 
 trait SpanNode {

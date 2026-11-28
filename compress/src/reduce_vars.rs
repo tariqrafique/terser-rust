@@ -1776,6 +1776,8 @@ fn num_node(value: f64) -> N {
     Node::new(Data::Number { value, raw: if value == 0.0 { "0".into() } else { String::new() } })
 }
 
+/// new: terser `make_node(X, span, ..)` (il 297). The `Defun` to `Function` rewrite is terser's
+/// shallow copy `make_node(AST_Function, fixed, fixed)` (il 247-250); the port deep-clones the declaration first.
 fn span_node(span: &N, data: Data) -> N {
     Node::make(span, data)
 }
