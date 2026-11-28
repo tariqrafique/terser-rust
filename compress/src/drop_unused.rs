@@ -232,7 +232,9 @@ fn passes(stmts: &[N], table: &SymTable, scope_id: Option<usize>, drop_vars: boo
 
 /// `scan_ref_scoped` in drop-unused.js. `record_inits` is pass 1; pass 2 only marks refs.
 fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
-    if let Some(id) = assign_as_unused(n, table).and_then(|sym| def_id(table, sym)) {
+    // drop-unused.js `self.variables.get(sym.name) === sym.definition()`: an
+    // undeclared global is in `globals`, not `variables`, so its write is walked as a use.
+    if let Some(id) = assign_as_unused(n, table).and_then(|sym| def_id(table, sym)).filter(|&id| !table.defs[id].undeclared) {
         u.wrote.insert(id);
         u.fixed.remove(&id);
         if let Data::Assign { right, .. } = &n.data {
@@ -296,14 +298,13 @@ fn assign_as_unused<'a>(n: &'a N, table: &SymTable) -> Option<&'a N> {
             }
             Some(left)
         }
-        Data::Simple { body } => assign_as_unused(body, table),
         _ => None,
     }
 }
 
 fn owned(table: &SymTable, n: &N, scope_id: Option<usize>) -> Option<usize> {
     let id = def_id(table, n)?;
-    if scope_id.is_some_and(|s| table.defs[id].scope != s) {
+    if table.defs[id].undeclared || scope_id.is_some_and(|s| table.defs[id].scope != s) {
         return None;
     }
     Some(id)
