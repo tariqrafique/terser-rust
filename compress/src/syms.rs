@@ -742,7 +742,8 @@ pub fn retarget_fixed(table: &mut SymTable, old: &N, new_node: &N) {
     let Some(ids) = table.fixed_of_node.remove(&old.id()) else { return };
     for id in &ids {
         if let Some(def) = table.defs.get_mut(*id) {
-            if def.fixed.as_ref().is_some_and(|f| Rc::ptr_eq(f, old)) {
+            // By id: `fixed` may hold an earlier rebuild of `old` (terser's same object).
+            if def.fixed.as_ref().is_some_and(|f| f.id() == old.id()) {
                 def.fixed = Some(Rc::clone(new_node));
             }
         }

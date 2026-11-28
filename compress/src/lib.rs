@@ -1119,8 +1119,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         }
         // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope,
         // definitions and flags; what `hoist` made is new and has none (terser `make_node`).
-        // A rebuilt function or class that is a `fixed` value is followed (terser's `fixed`
-        // reads the edited object).
+        // A rebuilt `fixed` value is followed (terser's `fixed` reads the edited object).
         if !Rc::ptr_eq(&hoisted, n) {
             follow_rebuilt(cx, n, &hoisted);
         }
@@ -1233,6 +1232,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             let after = if after == code { "=".to_string() } else { after };
             trace::trace!("drop_unused", t = trace::type_name(&out), code = code, out = after);
         }
+        follow_rebuilt(cx, &out, &dropped);
         set_parent(cx, &dropped);
         cx.redescend += 1;
         out = map_children(&dropped, cx);
@@ -1260,15 +1260,16 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     out
 }
 
-/// Retarget `fixed` from each function or class in `old` that `new` holds rebuilt (same id,
-/// another node). Children are paired by id; a subtree that did not change is skipped.
+/// The rebuild notification for `fixed` (terser's `fixed` reads the slot, so it sees an
+/// object edited in place): retarget it from each node in `old` that `new` holds rebuilt
+/// (same id, another node). Children are paired by id; a subtree that did not change is
+/// skipped. `transform` retargets what it optimizes itself; this covers `hoist` and
+/// `drop_unused`, which rebuild without going through it.
 fn follow_rebuilt(cx: &mut Cx, old: &N, new: &N) {
     if Rc::ptr_eq(old, new) || old.id() != new.id() {
         return;
     }
-    if matches!(new.data, Data::Func { .. } | Data::Class { .. }) {
-        retarget(cx, old, new);
-    }
+    retarget(cx, old, new);
     let olds: ast::IdMap<&N> = child_refs(&old.data).into_iter().map(|c| (c.id(), c)).collect();
     for c in child_refs(&new.data) {
         if let Some(o) = olds.get(&c.id()) {

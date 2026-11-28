@@ -237,7 +237,9 @@ fn collect_props(root: &N, n: &N, table: &SymTable, scope: usize, toplevel_vars:
                 continue;
             }
             let Some(fixed) = &d.fixed else { continue };
-            if !Rc::ptr_eq(fixed, value) { continue }
+            // `sym.fixed_value() === node.value` (index.js 902): the same node, by id (a rebuild
+            // that keeps the id is terser's in-place edit of that object).
+            if fixed.id() != value.id() { continue }
             let Data::Object { props } = &value.data else { continue };
             // terser refuses a spread or a computed key only. Any other value is hoisted:
             // `reduce_vars` already gave a method call that may read `this` no fixed value
