@@ -515,6 +515,8 @@ enum Kind {
     Var,
     Post,
     Pre,
+    /// An IIFE parameter (`extract_args`), a `var` definition whose name is the funarg.
+    Arg,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -534,6 +536,124 @@ struct Cand {
     value: N,
     node: N,
     op: String,
+    /// An IIFE parameter (terser `extract_args`).
+    arg: Option<ArgCand>,
+}
+
+/// terser `extract_args` candidate: `var <param> = <argument>` made up for an
+/// IIFE's parameter. `slot` is the parameter's index (`None`: the rest
+/// parameter, whose value is an array of the remaining arguments). `scan` is
+/// terser's `args` from `argnames.lastIndexOf(candidate.name) + 1`: the later
+/// parameters' definitions and the extra arguments, scanned (never replaced
+/// into) before the body.
+struct ArgCand {
+    slot: Option<usize>,
+    /// The parameter's index in `argnames`.
+    param: usize,
+    scan: Vec<N>,
+}
+
+/// terser collapse `extract_args`: the call whose callee's body is collapsed,
+/// set by `body.rs` `tighten_body` for a function expression with no name,
+/// no `arguments` and no `eval` / `with` that is called directly
+/// (`compressor.parent()` an `AST_Call` whose `expression` is the function)
+/// with injectable arguments, when `unused` is on.
+pub(crate) struct Iife {
+    /// The call's id (`Cx.iife_args`).
+    pub call: ast::NodeId,
+    /// `iife.args`, edited by `remove_candidate`.
+    pub args: Vec<N>,
+    /// Per argument: `has_overlapping_symbol(fn, arg, fn_strict)`, or a
+    /// pinned lambda. A replaced argument (`0`) has none.
+    pub overlap: Vec<bool>,
+    /// `fn.argnames`.
+    pub params: Vec<N>,
+    /// Per parameter: `def.orig.length > 1` (`is_reassigned`).
+    pub reassigned: Vec<bool>,
+    /// Per parameter: `def.references.length - def.replaced`, when the symbol table has
+    /// it; `usize::MAX` when the name is not in `def.orig` (a `clone(true)` copy).
+    pub referenced: Vec<Option<usize>>,
+    pub changed: bool,
+}
+
+thread_local! {
+    static IIFE: std::cell::RefCell<Option<Iife>> = const { std::cell::RefCell::new(None) };
+}
+
+pub(crate) fn set_iife(iife: Option<Iife>) {
+    IIFE.with(|i| *i.borrow_mut() = iife);
+}
+
+pub(crate) fn take_iife() -> Option<Iife> {
+    IIFE.with(|i| i.borrow_mut().take())
+}
+
+/// terser `extract_args`. Its candidates go before the first statement's
+/// (`candidates.unshift`), the first parameter first.
+fn extract_args() -> Vec<Cand> {
+    IIFE.with(|i| {
+        let i = i.borrow();
+        let Some(iife) = i.as_ref() else { return Vec::new() };
+        let len = iife.params.len();
+        // terser `args`: `var` definitions of the parameters (not one declared
+        // again), then the arguments past the last parameter.
+        let mut defs: Vec<(usize, N)> = Vec::new();
+        let mut made: Vec<(Option<usize>, usize, N, String, N)> = Vec::new();
+        let mut names: HashSet<Option<String>> = HashSet::new();
+        for i in (0..len).rev() {
+            let sym = &iife.params[i];
+            let arg = iife.args.get(i);
+            if iife.reassigned[i] {
+                continue;
+            }
+            defs.push((i, node(sym, Data::VarDef { name: Rc::clone(sym), value: arg.cloned() })));
+            if !names.insert(sym_name(sym).map(str::to_string)) {
+                continue;
+            }
+            match &sym.data {
+                Data::Spread { expr } => {
+                    let Some(name) = sym_name(expr) else { continue };
+                    if (i..iife.args.len()).all(|k| !iife.overlap[k]) {
+                        let elements = iife.args.get(i..).map(<[N]>::to_vec).unwrap_or_default();
+                        let value = node(sym, Data::Array { elements });
+                        let def = node(sym, Data::VarDef { name: Rc::clone(expr), value: Some(Rc::clone(&value)) });
+                        made.push((None, i, def, name.to_string(), value));
+                    }
+                }
+                Data::Symbol { name, .. } => {
+                    let value = match arg {
+                        None => void0(sym),
+                        Some(_) if iife.overlap[i] => continue,
+                        Some(a) => Rc::clone(a),
+                    };
+                    let def = node(sym, Data::VarDef { name: Rc::clone(sym), value: Some(Rc::clone(&value)) });
+                    made.push((Some(i), i, def, name.clone(), value));
+                }
+                // A destructuring or defaulted parameter: `get_lhs` gives no lhs.
+                _ => {}
+            }
+        }
+        defs.reverse();
+        let mut args: Vec<N> = defs.iter().map(|(_, d)| Rc::clone(d)).collect();
+        args.extend(iife.args.iter().skip(len).cloned());
+        made.reverse();
+        made.into_iter()
+            .map(|(slot, i, def, name, value)| {
+                // `argnames.lastIndexOf(candidate.name) + 1`: the rest parameter's
+                // name is not in `argnames`, so its scan starts at 0.
+                let from = if slot.is_some() { i + 1 } else { 0 };
+                Cand {
+                    path: Vec::new(),
+                    kind: Kind::Arg,
+                    name,
+                    value,
+                    node: def,
+                    op: "=".into(),
+                    arg: Some(ArgCand { slot, param: i, scan: args.get(from..).map(<[N]>::to_vec).unwrap_or_default() }),
+                }
+            })
+            .collect()
+    })
 }
 
 /// terser `tighten-body.js` `collapse`.
@@ -551,6 +671,12 @@ fn collapse_statements(mut stmts: Vec<N>, env: &Env<'_>) -> (Vec<N>, bool) {
         index -= 1;
         // terser `extract_candidates`, then `candidates.pop()` so the last one runs first.
         let mut candidates = extract_candidates(&stmts[index], env, &block_names);
+        // terser `if (stat_index == 0 && compressor.option("unused")) extract_args();`
+        if index == 0 && env.unused {
+            let mut args = extract_args();
+            args.append(&mut candidates);
+            candidates = args;
+        }
         let mut restarted = false;
         while let Some(cand) = candidates.pop() {
             let mut info = CandTrace::default();
@@ -611,6 +737,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                                 value: Rc::clone(right),
                                 node: Rc::clone(n),
                                 op: op.clone(),
+                                arg: None,
                             });
                         }
                     }
@@ -640,6 +767,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                                 value: Rc::clone(value),
                                 node: Rc::clone(n),
                                 op: "=".into(),
+                                arg: None,
                             });
                         }
                     }
@@ -735,6 +863,7 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                             value: Rc::clone(expr),
                             node: Rc::clone(n),
                             op: op.clone(),
+                            arg: None,
                         });
                     }
                 }
@@ -861,11 +990,22 @@ fn apply_candidate(
         }
     }
     let exposed = cand.kind == Kind::Var && !env.in_fn && !env.toplevel_vars;
+    // An IIFE parameter: terser `get_lhs` on a `var` whose name is a funarg
+    // (`declared > 1` does not apply), with the parameter's `referenced`.
+    let arg_referenced = cand.arg.as_ref().map(|a| IIFE.with(|i| i.borrow().as_ref().and_then(|i| i.referenced[a.param])).unwrap_or(total));
+    if arg_referenced == Some(0) || arg_referenced == Some(usize::MAX) {
+        info.skip = Some("no_lhs");
+        return None;
+    }
     // terser `mangleable_var` — only when `referenced > 1` and this is the single declaration.
-    let mangleable = cand.kind == Kind::Var
-        && declared <= 1
-        && total > 1
-        && is_mangleable(&cand.value, &cand.name, env);
+    let mangleable = match arg_referenced {
+        Some(referenced) => referenced > 1 && is_mangleable(&cand.value, &cand.name, env),
+        None => cand.kind == Kind::Var && declared <= 1 && total > 1 && is_mangleable(&cand.value, &cand.name, env),
+    };
+    if arg_referenced.is_some_and(|r| r > 1) && !mangleable {
+        info.skip = Some("no_lhs");
+        return None;
+    }
     if cand.kind == Kind::Var {
         let ok = (declared > 1) || if total > 1 { mangleable } else { !exposed };
         if !ok {
@@ -896,8 +1036,11 @@ fn apply_candidate(
         Data::VarDef { name, .. } => REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()).filter(|&r| r != usize::MAX).unwrap_or(total),
         _ => total,
     };
-    let single = total == 1 && (!env.block_only || referenced == 1);
-    let mode = if cand.kind == Kind::Var && single && !exposed {
+    let single = match arg_referenced {
+        Some(referenced) => referenced == 1,
+        None => total == 1 && (!env.block_only || referenced == 1),
+    };
+    let mode = if matches!(cand.kind, Kind::Var | Kind::Arg) && single && !exposed {
         Mode::ValueOne
     } else if mangleable {
         Mode::ValueAll
@@ -912,8 +1055,8 @@ fn apply_candidate(
         && !block_assign
         && injected.is_none_or(|count| count == 2)
         && (mangleable
-            || (cand.kind == Kind::Var && single)
-            || (cand.kind != Kind::Var && total == 2 && hidden == 0));
+            || (matches!(cand.kind, Kind::Var | Kind::Arg) && single)
+            || (matches!(cand.kind, Kind::Assign | Kind::Post | Kind::Pre) && total == 2 && hidden == 0));
     let mut lvalues = if matches!(cand.kind, Kind::Post | Kind::Pre) {
         HashMap::new()
     } else {
@@ -935,7 +1078,9 @@ fn apply_candidate(
     let mut scan = Scan {
         cand,
         at: 0,
-        seeking: true,
+        // terser `hit = funarg`: an IIFE parameter's candidate is not in the body.
+        seeking: cand.arg.is_none(),
+        can_replace: cand.arg.is_none(),
         abort: false,
         stop_after: None,
         stop_if_hit: None,
@@ -968,7 +1113,19 @@ fn apply_candidate(
             })
         }),
     };
-    scan_node(&stmts[index], &mut scan);
+    if let Some(arg) = &cand.arg {
+        // terser: `args[j].transform(scanner)` with `can_replace` false, then the body.
+        for a in &arg.scan {
+            if scan.abort {
+                break;
+            }
+            scan_node(a, &mut scan);
+        }
+        scan.can_replace = true;
+    }
+    if !scan.abort {
+        scan_node(&stmts[index], &mut scan);
+    }
     if !scan.abort {
         for stmt in &stmts[index + 1..] {
             if scan.abort {
@@ -1006,10 +1163,36 @@ fn apply_candidate(
             next.push(stmt);
         }
     }
-    if rw.hit != wanted || !rw.saw_cand {
+    if rw.hit != wanted || !(rw.saw_cand || cand.arg.is_some()) {
         return None;
     }
     info.replaced = rw.hit;
+    // terser `remove_candidate` for a funarg: the argument becomes `0`, or the
+    // rest parameter's arguments are dropped. A `value_def` collapse counts
+    // `replaced` back to 0 and removes nothing.
+    if let Some(arg) = &cand.arg {
+        IIFE.with(|i| {
+            let mut i = i.borrow_mut();
+            let Some(iife) = i.as_mut() else { return };
+            iife.changed = true;
+            if mode == Mode::ValueAll {
+                return;
+            }
+            match arg.slot {
+                Some(k) => {
+                    if let Some(old) = iife.args.get(k).cloned() {
+                        iife.args[k] = num0(&old);
+                        iife.overlap[k] = false;
+                    }
+                }
+                None => {
+                    let keep = iife.args.len().min(iife.params.len().saturating_sub(1));
+                    iife.args.truncate(keep);
+                    iife.overlap.truncate(keep);
+                }
+            }
+        });
+    }
     Some(next)
 }
 
@@ -1017,6 +1200,8 @@ struct Scan<'a> {
     cand: &'a Cand,
     at: usize,
     seeking: bool,
+    /// terser `can_replace`: off while an IIFE parameter's later arguments are scanned.
+    can_replace: bool,
     abort: bool,
     stop_after: Option<usize>,
     stop_if_hit: Option<usize>,
@@ -1105,7 +1290,8 @@ fn pre_scan(n: &N, st: &mut Scan<'_>) -> bool {
             }
         }
     }
-    if ref_name(n) == Some(st.cand.name.as_str())
+    if st.can_replace
+        && ref_name(n) == Some(st.cand.name.as_str())
         && !shadows(&st.parents, &st.cand.path, st.lvalues)
         && !st.inner_shadow
     {
@@ -1925,7 +2111,7 @@ fn replacement(slot: &N, cand: &Cand, mode: Mode, parent: Option<&N>) -> N {
         // terser's `multi_replacer` returns the one `candidate.value` at each read.
         Mode::ValueAll => Rc::clone(&cand.value),
         Mode::Move => match cand.kind {
-            Kind::Var => node(
+            Kind::Var | Kind::Arg => node(
                 &cand.node,
                 Data::Assign {
                     op: "=".into(),

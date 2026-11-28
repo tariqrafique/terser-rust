@@ -22,6 +22,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
     let mut st = St { changed: false, phantom: Default::default() };
     let mut max_iter = 10;
     let mut collapsed = false;
+    let mut iife = if cx.opts.collapse_vars { iife_context(cx) } else { None };
     loop {
         st.changed = false;
         eliminate_spurious_blocks(&mut stmts, &mut st);
@@ -113,6 +114,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     crate::tighten::set_lexical_targets(Default::default());
                     crate::tighten::set_declared_refs(Default::default());
                 }
+                crate::tighten::set_iife(iife.take());
                 let (next, changed) = crate::tighten::collapse_step(
                     stmts,
                     cx.opts.unused,
@@ -123,6 +125,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     &st.phantom,
                     scope.3,
                 );
+                iife = crate::tighten::take_iife();
                 stmts = next;
                 if changed {
                     st.changed = true;
@@ -135,6 +138,9 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
         if !again {
             break;
         }
+    }
+    if let Some(iife) = iife.filter(|i| i.changed) {
+        cx.iife_args.borrow_mut().insert(iife.call, iife.args);
     }
     if collapsed && cx.opts.unused && self_node(cx).is_some_and(|s| matches!(s.data, Data::Func { .. })) {
         stmts = crate::tighten::drop_unmentioned_in(&stmts);
@@ -1193,6 +1199,187 @@ fn collect_declared_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::co
         return;
     }
     ast::walk_children(n, &mut |c| collect_declared_refs(c, table, out));
+}
+
+/// `AST_Scope.pinned()` without the symbol table: a `with` or a direct `eval` in the
+/// function, outside nested functions.
+fn func_pinned(func: &N) -> bool {
+    fn rec(n: &N) -> bool {
+        match &n.data {
+            Data::With { .. } => true,
+            Data::Func { .. } => false,
+            Data::Call { expr, .. } if matches!(&expr.data, Data::Symbol { name, .. } if name == "eval") => true,
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || rec(c));
+                hit
+            }
+        }
+    }
+    match &func.data {
+        Data::Func { body, .. } => body.iter().any(rec),
+        _ => false,
+    }
+}
+
+/// terser collapse `extract_args`' conditions and inputs: the body being
+/// tightened is a function expression or arrow with no name, no `arguments`
+/// and no `eval` / `with`, the expression of the call above it, and no
+/// argument is a spread or holds an `await`.
+fn iife_context(cx: &Cx) -> Option<crate::tighten::Iife> {
+    if !cx.opts.unused {
+        return None;
+    }
+    let len = cx.parents.len();
+    let me = cx.parents.last()?;
+    if foreign(cx) {
+        return None;
+    }
+    let Data::Func { kind: kind @ (FuncKind::Expr | FuncKind::Arrow), name: None, args: params, body, .. } = &me.data else {
+        return None;
+    };
+    let parent = cx.parents.get(len.checked_sub(2)?)?;
+    let Data::Call { expr, args, .. } = &parent.data else { return None };
+    if expr.id() != me.id() {
+        return None;
+    }
+    let arrow = matches!(kind, FuncKind::Arrow);
+    let table = cx.syms.as_ref();
+    let scope = table.and_then(|t| t.scope_of(me));
+    // `fn.uses_arguments`: `arguments` read in the body or the parameters,
+    // arrows included, nested functions not.
+    fn mentions_arguments(n: &N) -> bool {
+        match &n.data {
+            Data::Symbol { name, kind: ast::SymKind::Ref, .. } => name == "arguments",
+            Data::Func { kind: FuncKind::Arrow, .. } => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || mentions_arguments(c));
+                hit
+            }
+            Data::Func { .. } => false,
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || mentions_arguments(c));
+                hit
+            }
+        }
+    }
+    if !arrow && (params.iter().any(mentions_arguments) || body.iter().any(mentions_arguments)) {
+        return None;
+    }
+    // `fn.pinned()`: a direct `eval` or a `with` in it.
+    let pinned = match (table, scope) {
+        (Some(t), Some(s)) => t.scope_pinned.get(s).copied().unwrap_or(false),
+        _ => func_pinned(me),
+    };
+    if pinned {
+        return None;
+    }
+    // `arg_is_injectable`: not a spread, no `await` anywhere in it.
+    fn has_await(n: &N) -> bool {
+        if matches!(n.data, Data::Await { .. }) {
+            return true;
+        }
+        let mut hit = false;
+        ast::walk_children(n, &mut |c| hit = hit || has_await(c));
+        hit
+    }
+    if args.iter().any(|a| matches!(a.data, Data::Spread { .. }) || has_await(a)) {
+        return None;
+    }
+    // `fn_strict`: the function's own `"use strict"`.
+    let fn_strict = body.iter().any(|s| matches!(&s.data, Data::Directive { value, .. } if value == "use strict"));
+    // `fn.variables`: its parameters and declarations, and `arguments`.
+    let mut vars: std::collections::HashSet<String> = match (table, scope) {
+        (Some(t), Some(s)) => t.scope_defs.get(&s).map(|d| d.iter().map(|&d| t.defs[d].name.clone()).collect()).unwrap_or_default(),
+        _ => crate::tighten::scope_bindings(params, body),
+    };
+    vars.extend(crate::tighten::block_lexicals(body));
+    if !arrow {
+        vars.insert("arguments".to_string());
+    }
+    // `has_overlapping_symbol(fn, arg, fn_strict)`. A reference whose definition
+    // is not global is found: `redefined_within_scope` sees the name in the
+    // definition's own scope, and `defun_scope` (this function) never encloses
+    // an argument's scopes. `this` counts outside nested non-arrow functions.
+    fn overlapping(n: &N, scan_this: bool, strict: bool, vars: &std::collections::HashSet<String>, table: Option<&crate::syms::SymTable>) -> bool {
+        match &n.data {
+            Data::Symbol { name, kind: ast::SymKind::Ref, .. } => {
+                if vars.contains(name) {
+                    return true;
+                }
+                match table.and_then(|t| t.def_of(n).map(|d| &t.defs[d])) {
+                    Some(def) => !def.global,
+                    None => true,
+                }
+            }
+            Data::This => strict || scan_this,
+            Data::Func { kind: FuncKind::Arrow, .. } => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || overlapping(c, scan_this, strict, vars, table));
+                hit
+            }
+            Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || overlapping(c, false, strict, vars, table));
+                hit
+            }
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || overlapping(c, scan_this, strict, vars, table));
+                hit
+            }
+        }
+    }
+    let overlap = args
+        .iter()
+        .map(|a| {
+            let pinned_lambda = matches!(a.data, Data::Func { .. })
+                && match table.and_then(|t| t.scope_of(a)) {
+                    Some(s) => table.unwrap().scope_pinned.get(s).copied().unwrap_or(false),
+                    None => func_pinned(a),
+                };
+            pinned_lambda || overlapping(a, !arrow, fn_strict, &vars, table)
+        })
+        .collect();
+    let def_of = |p: &N| -> Option<usize> {
+        let sym = match &p.data {
+            Data::Spread { expr } => expr,
+            _ => p,
+        };
+        if !matches!(sym.data, Data::Symbol { .. }) {
+            return None;
+        }
+        table.and_then(|t| t.def_of(sym))
+    };
+    let reassigned = params
+        .iter()
+        .map(|p| match (&p.data, def_of(p)) {
+            (Data::Symbol { .. }, Some(d)) => table.unwrap().defs[d].orig_count > 1,
+            (Data::Symbol { name, .. }, None) => crate::tighten::scope_bindings(&[], body).contains(name),
+            _ => false,
+        })
+        .collect();
+    let referenced = params
+        .iter()
+        .map(|p| {
+            let sym = match &p.data {
+                Data::Spread { expr } => expr,
+                _ => p,
+            };
+            // `usize::MAX`: a `clone(true)` copy's name, not in `def.orig` (no lhs).
+            def_of(p).map(|_| table.unwrap().referenced(sym).unwrap_or(usize::MAX))
+        })
+        .collect();
+    Some(crate::tighten::Iife {
+        call: parent.id(),
+        args: args.clone(),
+        overlap,
+        params: params.clone(),
+        reassigned,
+        referenced,
+        changed: false,
+    })
 }
 
 /// terser collapse `may_modify`'s last test, `def.references.some(ref =>

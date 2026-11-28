@@ -595,6 +595,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
+        iife_args: RefCell::new(ast::IdMap::default()),
         reassoc_at: std::cell::Cell::new(None),
         retransform: std::cell::Cell::new(false),
         scope_cache: RefCell::new(HashMap::new()),
@@ -700,6 +701,10 @@ struct Cx {
     /// terser `flatten_fn` splices `var` declarations into the scope body after
     /// the statement holding the inlined call. Keyed by that statement's id.
     pending_vars: RefCell<Vec<(ast::NodeId, N)>>,
+    /// terser collapse `extract_args` / `remove_candidate` edit `iife.args` while the
+    /// callee is optimized, before the arguments are descended. By call id: the new
+    /// argument list, taken by the call's `map_children` (body.rs `tighten_body`).
+    pub(crate) iife_args: RefCell<ast::IdMap<Vec<N>>>,
     /// The node `transform` is folding. `x && (y && z)` reassociated there
     /// (`eval.rs` `reassoc_lazy`) is `self.transform(compressor)` again (index.js 2931),
     /// which needs `transform`'s stack: the fold sets `retransform` and `transform` runs.
@@ -1903,7 +1908,15 @@ fn map_children(n: &N, cx: &mut Cx) -> N {
         }
         Data::Call { expr, args, optional, is_new } => {
             let expr_m = transform(expr, cx);
-            let c1 = !Rc::ptr_eq(&expr_m, expr);
+            let mut c1 = !Rc::ptr_eq(&expr_m, expr);
+            let edited = cx.iife_args.borrow_mut().remove(&n.id());
+            let args = match &edited {
+                Some(edited) => {
+                    c1 = true;
+                    edited.as_slice()
+                }
+                None => args.as_slice(),
+            };
             let (args, c2) = map_list(args, cx);
             finish(n, Data::Call { expr: expr_m, args, optional: *optional, is_new: *is_new }, c1 || c2)
         }
