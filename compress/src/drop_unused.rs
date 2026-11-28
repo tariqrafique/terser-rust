@@ -785,7 +785,11 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         },
         Data::Array { elements } => Data::Array { elements: elements.iter().map(|e| go(e, false)).collect() },
         Data::Cond { cond, cons, alt } => Data::Cond { cond: go(cond, false), cons: go(cons, false), alt: go(alt, false) },
-        Data::If { cond, body, alt } => Data::If { cond: go(cond, false), body: go(body, false), alt: alt.as_ref().map(|a| go(a, false)) },
+        Data::If { cond, body, alt } => Data::If {
+            cond: go(cond, false),
+            body: one(body, table, u, scope_id, drop_vars),
+            alt: alt.as_ref().map(|a| one(a, table, u, scope_id, drop_vars)),
+        },
         Data::Block { body } => {
             let mut stmts = Vec::new();
             for stmt in body {
