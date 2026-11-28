@@ -1192,7 +1192,7 @@ fn apply_candidate(
     // terser `is_lhs_local`: an injected var's definition is in the function
     // it came from, so it is never local here.
     let lhs_local = env.locals.contains(&cand.name)
-        && !injected_name
+        && !injected_name && !INJECTED.with(|i| i.borrow().contains_key(&cand.name))
         && !(env.in_loop
             && (value_reads_lhs || matches!(cand.kind, Kind::Post | Kind::Pre) || compound));
     // The lhs itself is an lvalue that later writes must not cross.
@@ -2330,6 +2330,28 @@ impl Counts {
                 for s in body {
                     refs_rec(s, None, true, out, own);
                 }
+                own.pop();
+                return;
+            }
+            // A nested block scope's own `let` / `const` (and a catch parameter) is
+            // another definition: its references are not this name's.
+            let lexical: HashSet<String> = match &n.data {
+                Data::Block { body } => block_lexicals(body),
+                Data::Switch { body, .. } => body
+                    .iter()
+                    .flat_map(|c| match &c.data {
+                        Data::Case { body, .. } | Data::Default { body } => block_lexicals(body),
+                        _ => HashSet::new(),
+                    })
+                    .collect(),
+                Data::For { init: Some(init), .. } => block_lexicals(std::slice::from_ref(init)),
+                Data::ForIn { init, .. } | Data::ForOf { init, .. } => block_lexicals(std::slice::from_ref(init)),
+                Data::Catch { arg: Some(arg), .. } => scope_bindings(std::slice::from_ref(arg), &[]),
+                _ => HashSet::new(),
+            };
+            if !lexical.is_empty() {
+                own.push(lexical);
+                ast::walk_children(n, &mut |c| refs_rec(c, Some(n), hidden, out, own));
                 own.pop();
                 return;
             }
