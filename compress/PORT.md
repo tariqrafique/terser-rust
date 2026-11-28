@@ -118,3 +118,13 @@ internationalizationLibrary board: collapse's `stop_after` test is one `||` chai
 Drop-unused writes: `scan_ref_scoped` matches `assign_as_unused` on the `AST_Assign` only, not on a `SimpleStatement` around it, so `x = f();` walks `f` (it was skipped, and a function or `let` read only there was dropped). An undeclared global is in `toplevel.globals`, not `variables`, so its write is a use and `tt` keeps it (`x = f()` at the top level with `toplevel` became `f()`). Compress default 2362 → 2364/2671.
 
 After a collapse in a function body, `tighten.rs` `drop_unmentioned` (a port shortcut; terser leaves this to `drop_unused`) drops a declaration whose name is never mentioned. Its name walk now uses `ast::walk_children`; it skipped object literals, so `var d` went while `{i:(d=r,d.h)}` still assigned it.
+
+Inlining board (C1, C5, C6, C10, C11):
+- `INLINED` is keyed by scope id (`SymTable.inlined_scopes`) and read through `scope_lookup`, so a function the optimizer rebuilt keeps it. A function optimized into a new node gets a scope alias at the end of `transform`; before, `scope_encloses_variables_in_this_scope` saw an inlined copy's own parameters as outside names and refused to inline the enclosing lambda (`upgradeCallback`). `all_refs_local`, `scope_encloses_conflict` and `named_recursive` use `scope_lookup` too.
+- `before()` squeezes only when `optimize` returns the same node: a block that `tighten_body` reduced to one statement returns that statement, which the parent's second descend still visits.
+- `drop_side_effect_free` of an IIFE call is a new call (terser `this.clone()`); it and the sequence, `&&` and statement built around it are `Cx.fresh`, so the descend after the scope's `drop_unused` optimizes them (a sequence under `&&` drops the `!` of its first IIFE).
+- An inlined lambda's first `tighten_body` runs inside the reference's `optimize`, so `compressor.self()` is not the lambda: `handle_if_return` is not `in_lambda` there (`Cx.optimize_self_off`). The descend after it does not tighten again. A function declared after its one call keeps `if(x)return;...`.
+- `flatten_fn` splices each `var` right after the statement, so a later flatten's `var` comes first.
+- Collapse `may_modify`: a reference from a nested function counts only when that function does not bind the name itself. A write of the candidate's name (`is_lhs`) is passed over before the `stop_after` tests (C11).
+
+Open: in the first `tighten_body` of a forward-inlined copy terser collapses some `const`s but not others (`const a=M(value),u=...;return fl(value>0?"x":"y",a,u)`, the port also moves `u`); the cause is not found yet.

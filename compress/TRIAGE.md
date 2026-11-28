@@ -29,18 +29,18 @@ After the M3 and M4 fixes, none of the 299 triaged inputs (mangling off) uses a 
 
 | Id | Inputs | What |
 | --- | --- | --- |
-| C1 | 296 | A function that terser marks INLINED is still inlined by the port. terser `inline.js` around line 222 marks every enclosing function as inlined when it inlines a body that uses an outside name. A marked function is then never inlined itself (`all_refs_local`, `has_flag(fixed, INLINED)`). The port has `mark_inlined` / `inlined_scopes` in `reduce_vars.rs`, but the mark has no effect. Most engine regions trace back here: `sanitizeHtmlContent`, `patchShadowRootWithRestrictions`, `upgradeCallback`, `connectContext`, `scheduleRehydration`, `renderComponent`, `patchMirrorDomTree`, and others. |
+| C1 | 296 | Fixed for the repros (see PORT.md, inlining board). A function that terser marks INLINED is still inlined by the port. terser `inline.js` around line 222 marks every enclosing function as inlined when it inlines a body that uses an outside name. A marked function is then never inlined itself (`all_refs_local`, `has_flag(fixed, INLINED)`). The port has `mark_inlined` / `inlined_scopes` in `reduce_vars.rs`, but the mark has no effect. Most engine regions trace back here: `sanitizeHtmlContent`, `patchShadowRootWithRestrictions`, `upgradeCallback`, `connectContext`, `scheduleRehydration`, `renderComponent`, `patchMirrorDomTree`, and others. |
 | C2 | 296 | Destructured bindings are not declared in the compressor's symbol table. This blocks inlining of an argument (C2c) and conditional assignments (C2d), and makes `{insertStylesheet}` / `{stylesheet}` count as a second reference to a top-level function. |
 | C3 | 296 | An array constant is inlined into a `for…of`; terser keeps it. |
 | C4 | 296 | Negation shape: terser gives `!(s(a)\|\|c(a)&&c(b))`, the port `!s(a)&&(!c(a)\|\|!c(b))`. |
-| C5 | 296 | No collapse into the arguments of an inlined function. |
-| C6 | 296 | The port loses the `!` before an inlined function call used as a statement. |
+| C5 | 296 | Fixed. No collapse into the arguments of an inlined function. Cause: collapse's `escaped_names` (terser `may_modify`) took a nested function's own parameters as reads of the outer name. |
+| C6 | 296 | Fixed. The port loses the `!` before an inlined function call used as a statement (and, the other way, kept one terser drops). Causes: a block reduced to one statement was squeezed; `drop_side_effect_free` of an IIFE returned the same call where terser clones it. |
 | C7 | 296 | Template literal concatenation: terser folds ``a+`u ${p}. `+`See` `` into one template; the port does not. |
 | C8 | 229 | Flattening is blocked by a nested `let` with the same name as a top-level function. |
 | C9 | 91 | An empty `case` before `default` is not removed, so the switch is not turned into a conditional. |
 | C13 | 78 | A regex constant used once is not substituted. |
-| C10 | 56 | Hoisted vars from nested inlines come out in a different order: terser `var a,e`, the port `var e,a`. |
-| C11 | 56 | A sequence produced by inlining is not collapsed again: terser `(v=nd(v=o.h,1),H[v])`, the port `(v=o.h,v=nd(v,1),H[v])`. |
+| C10 | 56 | Fixed. Hoisted vars from nested inlines come out in a different order: terser `var a,e`, the port `var e,a`. |
+| C11 | 56 | Fixed (collapse ran `stop_after` on a write of the candidate's own name). A sequence produced by inlining is not collapsed again: terser `(v=nd(v=o.h,1),H[v])`, the port `(v=o.h,v=nd(v,1),H[v])`. |
 | C14 | 49 | Collapse into the object of a member assignment: terser `C\|\|(C=ce(..),C.id=1)`, the port `C\|\|((C=ce(..)).id=1)`. |
 | C12 | 1 | testUtils: `for(var key in from=Object(a[s]),from)`. |
 | C16 | 1 | purifyLib: an unused conditional's value is kept (`?arguments[0]:`). |
