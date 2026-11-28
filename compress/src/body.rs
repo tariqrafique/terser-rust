@@ -435,6 +435,9 @@ fn eliminate_dead_code(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
                     _ => Rc::ptr_eq(&loop_body(lct), me),
                 };
                 keep = !drop;
+                if drop {
+                    crate::loops::remove_label_ref(&stat, cx);
+                }
             }
         }
         if keep {
@@ -585,6 +588,7 @@ fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
             let ab = aborts_node(Some(&body));
             if let Some(ab) = ab.filter(|ab| can_merge_flow(ab, stmts, i, in_lambda, self_n.as_ref(), cx)) {
                 if let Some(new_else) = as_statement_array_with_return(&body, &ab) {
+                    crate::loops::remove_label_ref(&ab, cx);
                     st.changed = true;
                     let mut then_body = as_statement_array(alt.as_ref());
                     then_body.extend(extract_defuns(stmts, i));
@@ -605,6 +609,7 @@ fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
             if let Some(ab) = ab.filter(|ab| can_merge_flow(ab, stmts, i, in_lambda, self_n.as_ref(), cx)) {
                 let alt_n = alt.clone().unwrap();
                 if let Some(new_else) = as_statement_array_with_return(&alt_n, &ab) {
+                    crate::loops::remove_label_ref(&ab, cx);
                     st.changed = true;
                     let mut then_body = as_statement_array(Some(&body));
                     then_body.extend(extract_defuns(stmts, i));
@@ -971,33 +976,30 @@ fn join_object_assignments(defn: &N, body: &N, cx: &Cx, phantom: &mut std::colle
         if op != "=" {
             break;
         }
-        let (sym, key) = match &left.data {
-            Data::Dot { expr, prop, optional: false, private: false, .. } => (expr, prop.clone()),
-            Data::Sub { expr, prop, optional: false } => {
-                let key = match &prop.data {
-                    Data::String { value, .. } => value.clone(),
-                    Data::Number { value, .. } => crate::eval::js_num_tostring(*value),
-                    _ => match crate::eval::eval_lit(prop, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars), &cx.parents) {
-                        Some(crate::eval::Lit::Num(v)) => crate::eval::js_num_tostring(v),
-                        Some(crate::eval::Lit::Str(v)) => v,
-                        _ => break,
-                    },
-                };
-                (expr, key)
-            }
+        let sym = match &left.data {
+            Data::Dot { expr, optional: false, private: false, .. } | Data::Sub { expr, optional: false, .. } => expr,
             _ => break,
         };
         let Data::Symbol { name: sname, kind: ast::SymKind::Ref, .. } = &sym.data else { break };
         if sname != def_name_str {
             break;
         }
-        if !object_const_expr(right) {
+        if !constant_expression(right, cx) {
             break;
         }
+        // `prop.evaluate(compressor)`, then `"" + prop`.
+        let key = match &left.data {
+            Data::Dot { prop, .. } => prop.clone(),
+            Data::Sub { prop, .. } => match property_key(prop, cx) {
+                Some(key) => key,
+                None => break,
+            },
+            _ => break,
+        };
         // `diff`: no method or computed key may already use the name.
         let clash = props.iter().any(|p| match &p.data {
             Data::Prop { key: ast::Key::Static { name, .. }, method: Some(_), .. } => *name == key,
-            Data::Prop { key: ast::Key::Static { name, .. }, method: None, .. } => strict_es5 && *name == key,
+            Data::Prop { key: ast::Key::Static { name, .. }, method: None, .. } => name.is_empty() || strict_es5 && *name == key,
             Data::Prop { key: ast::Key::Computed(k), .. } => matches!(&k.data, Data::Symbol { name, .. } if *name == key),
             Data::Prop { .. } => false,
             // `node.key && ...`: a spread has no key.
@@ -1050,6 +1052,53 @@ fn is_identifier_name(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_' || c == '$')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+/// terser `node.right.is_constant_expression(nearest_scope)`, `nearest_scope` being
+/// `compressor.find_scope()`.
+fn constant_expression(n: &N, cx: &Cx) -> bool {
+    let Some(table) = cx.syms.as_ref() else {
+        return object_const_expr(n);
+    };
+    let scope = cx.parents.iter().rev().find_map(|p| table.scope_of(p)).or(Some(0));
+    crate::reduce_vars::is_constant_expression(n, table, scope)
+}
+
+/// terser `prop.evaluate(compressor)` of a computed property, as `"" + prop`: `None` when it
+/// stays a node. A safe regexp evaluates to itself (`/rx/`).
+fn property_key(prop: &N, cx: &Cx) -> Option<String> {
+    use crate::eval::Lit;
+    if let Data::RegExp { source, flags } = &prop.data {
+        if !cx.opts.evaluate || !regexp_is_safe(source) {
+            return None;
+        }
+        let sorted: String = "dgimsuvy".chars().filter(|c| flags.contains(*c)).collect();
+        return Some(format!("/{source}/{sorted}"));
+    }
+    if !cx.opts.evaluate {
+        return match &prop.data {
+            Data::String { value, .. } => Some(value.clone()),
+            Data::Number { value, .. } => Some(crate::eval::js_num_tostring(*value)),
+            _ => None,
+        };
+    }
+    match crate::eval::eval_lit(prop, cx.syms.as_ref().filter(|_| cx.opts.reduce_vars), &cx.parents)? {
+        Lit::Num(v) => Some(crate::eval::js_num_tostring(v)),
+        Lit::Str(v) => Some(v),
+        Lit::Bool(b) => Some(b.to_string()),
+        Lit::Null => Some("null".into()),
+        Lit::Undef => Some("undefined".into()),
+    }
+}
+
+/// terser `utils/index.js` `regexp_is_safe`: `/^[\\/|\0\s\w^$.[\]()]*$/`.
+fn regexp_is_safe(source: &str) -> bool {
+    source.chars().all(|c| {
+        c.is_ascii_alphanumeric()
+            || (c.is_whitespace() && c != '\u{85}')
+            || c == '\u{feff}'
+            || matches!(c, '\\' | '/' | '|' | '\0' | '_' | '^' | '$' | '.' | '[' | ']' | '(' | ')')
+    })
 }
 
 /// terser `is_constant_expression` without lambdas.
@@ -1107,6 +1156,22 @@ fn join_consecutive_vars(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
                 }
             }
             Data::For { init, cond, step, body } => {
+                // `join_object_assignments(prev, stat.init)`.
+                let joined = match (prev_idx, init) {
+                    (Some(p), Some(i)) => join_object_assignments(&out[p], i, cx, &mut st.phantom),
+                    _ => None,
+                };
+                if let Some((defs_node, rest)) = joined {
+                    st.changed = true;
+                    out[prev_idx.unwrap()] = defs_node;
+                    let new_init = (!rest.is_empty()).then(|| make_sequence(init.as_ref().unwrap(), rest));
+                    // keep: `stat.init = ..` (tb 1469).
+                    out.push(eval::edit(
+                        &stat,
+                        Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
+                    ));
+                    continue;
+                }
                 let prev = prev_idx.map(|p| Rc::clone(&out[p]));
                 let prev_is_var = prev.as_ref().is_some_and(|p| matches!(p.data, Data::Defs { kind: DefKind::Var, .. }));
                 let init_same_type = match init {

@@ -603,6 +603,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         foreign_lambda: None,
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
+        label_refs: RefCell::new(loops::collect_label_refs(root)),
     };
     // terser `Compressor` constructor: `module` sets `directives["use strict"]`.
     if module {
@@ -610,7 +611,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     }
     // terser `size.js`: a mangleable symbol is one character when mangle options exist.
     if let Some(mangle_toplevel) = mangle {
-        let table = syms::bind(root);
+        let table = syms::bind_strict(root, module);
         let mut set = ast::IdSet::default();
         for (nid, id) in table.node_def.borrow().iter() {
             let d = &table.defs[*id];
@@ -626,7 +627,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         eval::set_known_symbols(ast::IdSet::default(), false);
     }
     if reduce_vars_on {
-        let mut table = syms::bind(root);
+        let mut table = syms::bind_strict(root, module);
         reduce_vars::analyze(
             &mut table,
             root,
@@ -642,7 +643,7 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     };
     let _ = collapse_vars;
     check_ids("transform", &out);
-    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs) } else { out };
+    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs, module) } else { out };
     check_ids("drop_unused", &out);
     out
 }
@@ -729,6 +730,8 @@ struct Cx {
     /// was appended to: the parameter's reads in the inlined body plus the
     /// injected assignment.
     injected_refs: RefCell<HashMap<(ScopeKey, String), usize>>,
+    /// terser `AST_Label.references`, by label id (`loops.rs` `collect_label_refs`).
+    label_refs: RefCell<ast::IdMap<ast::IdSet>>,
 }
 
 impl Cx {
@@ -1216,13 +1219,21 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // inlined lambda copy, a switch-built block): its `tighten_body` runs now,
     // on its children as they are.
     if cx.pre_tighten.borrow_mut().remove(&out.id()) {
-        cx.parents.push(Rc::clone(&out));
+        // A block an optimizer made is optimized with the optimizer's `self` on the stack
+        // (`make_node(AST_BlockStatement, ..).optimize(compressor)`): `compressor.self()` is
+        // the node being optimized, not the block.
+        let lambda = matches!(out.data, Data::Func { .. });
+        if lambda {
+            cx.parents.push(Rc::clone(&out));
+        }
         let entered = cx.enter(&out);
-        let saved = std::mem::replace(&mut cx.foreign_lambda, matches!(out.data, Data::Func { .. }).then(|| out.id()));
+        let saved = std::mem::replace(&mut cx.foreign_lambda, lambda.then(|| out.id()));
         let tightened = after_descend(Rc::clone(&out), &out, cx);
         cx.foreign_lambda = saved;
         cx.leave(entered);
-        cx.parents.pop();
+        if lambda {
+            cx.parents.pop();
+        }
         if !Rc::ptr_eq(&tightened, &out) {
             out = tightened;
         }
@@ -1444,6 +1455,11 @@ fn optimize(n: &N, ptr: usize, cx: &Cx) -> Option<N> {
     match &n.data {
         Data::Debugger if cx.opts.drop_debugger => Some(empty(n)),
         Data::Directive { value, .. } if cx.opts.directives && cx.drop_directive(value, ptr) => Some(empty(n)),
+        // terser `def_optimize(AST_Class)`: empty static blocks are removed.
+        Data::Class { stmt, name, extends, props } if props.iter().any(|p| matches!(&p.data, Data::StaticBlock { body } if body.is_empty())) => {
+            let props = props.iter().filter(|p| !matches!(&p.data, Data::StaticBlock { body } if body.is_empty())).cloned().collect();
+            Some(n.rebuild(Data::Class { stmt: *stmt, name: name.clone(), extends: extends.clone(), props }))
+        }
         _ => None,
     }
 }
@@ -1576,7 +1592,14 @@ fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
             if !cx.keep_block && next.is_empty() {
                 return empty(&n);
             }
-            if !cx.keep_block && next.len() == 1 && can_evict(&next[0]) {
+            // terser `def_optimize(AST_BlockStatement)`: outside strict mode an `if` branch
+            // also gives up its block for a function declaration (`can_be_extracted_from_if_block`).
+            let from_if = || {
+                cx.lookup("use strict").is_none()
+                    && matches!(cx.parent().map(|p| &p.data), Some(Data::If { .. }))
+                    && !matches!(next[0].data, Data::Class { .. } | Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, .. })
+            };
+            if !cx.keep_block && next.len() == 1 && (from_if() || can_evict(&next[0])) {
                 return Rc::clone(&next[0]);
             }
             if same_stmts(body, &next) {

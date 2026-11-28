@@ -64,13 +64,45 @@ fn optimize_do(n: &N, cx: &Cx) -> Option<N> {
         return Some(optimize_for(&for_n, cx).unwrap_or(for_n));
     }
     // falsy, and `common.js` `has_break_or_continue` is clear
-    if has_loop_control(body) {
+    if has_break_or_continue(n, cx.parent()) {
         return None;
     }
-    Some(eval::atom(
-        n,
-        Data::Block { body: vec![Rc::clone(body), cond_stmt] },
-    ))
+    // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
+    let block = eval::atom(body, Data::Block { body: vec![Rc::clone(body), cond_stmt] });
+    cx.pre_tighten.borrow_mut().insert(block.id());
+    Some(block)
+}
+
+/// terser `common.js` `has_break_or_continue(loop, parent)`: a `break` / `continue` in the
+/// loop's body, outside nested scopes, whose `loopcontrol_target` is the loop.
+fn has_break_or_continue(lp: &N, parent: Option<&N>) -> bool {
+    let mut stack: Vec<N> = Vec::new();
+    if let Some(p) = parent.filter(|p| matches!(p.data, Data::Labeled { .. })) {
+        stack.push(Rc::clone(p));
+    }
+    stack.push(Rc::clone(lp));
+    let Some(body) = lp.body_node() else { return false };
+    fn go(n: &N, stack: &mut Vec<N>, lp: &N) -> bool {
+        if n.is_scope() {
+            return false;
+        }
+        if matches!(n.data, Data::Break { .. } | Data::Continue { .. }) {
+            stack.push(Rc::clone(n));
+            let hit = loop_target(n, stack).is_some_and(|t| t.id() == lp.id());
+            stack.pop();
+            return hit;
+        }
+        stack.push(Rc::clone(n));
+        let mut found = false;
+        ast::walk_children(n, &mut |c| {
+            if !found {
+                found = go(c, stack, lp);
+            }
+        });
+        stack.pop();
+        found
+    }
+    go(body, &mut stack, lp)
 }
 
 /// terser `def_optimize(AST_For)` and `if_break_in_loop`.
@@ -90,7 +122,7 @@ fn optimize_for(n: &N, cx: &Cx) -> Option<N> {
     if cx.opts.side_effects {
         if let Some(i) = &init {
             if !matches!(i.data, Data::Defs { .. }) {
-                let dropped = drop_expr(i, cx);
+                let dropped = crate::unary::drop_side_effect_free(i, cx, false);
                 if !opt_eq(&dropped, &init) {
                     init = dropped;
                     changed = true;
@@ -253,29 +285,6 @@ fn as_statement(n: &N) -> N {
 }
 
 /// `drop_side_effect_free` for a `for` init that is an expression.
-fn drop_expr(n: &N, cx: &Cx) -> Option<N> {
-    if eval::statement_pure(n, cx) {
-        return None;
-    }
-    let Data::Seq { exprs } = &n.data else {
-        return Some(Rc::clone(n));
-    };
-    let mut kept = Vec::new();
-    for (i, e) in exprs.iter().enumerate() {
-        let last = i + 1 == exprs.len();
-        if last {
-            kept.push(Rc::clone(e));
-        } else if let Some(d) = drop_expr(e, cx) {
-            kept.push(d);
-        }
-    }
-    match kept.len() {
-        0 => None,
-        1 => kept.pop(),
-        _ => Some(eval::atom(n, Data::Seq { exprs: kept })),
-    }
-}
-
 fn smaller_constant(orig: &N, lit: Lit, cx: &Cx) -> N {
     let made = eval::fold(&eval::lit_node(orig, lit, cx), cx);
     if crate::size::size(&made) > crate::size::size(orig) {
@@ -295,17 +304,6 @@ fn opt_eq(a: &Option<N>, b: &Option<N>) -> bool {
         (None, None) => true,
         (Some(a), Some(b)) => Rc::ptr_eq(a, b),
         _ => false,
-    }
-}
-
-/// A break or continue anywhere under `body`, outside nested functions.
-/// Used by `has_break_or_continue`: an inner-loop control also blocks the unroll,
-/// which only skips an optimization.
-fn has_loop_control(n: &N) -> bool {
-    match &n.data {
-        Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } => false,
-        Data::Break { .. } | Data::Continue { .. } => true,
-        _ => stmt_kids(n).iter().any(has_loop_control),
     }
 }
 
@@ -513,7 +511,7 @@ fn optimize_switch(n: &N, cx: &Cx, depth: u8) -> Option<N> {
     let mut marker = default_id.or(exact_id);
 
     if arms_are_simple(&arms, marker) {
-        group_equivalent(&mut arms, marker);
+        group_equivalent(&mut arms, marker, cx);
     }
     merge_equivalent(&mut arms);
 
@@ -637,7 +635,7 @@ fn arms_are_simple(arms: &[Arm], marker: Option<u32>) -> bool {
     })
 }
 
-fn group_equivalent(arms: &mut Vec<Arm>, marker: Option<u32>) {
+fn group_equivalent(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     let _ = marker;
     let mut i = 0;
     while i < arms.len() {
@@ -659,7 +657,7 @@ fn group_equivalent(arms: &mut Vec<Arm>, marker: Option<u32>) {
                 let mut fall = 0usize;
                 while x > i + 1 {
                     x -= 1;
-                    if is_inert(&arms[x]) {
+                    if is_inert(&arms[x], cx) {
                         fall += 1;
                     } else {
                         break;
@@ -725,38 +723,42 @@ fn bodies_eq(branch: &[N], prev: &[N], span: &N, insert_break: bool) -> bool {
     codegen::print(&left) == codegen::print(&right)
 }
 
-fn is_inert(arm: &Arm) -> bool {
-    !list_aborts(&arm.body) && !block_side(&arm.body)
+/// terser `is_inert_body`: `!aborts(branch)` and the branch's statements as a block have no
+/// side effects.
+fn is_inert(arm: &Arm, cx: &Cx) -> bool {
+    !list_aborts(&arm.body) && !arm.body.iter().any(|s| stmt_has_side_effects(s, cx))
 }
 
-fn block_side(stmts: &[N]) -> bool {
-    stmts.iter().any(stmt_side)
-}
-
-fn stmt_side(n: &N) -> bool {
+/// terser `inference.js` `has_side_effects` on a statement; expressions go to
+/// `conditional::has_side_effects`.
+pub(crate) fn stmt_has_side_effects(n: &N, cx: &Cx) -> bool {
+    let any = |list: &[N]| list.iter().rev().any(|s| stmt_has_side_effects(s, cx));
     match &n.data {
-        Data::Empty | Data::Directive { .. } | Data::Func { .. } => false,
-        Data::Simple { body } => !eval::is_pure(body) && !pure_read(body),
-        Data::Block { body } | Data::Default { body } => block_side(body),
-        Data::Case { expr, body } => stmt_side_expr(expr) || block_side(body),
+        Data::Empty => false,
+        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => any(body),
+        Data::Catch { body, .. } | Data::Finally { body } => stmt_has_side_effects(body, cx),
+        Data::Simple { body } => has_side_effects(body, cx),
+        Data::Labeled { body, .. } => stmt_has_side_effects(body, cx),
+        Data::Switch { expr, body } => has_side_effects(expr, cx) || any(body),
+        Data::Case { expr, body } => has_side_effects(expr, cx) || any(body),
+        Data::Try { body, catch, finally } => {
+            stmt_has_side_effects(body, cx)
+                || catch.as_ref().is_some_and(|c| stmt_has_side_effects(c, cx))
+                || finally.as_ref().is_some_and(|f| stmt_has_side_effects(f, cx))
+        }
+        Data::If { cond, body, alt } => {
+            has_side_effects(cond, cx) || stmt_has_side_effects(body, cx) || alt.as_ref().is_some_and(|a| stmt_has_side_effects(a, cx))
+        }
+        // `AST_Lambda`: a function declaration has none.
+        Data::Func { .. } => false,
         Data::Defs { defs, .. } => defs.iter().any(|d| matches!(d.data, Data::VarDef { value: Some(_), .. })),
+        Data::Class { .. } => crate::unary::may_side_effect(n, cx),
         _ => true,
     }
 }
 
-fn stmt_side_expr(n: &N) -> bool {
-    !eval::is_pure(n) && !pure_read(n)
-}
-
-fn pure_read(n: &N) -> bool {
-    match &n.data {
-        Data::Symbol { .. } => true,
-        Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") => {
-            pure_read(expr) || eval::is_pure(expr)
-        }
-        Data::Binary { left, right, .. } => (pure_read(left) || eval::is_pure(left)) && (pure_read(right) || eval::is_pure(right)),
-        _ => false,
-    }
+fn has_side_effects(n: &N, cx: &Cx) -> bool {
+    crate::conditional::has_side_effects(n, cx)
 }
 
 fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<N>, cx: &Cx) {
@@ -767,7 +769,7 @@ fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<
     while i >= 0 {
         let idx = i as usize;
         pop_switch_breaks(&mut arms[idx].body, cx);
-        if !is_inert(&arms[idx]) {
+        if !is_inert(&arms[idx], cx) {
             break;
         }
         i -= 1;
@@ -781,7 +783,7 @@ fn prune_trailing(arms: &mut Vec<Arm>, marker: &mut Option<u32>, decl: &mut Vec<
         let arm = arms.pop().unwrap();
         if marker == &Some(arm.id) {
             *marker = None;
-        } else if arm.expr.as_ref().is_some_and(|e| stmt_side_expr(e)) {
+        } else if arm.expr.as_ref().is_some_and(|e| has_side_effects(e, cx)) {
             arms.push(arm);
             break;
         }
@@ -797,7 +799,7 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     let Some(default_index) = arms.iter().position(|a| a.id == mid) else { return };
     let last = arms.len() - 1;
     let mut default_body_index = default_index;
-    while default_body_index < last && is_inert(&arms[default_body_index]) {
+    while default_body_index < last && is_inert(&arms[default_body_index], cx) {
         default_body_index += 1;
     }
     if default_body_index < last {
@@ -806,7 +808,7 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     let mut side_effect_index = last as isize;
     while side_effect_index >= 0 {
         let arm = &arms[side_effect_index as usize];
-        if arm.id != mid && arm.expr.as_ref().is_some_and(|e| crate::unary::may_side_effect(e, cx)) {
+        if arm.id != mid && arm.expr.as_ref().is_some_and(|e| has_side_effects(e, cx)) {
             break;
         }
         side_effect_index -= 1;
@@ -815,7 +817,7 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
         return;
     }
     let mut prev_body_index = default_index as isize - 1;
-    while prev_body_index >= 0 && is_inert(&arms[prev_body_index as usize]) {
+    while prev_body_index >= 0 && is_inert(&arms[prev_body_index as usize], cx) {
         prev_body_index -= 1;
     }
     let before = (side_effect_index.max(prev_body_index) + 1) as usize;
@@ -856,7 +858,7 @@ fn fold_into_default(
     let Some(mi) = arms.iter().position(|a| a.id == mid) else {
         return None;
     };
-    let i = arms.iter().position(|a| !is_inert(a)).map(|p| p as isize).unwrap_or(-1);
+    let i = arms.iter().position(|a| !is_inert(a, cx)).map(|p| p as isize).unwrap_or(-1);
     let mut case_body: Option<N> = None;
     if i == arms.len() as isize - 1 {
         if nested_break(arms, n) {
@@ -868,7 +870,7 @@ fn fold_into_default(
     } else if i != -1 {
         return None;
     }
-    let side = arms.iter().any(|a| a.id != mid && a.expr.as_ref().is_some_and(|e| stmt_side_expr(e)));
+    let side = arms.iter().any(|a| a.id != mid && a.expr.as_ref().is_some_and(|e| has_side_effects(e, cx)));
     if !side {
         let mut stmts = std::mem::take(decl);
         stmts.push(eval::simple(n, Rc::clone(expr)));
@@ -943,7 +945,8 @@ fn switch_two(span: &N, expr: &N, arms: &[Arm], marker: u32, cx: &Cx) -> Option<
         std::mem::swap(&mut always, &mut consequent);
     }
     let cond = eval::binary(span, operator, Rc::clone(expr), case_expr);
-    let iff = sealed_if(span, cond, consequent, None, cx);
+    // `make_node(AST_If, ..)` without `.optimize`: the descend optimizes it.
+    let iff = eval::atom(span, Data::If { cond, body: consequent, alt: None });
     Some(finish_switch_block(span, vec![iff, always], cx))
 }
 
@@ -1010,47 +1013,13 @@ fn arm_last(n: &N) -> Option<&N> {
     }
 }
 
+/// terser `make_node(AST_BlockStatement, self, { body }).optimize(compressor)`: `tighten_body`
+/// runs on it in `transform` (`pre_tighten`) with the switch as `compressor.self()`, so its
+/// `eliminate_dead_code` drops the breaks that target the switch.
 fn finish_switch_block(span: &N, stmts: Vec<N>, cx: &Cx) -> N {
-    let mut stmts = stmts;
-    for _ in 0..6 {
-        let flat = flatten_evictable(stmts);
-        let next = drop_switch_aborts(flat, cx);
-        if next.len() == 0 {
-            stmts = next;
-            break;
-        }
-        stmts = next;
-        if !stmts.iter().any(|s| matches!(s.data, Data::Block { .. })) {
-            break;
-        }
-    }
-    stmts.retain(|s| !matches!(s.data, Data::Empty));
-    if stmts.is_empty() {
-        eval::empty(span)
-    } else if stmts.len() == 1 && crate::can_evict(&stmts[0]) {
-        stmts.into_iter().next().unwrap()
-    } else {
-        // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
-        let block = eval::atom(span, Data::Block { body: stmts });
-        cx.pre_tighten.borrow_mut().insert(block.id());
-        block
-    }
-}
-
-fn drop_switch_aborts(stmts: Vec<N>, cx: &Cx) -> Vec<N> {
-    let mut out = Vec::new();
-    for (i, stat) in stmts.iter().enumerate() {
-        if !is_break_stmt(stat, cx) {
-            out.push(Rc::clone(stat));
-        }
-        if eval::aborts(stat) {
-            for rest in &stmts[i + 1..] {
-                eval::extract_unreachable(rest, &mut out, cx, false);
-            }
-            break;
-        }
-    }
-    out
+    let block = eval::atom(span, Data::Block { body: stmts });
+    cx.pre_tighten.borrow_mut().insert(block.id());
+    block
 }
 
 fn flatten_evictable(stmts: Vec<N>) -> Vec<N> {
@@ -1114,5 +1083,90 @@ fn stmt_kids(n: &N) -> Vec<N> {
         }
         Data::Catch { body, .. } => vec![Rc::clone(body)],
         _ => Vec::new(),
+    }
+}
+
+/// terser `AST_Label.references` for every label in `root`: the `break` / `continue` nodes
+/// naming it, by the label's id. `figure_out_scope` fills them at the start of each pass
+/// (scope.js 299, 411).
+pub(crate) fn collect_label_refs(root: &N) -> ast::IdMap<ast::IdSet> {
+    let mut out: ast::IdMap<ast::IdSet> = Default::default();
+    let mut stack: Vec<(String, ast::NodeId)> = Vec::new();
+    collect_refs(root, &mut stack, &mut out);
+    out
+}
+
+fn collect_refs(n: &N, stack: &mut Vec<(String, ast::NodeId)>, out: &mut ast::IdMap<ast::IdSet>) {
+    match &n.data {
+        Data::Labeled { label, body } => {
+            out.entry(label.id()).or_default();
+            stack.push((sym_name(label).unwrap_or_default().to_string(), label.id()));
+            collect_refs(body, stack, out);
+            stack.pop();
+        }
+        Data::Break { label: Some(l) } | Data::Continue { label: Some(l) } => {
+            let name = sym_name(l).unwrap_or_default();
+            if let Some((_, id)) = stack.iter().rev().find(|(s, _)| s == name) {
+                out.entry(*id).or_default().insert(n.id());
+            }
+        }
+        _ => ast::walk_children(n, &mut |c| collect_refs(c, stack, out)),
+    }
+}
+
+/// The label's references, counted from `labeled`'s body when the label is not in the
+/// table: a copy made by `clone(true)` (ast.js 355-367 collects the copied jumps).
+fn ensure_label(labeled: &N, cx: &Cx) -> Option<ast::NodeId> {
+    let Data::Labeled { label, .. } = &labeled.data else {
+        return None;
+    };
+    let id = label.id();
+    if !cx.label_refs.borrow().contains_key(&id) {
+        let found = collect_label_refs(labeled).remove(&id).unwrap_or_default();
+        cx.label_refs.borrow_mut().insert(id, found);
+    }
+    Some(id)
+}
+
+/// terser `remove(stat.label.thedef.references, stat)` (tighten-body.js 1034, 1055, 1228).
+pub(crate) fn remove_label_ref(jump: &N, cx: &Cx) {
+    let label = match &jump.data {
+        Data::Break { label: Some(l) } | Data::Continue { label: Some(l) } => l,
+        _ => return,
+    };
+    let Some(name) = sym_name(label) else { return };
+    let Some(labeled) = cx
+        .parents
+        .iter()
+        .rev()
+        .find(|p| matches!(&p.data, Data::Labeled { label, .. } if sym_name(label) == Some(name)))
+    else {
+        return;
+    };
+    if let Some(id) = ensure_label(labeled, cx) {
+        if let Some(set) = cx.label_refs.borrow_mut().get_mut(&id) {
+            set.remove(&jump.id());
+        }
+    }
+}
+
+/// terser `def_optimize(AST_LabeledStatement)`.
+pub(crate) fn optimize_labeled(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Labeled { label, body } = &n.data else {
+        return None;
+    };
+    // `compressor.loopcontrol_target(self.body) === self.body`: `self` is the innermost
+    // labeled statement on the stack, so only a `break` naming this label targets it.
+    if let Data::Break { label: Some(l) } = &body.data {
+        if sym_name(l).is_some() && sym_name(l) == sym_name(label) {
+            return Some(eval::atom(n, Data::Empty));
+        }
+    }
+    let id = ensure_label(n, cx)?;
+    let empty = cx.label_refs.borrow().get(&id).is_none_or(|s| s.is_empty());
+    if empty {
+        Some(Rc::clone(body))
+    } else {
+        None
     }
 }
