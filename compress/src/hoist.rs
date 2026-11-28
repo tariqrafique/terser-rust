@@ -68,7 +68,8 @@ fn hoist_declarations(n: &N, hoist_funs: bool, mut hoist_vars: bool) -> N {
                                 body.remove(i);
                             } else {
                                 let expr = if rest.len() == 1 { rest.into_iter().next().unwrap() } else { seq_node(expr, rest) };
-                                body[i] = simple(&body[i], expr);
+                                // keep: `self.body[i].body = make_sequence(..)` (index.js 855).
+                                body[i] = edit(&body[i], Data::Simple { body: expr });
                             }
                             continue;
                         }
@@ -111,7 +112,8 @@ fn take_assign(expr: &N, slots: &mut Vec<Slot>) -> bool {
     let Some(idx) = slots.iter().position(|s| s.name == name && !s.filled) else { return false };
     let mut slot = slots.remove(idx);
     slot.filled = true;
-    slot.def = vardef(&slot.def, left, Some(Rc::clone(right)));
+    // keep: `def.value = expr.right` on the cloned definition (index.js 838, 852).
+    slot.def = edit(&slot.def, Data::VarDef { name: Rc::clone(left), value: Some(Rc::clone(right)) });
     slots.push(slot);
     true
 }
@@ -155,15 +157,16 @@ fn rewrite(n: &N, hoist_vars: bool, hoist_funs: bool, direct: bool, dirs: &mut V
                 None => None,
             };
             let body = rewrite(body, hoist_vars, hoist_funs, false, dirs, funs, slots);
-            finish(n, Data::For { init, cond: cond.clone(), step: step.clone(), body })
+            // keep: the transformer's `descend` (index.js 767-807).
+            edit(n, Data::For { init, cond: cond.clone(), step: step.clone(), body })
         }
         Data::ForIn { init, object, body } | Data::ForOf { init, object, body, .. } => {
             let init = rewrite(init, hoist_vars, hoist_funs, false, dirs, funs, slots);
             let init = if let Data::Simple { body } = &init.data { Rc::clone(body) } else { init };
             let body = rewrite(body, hoist_vars, hoist_funs, false, dirs, funs, slots);
             match &n.data {
-                Data::ForOf { await_, .. } => finish(n, Data::ForOf { init, object: Rc::clone(object), body, await_: *await_ }),
-                _ => finish(n, Data::ForIn { init, object: Rc::clone(object), body }),
+                Data::ForOf { await_, .. } => edit(n, Data::ForOf { init, object: Rc::clone(object), body, await_: *await_ }),
+                _ => edit(n, Data::ForIn { init, object: Rc::clone(object), body }),
             }
         }
         other => finish_children(n, other, |c, direct_child| rewrite(c, hoist_vars, hoist_funs, direct_child, dirs, funs, slots)),
@@ -341,7 +344,8 @@ fn rewrite_props(n: &N, table: &SymTable, plan: &HashMap<usize, HashMap<String, 
             if !changed {
                 return Rc::clone(n);
             }
-            finish(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
+            // keep: `MAP.splice` into the definitions list, in place.
+            edit(n, Data::Defs { kind: *kind, defs: out, await_: *await_ })
         }
         Data::Dot { expr, prop, .. } if expr_plan(table, expr, plan).is_some_and(|keys| keys.contains_key(prop)) => {
             let id = table.lookup(&syms::ptr(expr)).unwrap();
@@ -475,19 +479,26 @@ fn scope_body(n: &N) -> Option<&[N]> {
     }
 }
 
+/// keep: `self.body = dirs.concat(hoisted, self.body)` (index.js 875).
 fn with_body(n: &N, body: Vec<N>) -> N {
     match &n.data {
-        Data::Toplevel { .. } => finish(n, Data::Toplevel { body }),
-        Data::StaticBlock { .. } => finish(n, Data::StaticBlock { body }),
-        Data::Func { kind, name, args, async_, generator, .. } => finish(n, Data::Func {
+        Data::Toplevel { .. } => edit(n, Data::Toplevel { body }),
+        Data::StaticBlock { .. } => edit(n, Data::StaticBlock { body }),
+        Data::Func { kind, name, args, async_, generator, .. } => edit(n, Data::Func {
             kind: *kind, name: name.clone(), args: args.clone(), body, async_: *async_, generator: *generator,
         }),
         _ => Rc::clone(n),
     }
 }
 
+/// new: terser `make_node(X, span, ..)`.
 fn finish(span: &N, data: Data) -> N {
     Node::make(span, data)
+}
+
+/// keep: an in-place edit of `n`.
+fn edit(n: &N, data: Data) -> N {
+    n.rebuild(data)
 }
 
 fn finish_children(n: &N, data: &Data, mut map: impl FnMut(&N, bool) -> N) -> N {
