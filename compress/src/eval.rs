@@ -3949,7 +3949,9 @@ pub(crate) fn lit_node(orig: &N, lit: Lit, cx: &Cx) -> N {
         Lit::Num(n) if n.is_nan() => nan_node(orig, cx),
         // `make_node(AST_Infinity).optimize(compressor)`: `1/0` unless `keep_infinity`.
         Lit::Num(n) if n.is_infinite() => infinity(orig, n.is_sign_negative()),
-        Lit::Num(n) if n == 0.0 && n.is_sign_negative() => unary(orig, "-", num(orig, 0.0)),
+        // `1 / val < 0`: a negative number is `-` over its absolute value, so `-.7`
+        // prints as `-` then `.7` (a negative `AST_Number` would print `-0.7`).
+        Lit::Num(n) if n.is_sign_negative() => unary(orig, "-", num(orig, -n)),
         Lit::Num(n) => num(orig, n),
         Lit::Str(s) => string(orig, s),
         Lit::Bool(true) => atom(orig, Data::True),
