@@ -734,7 +734,10 @@ fn on_ref(tw: &mut Tw, id: usize, node: &N) {
             // Leave `single_use` alone. An earlier read in this walk may already be the one use.
             tw.table.defs[id].recursive_refs = tw.table.defs[id].recursive_refs.saturating_add(1);
         } else if tw.env.unused && !exposed(&tw.table.defs[id], tw.env) && ref_once(tw, id) {
-            let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope) && !in_unbound_block_scope(tw, 0, id);
+            // A read of a block declaration keeps its block scope; any other read's
+            // scope is the defun scope (`scope.js` `figure_out_scope`).
+            let same = ref_scope(tw, 0) == Some(tw.table.defs[id].scope)
+                && !(tw.table.defs[id].block_scoped && in_unbound_block_scope(tw, 0, id));
             let yes = (is_lambda(&fixed) && !func_scope_pinned(tw.table, &fixed))
                 || matches!(fixed.data, Data::Class { .. })
                 || (same && const_expr_truthy(&fixed, tw.table, None));
