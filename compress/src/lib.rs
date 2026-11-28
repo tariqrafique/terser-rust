@@ -6,6 +6,7 @@
 //! prints exactly like the input tree.
 
 mod assign;
+mod audit;
 mod body;
 mod call;
 mod conditional;
@@ -501,10 +502,11 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
         trace::trace!("pass", n = pass);
         tree = compress_pass(&tree, opts.clone(), mangle);
     }
-    eval::set_mangled_symbols(HashSet::new());
+    eval::set_mangled_symbols(ast::IdSet::default());
     if expression {
         tree = process_expression(&tree, false);
     }
+    audit::flush();
     tree
 }
 
@@ -526,6 +528,8 @@ fn process_expression(n: &N, insert: bool) -> N {
             };
             eval::simple(n, body)
         }
+        // keep below: `process_expression` edits `if` / `with` / block bodies in place
+        // (index.js 606-617).
         Data::Toplevel { body } => rewrite_completion(n, body, insert, |body| Data::Toplevel { body }),
         Data::Block { body } => rewrite_completion(n, body, insert, |body| Data::Block { body }),
         Data::If { cond, body, alt } => {
@@ -539,10 +543,7 @@ fn process_expression(n: &N, insert: bool) -> N {
             if Rc::ptr_eq(&body_m, body) && same_alt {
                 Rc::clone(n)
             } else {
-                eval::atom(
-                    n,
-                    Data::If { cond: Rc::clone(cond), body: body_m, alt: alt_m },
-                )
+                eval::edit(n, Data::If { cond: Rc::clone(cond), body: body_m, alt: alt_m })
             }
         }
         Data::With { expr, body } => {
@@ -550,7 +551,7 @@ fn process_expression(n: &N, insert: bool) -> N {
             if Rc::ptr_eq(&body_m, body) {
                 Rc::clone(n)
             } else {
-                eval::atom(n, Data::With { expr: Rc::clone(expr), body: body_m })
+                eval::edit(n, Data::With { expr: Rc::clone(expr), body: body_m })
             }
         }
         _ => Rc::clone(n),
@@ -567,7 +568,7 @@ fn rewrite_completion(n: &N, body: &[N], insert: bool, wrap: impl Fn(Vec<N>) -> 
     }
     let mut next = body.to_vec();
     *next.last_mut().unwrap() = last_m;
-    eval::atom(n, wrap(next))
+    eval::edit(n, wrap(next))
 }
 
 fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
@@ -591,6 +592,9 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         consts: vec![HashMap::new()],
         syms: None,
         squeezed: HashSet::new(),
+        squeezed_ids: ast::IdSet::default(),
+        optimized_ids: RefCell::new(ast::IdSet::default()),
+        redescend: 0,
         optimized: HashSet::new(),
         sealed: RefCell::new(Vec::new()),
         seal: RefCell::new(HashSet::new()),
@@ -614,19 +618,19 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
     // terser `size.js`: a mangleable symbol is one character when mangle options exist.
     if let Some(mangle_toplevel) = mangle {
         let table = syms::bind(root);
-        let mut set = HashSet::new();
-        for (ptr, id) in &table.node_def {
+        let mut set = ast::IdSet::default();
+        for (nid, id) in table.node_def.borrow().iter() {
             let d = &table.defs[*id];
             let unmangleable = (d.global && !mangle_toplevel) || d.undeclared || d.pinned || d.exported || d.name == "arguments";
             if !unmangleable {
-                set.insert(*ptr);
+                set.insert(*nid);
             }
         }
         eval::set_mangled_symbols(set);
-        eval::set_known_symbols(table.node_def.keys().copied().collect(), mangle_toplevel);
+        eval::set_known_symbols(table.node_def.borrow().keys().copied().collect(), mangle_toplevel);
     } else {
-        eval::set_mangled_symbols(HashSet::new());
-        eval::set_known_symbols(HashSet::new(), false);
+        eval::set_mangled_symbols(ast::IdSet::default());
+        eval::set_known_symbols(ast::IdSet::default(), false);
     }
     if reduce_vars_on {
         let mut table = syms::bind(root);
@@ -644,11 +648,33 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         out
     };
     let _ = collapse_vars;
-    if unused {
-        drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs)
-    } else {
-        out
+    check_ids("transform", &out);
+    let out = if unused { drop_unused::drop_unused(&out, toplevel_vars, toplevel_funcs) } else { out };
+    check_ids("drop_unused", &out);
+    out
+}
+
+/// `ast::check_ids` on a pass's tree. An id on two nodes is a site that kept an id
+/// (`rebuild`) where terser makes a new object, or that kept the old version in the tree as
+/// well. Debug builds panic; `TERSER_CHECK_IDS=log` prints instead (in any build), and `=off`
+/// skips the check.
+fn check_ids(stage: &str, root: &N) {
+    let mode = std::env::var("TERSER_CHECK_IDS").unwrap_or_default();
+    if mode == "off" || (!cfg!(debug_assertions) && mode.is_empty()) {
+        return;
     }
+    let dups = ast::check_ids(root);
+    if dups.is_empty() {
+        return;
+    }
+    if mode == "log" {
+        for (id, a, b) in &dups {
+            eprintln!("check_ids {stage}: {id:?} on {a} and {b}");
+        }
+        return;
+    }
+    let (id, a, b) = dups[0];
+    panic!("check_ids after {stage}: {} ids on two nodes, first {id:?} on {a} and {b}", dups.len());
 }
 
 struct Cx {
@@ -667,6 +693,12 @@ struct Cx {
     syms: Option<syms::SymTable>,
     /// terser `SQUEEZED` (`index.js` `Compressor.before`): `before` returns the node.
     squeezed: HashSet<usize>,
+    /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` by id, set only where terser sets
+    /// the flag, never by the pointer carry-overs. Nothing decides by them yet.
+    squeezed_ids: ast::IdSet,
+    optimized_ids: RefCell<ast::IdSet>,
+    /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
+    redescend: u32,
     /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run again.
     optimized: HashSet<usize>,
     /// Nodes `def_optimize` already returned, so a later `before` must not run
@@ -735,7 +767,7 @@ impl Cx {
     /// in scope.
     fn declared_ref(&self, n: &N, name: &str) -> bool {
         if let Some(table) = &self.syms {
-            if let Some(id) = table.lookup(&syms::ptr(n)) {
+            if let Some(id) = table.def_of(n) {
                 return !table.defs[id].undeclared;
             }
         }
@@ -857,8 +889,14 @@ impl Cx {
 
     /// Mark `n` so a later `transform` does not run `def_optimize` on it again.
     pub(crate) fn seal_optimized(&self, n: &N) {
+        self.optimized_ids.borrow_mut().insert(n.id());
         self.seal.borrow_mut().insert(Rc::as_ptr(n) as usize);
         self.seal_keep.borrow_mut().push(Rc::clone(n));
+    }
+
+    /// An audit decision's label: `@redescend` inside the descend after `drop_unused`.
+    fn stage(&self, decision: &'static str) -> String {
+        if self.redescend > 0 { format!("{decision}@redescend") } else { decision.to_string() }
     }
 
     /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
@@ -1060,7 +1098,12 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
     let orig_ptr = ptr;
-    if cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr) {
+    let orig = Rc::clone(n);
+    let entry = cx.squeezed.contains(&ptr) || cx.late_squeezed.borrow().contains_key(&ptr);
+    if audit::on() {
+        audit::check(&cx.stage("entry"), n, entry, cx.squeezed_ids.contains(&n.id()));
+    }
+    if entry {
         return Rc::clone(n);
     }
     // terser `Compressor.before`: hoist before descending. An enclosing `use asm` skips it.
@@ -1073,15 +1116,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
                 table.define_hoisted(created);
             }
         }
-        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its
-        // scopes and definitions.
+        // The rebuilt scope (and anything `hoist` rebuilt in it) keeps its id, so its scope
+        // and definitions; the flags still follow by pointer.
         if !Rc::ptr_eq(&hoisted, n) {
-            if let Some(table) = cx.syms.as_mut() {
-                if let Some(&sc) = table.node_scope.get(&ptr) {
-                    table.node_scope.insert(Rc::as_ptr(&hoisted) as usize, sc);
-                    cx.flag_keep.push(Rc::clone(&hoisted));
-                }
-            }
             transfer_flags(n, &hoisted, cx);
         }
         &hoisted
@@ -1098,12 +1135,15 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         mark_squeezed(cx, &out);
         cx.leave(entered);
         cx.parents.pop();
-        retarget(cx, orig_ptr, &out);
+        retarget(cx, &orig, &out);
         return out;
     }
     // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
     // part of it. A node made by an optimizer was already optimized there.
     let already = cx.optimized.contains(&orig_ptr) || is_sealed(cx, n) || cx.seal.borrow().contains(&orig_ptr);
+    if audit::on() {
+        audit::check(&cx.stage("already"), n, already, cx.optimized_ids.borrow().contains(&n.id()));
+    }
     let pre = cx.pre_tighten.borrow_mut().remove(&orig_ptr).is_some();
     let pre_node;
     let n = if pre {
@@ -1123,7 +1163,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // `parent.left === self` sees updated children, then the original for `fold`.
     cx.stack.push(Rc::clone(n));
     let once = map_children(n, cx);
-    alias_scope_node(cx, n, &once);
     *cx.stack.last_mut().unwrap() = Rc::clone(&once);
     set_parent(cx, &once);
     let twice = map_children(&once, cx);
@@ -1143,6 +1182,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
     let sealed = is_sealed(cx, n);
     let switch_sealed = cx.seal.borrow().contains(&twice_ptr) || cx.seal.borrow().contains(&ptr);
+    if audit::on() {
+        let skip = sealed || cx.optimized.contains(&twice_ptr) || switch_sealed;
+        audit::check(&cx.stage("skip_optimize"), &twice, skip, cx.optimized_ids.borrow().contains(&twice.id()));
+    }
     let mut out = if sealed {
         if !is_sealed(cx, &twice) {
             seal(cx, &twice);
@@ -1171,7 +1214,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         cx.leave(entered);
         cx.parents.pop();
         if !Rc::ptr_eq(&tightened, &out) {
-            alias_scope_node(cx, &out, &tightened);
             out = tightened;
         }
     }
@@ -1184,6 +1226,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // terser `opt === node`: a block that `tighten_body` reduced to its one
     // statement returns that statement, a different node.
     let same = Rc::ptr_eq(&out, &twice) && std::mem::discriminant(&out.data) == std::mem::discriminant(&n.data);
+    if audit::on() {
+        // terser `opt === node` (index.js 506).
+        audit::check(&cx.stage("same"), &twice, same, out.id() == twice.id());
+    }
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
         // Nodes built by this optimize (a switch turned into `if`, then a comma
         // pulled into its condition) are already in their final shape. Terser
@@ -1199,7 +1245,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         }
         transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
+        cx.redescend += 1;
         out = map_children(&dropped, cx);
+        cx.redescend -= 1;
         set_parent(cx, &out);
         // The scope's `before` is finished. Squeezing it matches terser setting
         // `SQUEEZED` on the same scope object after `drop_unused`.
@@ -1220,33 +1268,23 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // terser optimizes a scope in place: the rebuilt function is the same scope.
     if matches!(n.data, Data::Func { .. }) && matches!(out.data, Data::Func { .. }) {
         if let Some(table) = cx.syms.as_ref() {
-            if table.scope_lookup(&(Rc::as_ptr(&out) as usize)).is_none() {
-                alias_scope_node(cx, n, &out);
+            if table.scope_of(&out).is_none() {
+                if let Some(s) = table.scope_of(n) {
+                    table.bind_scope(&out, s);
+                }
             }
         }
     }
-    retarget(cx, orig_ptr, &out);
+    retarget(cx, &orig, &out);
     out
 }
 
-/// A rebuilt copy of a scope node is the same scope (terser mutates in place).
-fn alias_scope_node(cx: &mut Cx, from: &N, to: &N) {
-    if Rc::ptr_eq(from, to) {
-        return;
-    }
-    if let Some(table) = cx.syms.as_ref() {
-        if let Some(sc) = table.scope_lookup(&(Rc::as_ptr(from) as usize)) {
-            table.alias_scope.borrow_mut().insert(Rc::as_ptr(to) as usize, (sc, Rc::clone(to)));
-        }
-    }
-}
-
-fn retarget(cx: &mut Cx, orig_ptr: usize, out: &N) {
-    if Rc::as_ptr(out) as usize == orig_ptr {
+fn retarget(cx: &mut Cx, orig: &N, out: &N) {
+    if Rc::ptr_eq(orig, out) {
         return;
     }
     if let Some(table) = cx.syms.as_mut() {
-        syms::retarget_fixed(table, orig_ptr, out);
+        syms::retarget_fixed(table, orig, out);
     }
 }
 
@@ -1267,8 +1305,8 @@ fn was_scope(data: &Data) -> bool {
 fn mark_tree_squeezed(n: &N, cx: &mut Cx) {
     let fresh = cx.fresh.borrow_mut().remove(&(Rc::as_ptr(n) as usize)).is_some();
     if !fresh {
-        mark_squeezed(cx, n);
-        mark_optimized(cx, n);
+        carry_squeezed(cx, n);
+        carry_optimized(cx, n);
     }
     for child in child_refs(&n.data) {
         mark_tree_squeezed(child, cx);
@@ -1283,21 +1321,6 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
         return;
     }
     let ptr = Rc::as_ptr(old) as usize;
-    // The rebuilt node keeps its scope and definition (terser edits in place).
-    if let Some(table) = cx.syms.as_ref() {
-        let np = Rc::as_ptr(new) as usize;
-        if table.scope_lookup(&np).is_none() {
-            if let Some(sc) = table.scope_lookup(&ptr) {
-                table.alias_scope.borrow_mut().insert(np, (sc, Rc::clone(new)));
-            }
-        }
-        let same_name = matches!((&old.data, &new.data), (Data::Symbol { name: a, .. }, Data::Symbol { name: b, .. }) if a == b);
-        if same_name && table.lookup(&np).is_none() {
-            if let Some(id) = table.lookup(&ptr) {
-                table.alias.borrow_mut().insert(np, (id, Rc::clone(new)));
-            }
-        }
-    }
     if cx.fresh.borrow().contains_key(&ptr) {
         cx.fresh.borrow_mut().insert(Rc::as_ptr(new) as usize, Rc::clone(new));
     }
@@ -1307,13 +1330,13 @@ fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
     if matches!(old.data, Data::Func { .. } | Data::Class { .. })
         && old.start.as_ref().map(|t| t.pos) == new.start.as_ref().map(|t| t.pos)
     {
-        retarget(cx, ptr, new);
+        retarget(cx, old, new);
     }
     if cx.squeezed.contains(&ptr) {
-        mark_squeezed(cx, new);
+        carry_squeezed(cx, new);
     }
     if cx.optimized.contains(&ptr) {
-        mark_optimized(cx, new);
+        carry_optimized(cx, new);
     }
     let (left, right) = (child_refs(&old.data), child_refs(&new.data));
     let same_shape = left.len() == right.len()
@@ -1441,6 +1464,7 @@ fn child_refs(data: &Data) -> Vec<&N> {
 
 fn seal(cx: &Cx, n: &N) {
     cx.sealed.borrow_mut().push(Rc::clone(n));
+    cx.optimized_ids.borrow_mut().insert(n.id());
 }
 
 fn is_sealed(cx: &Cx, n: &N) -> bool {
@@ -1449,11 +1473,17 @@ fn is_sealed(cx: &Cx, n: &N) -> bool {
 }
 
 fn mark_optimized(cx: &mut Cx, n: &N) {
+    carry_optimized(cx, n);
+    cx.optimized_ids.borrow_mut().insert(n.id());
+}
+
+/// `OPTIMIZED` by pointer only: a carry-over onto a rebuilt node.
+fn carry_optimized(cx: &mut Cx, n: &N) {
     cx.optimized.insert(Rc::as_ptr(n) as usize);
     cx.flag_keep.push(Rc::clone(n));
 }
 
-/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag and scope.
+/// The rebuilt `to` keeps `from`'s `SQUEEZED` flag (its scope follows its id).
 pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
     if Rc::ptr_eq(from, to) {
         return;
@@ -1462,14 +1492,24 @@ pub(crate) fn keep_squeezed(cx: &Cx, from: &N, to: &N) {
     if cx.squeezed.contains(&p) || cx.late_squeezed.borrow().contains_key(&p) {
         cx.late_squeezed.borrow_mut().insert(Rc::as_ptr(to) as usize, Rc::clone(to));
     }
-    if let Some(table) = cx.syms.as_ref() {
-        if let Some(sc) = table.scope_lookup(&p) {
-            table.alias_scope.borrow_mut().insert(Rc::as_ptr(to) as usize, (sc, Rc::clone(to)));
-        }
+}
+
+/// Shadow audit of a flag read outside `transform`: `by_ptr` is the pointer answer for
+/// "`n` is SQUEEZED (when `squeezed`) or OPTIMIZED (when `optimized`)".
+pub(crate) fn audit_flags(cx: &Cx, decision: &str, n: &N, by_ptr: bool, squeezed: bool, optimized: bool) {
+    if audit::on() {
+        let by_id = (squeezed && cx.squeezed_ids.contains(&n.id())) || (optimized && cx.optimized_ids.borrow().contains(&n.id()));
+        audit::check(decision, n, by_ptr, by_id);
     }
 }
 
 fn mark_squeezed(cx: &mut Cx, n: &N) {
+    carry_squeezed(cx, n);
+    cx.squeezed_ids.insert(n.id());
+}
+
+/// `SQUEEZED` by pointer only: a carry-over onto a rebuilt node.
+fn carry_squeezed(cx: &mut Cx, n: &N) {
     cx.squeezed.insert(Rc::as_ptr(n) as usize);
     cx.flag_keep.push(Rc::clone(n));
 }
@@ -1502,14 +1542,16 @@ fn optimize(n: &N, ptr: usize, cx: &Cx) -> Option<N> {
 }
 
 fn empty(n: &N) -> N {
-    Rc::new(Node { start: n.start.clone(), end: n.end.clone(), data: Data::Empty })
+    Node::make(n, Data::Empty)
 }
 
+/// keep: terser's `descend` / `do_list` edit the node in place (transform.js), and so does
+/// `tighten_body(self.body, ..)` in the block optimizers (index.js 703-741).
 fn finish(orig: &N, data: Data, changed: bool) -> N {
     if !changed {
         Rc::clone(orig)
     } else {
-        Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+        orig.rebuild(data)
     }
 }
 
@@ -1741,17 +1783,7 @@ fn if_return_once(stmts: Vec<N>) -> (bool, Vec<N>) {
 }
 
 fn return_cond(span: &N, cond: N, cons: N, alt: N) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data: Data::Return {
-            value: Some(Rc::new(Node {
-                start: span.start.clone(),
-                end: span.end.clone(),
-                data: Data::Cond { cond, cons, alt },
-            })),
-        },
-    })
+    Node::make(span, Data::Return { value: Some(Node::make(span, Data::Cond { cond, cons, alt })) })
 }
 
 fn var_into_for(stmts: Vec<N>) -> Vec<N> {
@@ -1760,16 +1792,9 @@ fn var_into_for(stmts: Vec<N>) -> Vec<N> {
     for stat in stmts {
         if let Some(prev_stmt) = prev.take() {
             if let Data::For { init: None, cond, step, body } = &stat.data {
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::For {
-                        init: Some(prev_stmt),
-                        cond: cond.clone(),
-                        step: step.clone(),
-                        body: Rc::clone(body),
-                    },
-                }));
+                // keep: `stat.init = prev` (tb 1477).
+                let data = Data::For { init: Some(prev_stmt), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) };
+                out.push(stat.rebuild(data));
                 continue;
             }
             out.push(prev_stmt);
@@ -1793,8 +1818,11 @@ fn join_vars(stmts: Vec<N>) -> Vec<N> {
             if let Some(prev) = out.last_mut() {
                 let same = matches!(&prev.data, Data::Defs { kind: pk, await_: pa, .. } if pk == kind && pa == await_);
                 if same {
-                    let prev = Rc::make_mut(prev);
-                    if let Data::Defs { defs: prev_defs, .. } = &mut prev.data {
+                    // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1447).
+                    if Rc::get_mut(prev).is_none() {
+                        *prev = prev.rebuild(prev.data.clone());
+                    }
+                    if let Data::Defs { defs: prev_defs, .. } = &mut Rc::get_mut(prev).unwrap().data {
                         prev_defs.extend(defs.iter().cloned());
                     }
                     true
@@ -1825,18 +1853,10 @@ fn sequence_statements(stmts: Vec<N>, limit: i32) -> Vec<N> {
         let body = if exprs.len() == 1 {
             exprs.into_iter().next().unwrap()
         } else {
-            let span = exprs[0].clone();
-            Rc::new(Node {
-                start: span.start.clone(),
-                end: span.end.clone(),
-                data: Data::Seq { exprs },
-            })
+            let span = Rc::clone(&exprs[0]);
+            Node::make(&span, Data::Seq { exprs })
         };
-        out.push(Rc::new(Node {
-            start: body.start.clone(),
-            end: body.end.clone(),
-            data: Data::Simple { body },
-        }));
+        out.push(Node::make(&Rc::clone(&body), Data::Simple { body }));
     };
     for stat in stmts {
         match &stat.data {
@@ -1881,28 +1901,18 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
             let left = Rc::clone(left);
             if let Data::If { cond, body, alt } = &stat.data {
                 let cond = comma(left, Rc::clone(cond));
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::If { cond, body: Rc::clone(body), alt: alt.clone() },
-                }));
+                // keep: `sequencesize_2` sets `stat.condition` (tb 1343), and the same for the
+                // other statements below (tb 1317-1347).
+                out.push(stat.rebuild(Data::If { cond, body: Rc::clone(body), alt: alt.clone() }));
                 continue;
             }
             if let Data::Return { value } = &stat.data {
                 let right = value.clone().unwrap_or_else(|| eval_void(&stat));
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::Return { value: Some(comma(left, right)) },
-                }));
+                out.push(stat.rebuild(Data::Return { value: Some(comma(left, right)) }));
                 continue;
             }
             if let Data::Switch { expr, body } = &stat.data {
-                out.push(Rc::new(Node {
-                    start: stat.start.clone(),
-                    end: stat.end.clone(),
-                    data: Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() },
-                }));
+                out.push(stat.rebuild(Data::Switch { expr: comma(left, Rc::clone(expr)), body: body.clone() }));
                 continue;
             }
             if let Data::For { init, cond, step, body } = &stat.data {
@@ -1911,11 +1921,7 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
                         Some(init) => comma(left, Rc::clone(init)),
                         None => left,
                     });
-                    out.push(Rc::new(Node {
-                        start: stat.start.clone(),
-                        end: stat.end.clone(),
-                        data: Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
-                    }));
+                    out.push(stat.rebuild(Data::For { init, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) }));
                     continue;
                 }
             }
@@ -1942,11 +1948,7 @@ fn comma(left: N, right: N) -> N {
         Data::Seq { exprs: more } => exprs.extend(more.iter().cloned()),
         _ => exprs.push(right),
     }
-    Rc::new(Node {
-        start: left.start.clone(),
-        end: left.end.clone(),
-        data: Data::Seq { exprs },
-    })
+    Node::make(&left, Data::Seq { exprs })
 }
 
 fn eliminate_spurious_blocks(stmts: Vec<N>) -> Vec<N> {
@@ -1978,19 +1980,8 @@ pub(crate) fn can_evict(n: &N) -> bool {
 }
 
 fn eval_void(span: &N) -> N {
-    Rc::new(Node {
-        start: span.start.clone(),
-        end: span.end.clone(),
-        data: Data::Unary {
-            op: "void".into(),
-            expr: Rc::new(Node {
-                start: span.start.clone(),
-                end: span.end.clone(),
-                data: Data::Number { value: 0.0, raw: String::new() },
-            }),
-            prefix: true,
-        },
-    })
+    let zero = Node::make(span, Data::Number { value: 0.0, raw: String::new() });
+    Node::make(span, Data::Unary { op: "void".into(), expr: zero, prefix: true })
 }
 
 fn map_children(n: &N, cx: &mut Cx) -> N {

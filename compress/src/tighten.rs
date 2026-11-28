@@ -55,13 +55,13 @@ fn child_env<'a>(env: &Env<'a>, in_loop: bool, in_try: bool) -> Env<'a> {
 
 fn walk(n: &N, env: &Env<'_>) -> N {
     match &n.data {
-        Data::Toplevel { body } => node(
+        Data::Toplevel { body } => renode(
             n,
             Data::Toplevel {
                 body: tighten_scope(body, env, &[], false),
             },
         ),
-        Data::StaticBlock { body } => node(
+        Data::StaticBlock { body } => renode(
             n,
             Data::StaticBlock {
                 body: tighten_scope(body, env, &[], true),
@@ -74,7 +74,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
             body,
             async_,
             generator,
-        } => node(
+        } => renode(
             n,
             Data::Func {
                 kind: *kind,
@@ -88,7 +88,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
         // A block is its own `tighten_body`, but a `var` inside it is function-scoped.
         // Collapsing that `var` from the block alone misses reads after the block
         // (`for (b in ...) { var c = 3; x(c) } x(c)`). Nested functions still collapse.
-        Data::Block { body } => node(
+        Data::Block { body } => renode(
             n,
             Data::Block {
                 body: body.iter().map(|s| walk(s, env)).collect(),
@@ -101,7 +101,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
             body,
         } => {
             let loop_env = child_env(env, true, env.in_try);
-            node(
+            renode(
                 n,
                 Data::For {
                     init: init.as_ref().map(|v| walk(v, env)),
@@ -113,7 +113,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
         }
         Data::While { cond, body } => {
             let loop_env = child_env(env, true, env.in_try);
-            node(
+            renode(
                 n,
                 Data::While {
                     cond: walk(cond, env),
@@ -123,7 +123,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
         }
         Data::Do { body, cond } => {
             let loop_env = child_env(env, true, env.in_try);
-            node(
+            renode(
                 n,
                 Data::Do {
                     body: walk(body, &loop_env),
@@ -133,7 +133,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
         }
         Data::ForIn { init, object, body } => {
             let loop_env = child_env(env, true, env.in_try);
-            node(
+            renode(
                 n,
                 Data::ForIn {
                     init: walk(init, env),
@@ -149,7 +149,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
             await_,
         } => {
             let loop_env = child_env(env, true, env.in_try);
-            node(
+            renode(
                 n,
                 Data::ForOf {
                     init: walk(init, env),
@@ -165,7 +165,7 @@ fn walk(n: &N, env: &Env<'_>) -> N {
             finally,
         } => {
             let tried = child_env(env, env.in_loop, true);
-            node(
+            renode(
                 n,
                 Data::Try {
                     body: walk(body, &tried),
@@ -422,7 +422,7 @@ fn drop_unmentioned(stmts: &[N]) -> Vec<N> {
                 if defs.is_empty() {
                     None
                 } else {
-                    Some(node(
+                    Some(renode(
                         stmt,
                         Data::Defs {
                             kind: *kind,
@@ -1529,7 +1529,7 @@ fn rewrite(
             return match exprs.len() {
                 0 => None,
                 1 => Some(exprs.into_iter().next().unwrap()),
-                _ => Some(node(n, Data::Seq { exprs })),
+                _ => Some(renode(n, Data::Seq { exprs })),
             };
         }
         Data::Defs { kind, defs, await_ } => {
@@ -1781,7 +1781,7 @@ fn rewrite(
         },
         _ => return Some(Rc::clone(n)),
     };
-    Some(node(n, data))
+    Some(renode(n, data))
 }
 
 fn rewrite_list(
@@ -1807,7 +1807,7 @@ fn remove_candidate(n: &N, cand: &Cand) -> Option<N> {
         let Data::VarDef { name, .. } = &n.data else {
             return None;
         };
-        return Some(node(
+        return Some(renode(
             n,
             Data::VarDef {
                 name: Rc::clone(name),
@@ -1968,7 +1968,7 @@ fn sweep_duplicate_vars(stmts: Vec<N>) -> Vec<N> {
                 if defs.is_empty() {
                     None
                 } else {
-                    Some(node(
+                    Some(renode(
                         n,
                         Data::Defs {
                             kind: DefKind::Var,
@@ -2619,6 +2619,8 @@ fn sym_kind(n: &N) -> Option<SymKind> {
     }
 }
 
+/// copy: terser `make_node(AST_SymbolRef, candidate.name, candidate.name)` (tb 385) copies
+/// the declaration's `thedef`. The port's table resolves it by name for now.
 fn sym_ref(name: &str, span: &N) -> N {
     node(
         span,
@@ -2634,12 +2636,17 @@ fn ptr(n: &N) -> usize {
     Rc::as_ptr(n) as usize
 }
 
+/// new: terser `make_node(X, orig, ..)`.
 fn node(orig: &N, data: Data) -> N {
-    Rc::new(Node {
-        start: orig.start.clone(),
-        end: orig.end.clone(),
-        data,
-    })
+    Node::make(orig, data)
+}
+
+/// keep: the collapse scanner and its rewrite are an in-place `TreeTransformer` (tb 523,
+/// 532), and `remove_candidate` edits the definition (tb 877). The definition filters
+/// (`drop_unmentioned`, `sweep_duplicate_vars`) are port-only; drop_unused edits
+/// `definitions` in place too (du 391).
+fn renode(orig: &N, data: Data) -> N {
+    orig.rebuild(data)
 }
 
 fn num0(span: &N) -> N {
@@ -2802,5 +2809,5 @@ fn map_walk(n: &N, data: &Data, env: &Env<'_>) -> N {
         },
         _ => return Rc::clone(n),
     };
-    node(n, rebuilt)
+    renode(n, rebuilt)
 }

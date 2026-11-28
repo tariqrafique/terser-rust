@@ -98,7 +98,8 @@ fn finish_call(n: &N, expr: &N, args: &[N], trimmed: bool, spread: bool) -> Opti
     if !trimmed && !spread {
         return None;
     }
-    Some(atom(
+    // keep: `self.args.length = pos` and `inline_array_like_spread(self.args)` edit the call (index.js 1696, 1741).
+    Some(edit(
         n,
         Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false },
     ))
@@ -132,7 +133,7 @@ fn fixed_lambda(expr: &N, cx: &Cx) -> Option<N> {
         return None;
     };
     let table = cx.syms.as_ref()?;
-    let id = table.lookup(&crate::syms::ptr(expr))?;
+    let id = table.def_of(expr)?;
     let fixed = table.defs[id].fixed.clone()?;
     matches!(fixed.data, Data::Func { .. }).then_some(fixed)
 }
@@ -141,7 +142,7 @@ fn def_flag(expr: &N, cx: &Cx, f: impl FnOnce(&crate::syms::SymbolDef) -> bool) 
     let Some(table) = cx.syms.as_ref() else {
         return false;
     };
-    let Some(id) = table.lookup(&crate::syms::ptr(expr)) else {
+    let Some(id) = table.def_of(expr) else {
         return false;
     };
     f(&table.defs[id])
@@ -161,7 +162,7 @@ fn note_replaced(expr: &N, cx: &Cx) {
     let Some(table) = cx.syms.as_ref() else {
         return;
     };
-    let Some(id) = table.lookup(&crate::syms::ptr(expr)) else {
+    let Some(id) = table.def_of(expr) else {
         return;
     };
     let def = &table.defs[id];
@@ -213,11 +214,10 @@ pub(crate) fn pure_effects(n: &N) -> Option<Vec<N>> {
 
 /// terser `node.clone(true)`: new nodes that keep their definitions and scopes.
 fn fresh_copy(v: &N, cx: &Cx) -> N {
-    let copy = ast::deep_clone(v);
-    if let Some(table) = cx.syms.as_ref() {
-        table.alias_copy(v, &copy);
+    match cx.syms.as_ref() {
+        Some(table) => table.clone_deep(v),
+        None => ast::deep_clone(v),
     }
-    copy
 }
 
 fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: bool) -> Option<N> {
@@ -305,7 +305,7 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         && def_flag(_expr_of(n), cx, |d| d.ref_count() == 1 && d.recursive_refs == 0)
         && !inside_own_lambda(_expr_of(n), func, cx)
         && cx.syms.as_ref().is_none_or(|table| {
-            let site = cx.parents.iter().rev().find_map(|p| table.scope_lookup(&crate::syms::ptr(p))).or(Some(0));
+            let site = cx.parents.iter().rev().find_map(|p| table.scope_of(p)).or(Some(0));
             crate::reduce_vars::lambda_is_constant(func, table, site)
         })
         && !free_ref_shadowed(func, cx);
@@ -406,7 +406,7 @@ fn inside_own_lambda(expr: &N, func: &N, cx: &Cx) -> bool {
 /// reads from outside must resolve to the same binding at the call site.
 fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     let Some(table) = cx.syms.as_ref() else { return false };
-    let site = cx.parents.iter().rev().find_map(|p| table.scope_lookup(&crate::syms::ptr(p)));
+    let site = cx.parents.iter().rev().find_map(|p| table.scope_of(p));
     let Some(site) = site else { return false };
     let mut free: Vec<N> = Vec::new();
     fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut Vec<N>) {
@@ -443,7 +443,7 @@ fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     // terser `pulled_scope.enclosed`: only definitions outside `func` count. A
     // name declared in a nested block of `func` (a `for (let i ...)`) is not
     // free even when the name stack above misses it.
-    let func_scope = table.scope_lookup(&crate::syms::ptr(func));
+    let func_scope = table.scope_of(func);
     let inside_func = |mut sc: usize| -> bool {
         let Some(fs) = func_scope else { return false };
         loop {
@@ -458,7 +458,7 @@ fn free_ref_shadowed(func: &N, cx: &Cx) -> bool {
     };
     for r in free {
         let Data::Symbol { name, .. } = &r.data else { continue };
-        let target = table.lookup(&crate::syms::ptr(&r)).map(|id| table.defs[id].scope);
+        let target = table.def_of(&r).map(|id| table.defs[id].scope);
         if target.is_some_and(|t| inside_func(t)) {
             continue;
         }
@@ -498,10 +498,7 @@ fn count_reads(body: &[N], name: &str) -> usize {
             }
             _ => {
                 let mut c = 0;
-                let _ = ast::map_children(n, &mut |k| {
-                    c += rec(k, name);
-                    Rc::clone(k)
-                });
+                ast::transform_children(n, &mut |k| c += rec(k, name));
                 c
             }
         }
@@ -517,9 +514,7 @@ fn ref_sym(span: &N, name: &str) -> N {
 /// parameter's (or var's) definition.
 fn same_def(from: &N, to: &N, cx: &Cx) {
     if let Some(table) = cx.syms.as_ref() {
-        if let Some(id) = table.lookup(&(Rc::as_ptr(from) as usize)) {
-            table.alias.borrow_mut().insert(Rc::as_ptr(to) as usize, (id, Rc::clone(to)));
-        }
+        table.copy_binding(from, to);
     }
 }
 
@@ -666,7 +661,7 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         _ => {}
     }
     // Names earlier flattens added to this scope (`scope.variables`).
-    let key = cx.syms.as_ref().and_then(|t| t.scope_lookup(&(Rc::as_ptr(scope) as usize))).map(|s| s | (1 << 60)).unwrap_or(Rc::as_ptr(scope) as usize);
+    let key = cx.syms.as_ref().and_then(|t| t.scope_of(scope)).map(|s| s | (1 << 60)).unwrap_or(Rc::as_ptr(scope) as usize);
     if let Some(names) = cx.injected.borrow().get(&key) {
         taken.extend(names.iter().cloned());
         scope_vars.extend(names.iter().cloned());
@@ -855,6 +850,7 @@ fn optimize_new(n: &N, cx: &Cx) -> Option<N> {
     if *optional || !undeclared(expr, cx, &["Object", "RegExp", "Function", "Error", "Array"]) {
         return None;
     }
+    // new: `make_node(AST_Call, self, self)`, a copy of the `new` (index.js 2046).
     let call = atom(
         n,
         Data::Call { expr: Rc::clone(expr), args: args.clone(), optional: false, is_new: false },
@@ -965,7 +961,9 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
     // callee sees none.
-    let processed = direct || cx.squeezed.contains(&(Rc::as_ptr(func) as usize)) || cx.optimized.contains(&(Rc::as_ptr(func) as usize));
+    let flagged = cx.squeezed.contains(&(Rc::as_ptr(func) as usize)) || cx.optimized.contains(&(Rc::as_ptr(func) as usize));
+    crate::audit_flags(cx, "callee_processed", func, flagged, true, true);
+    let processed = direct || flagged;
     let inside_callee = !processed || cx.parents.iter().any(|p| {
         Rc::ptr_eq(p, func)
             || matches!((&p.data, &func.data), (Data::Func { name: Some(a), .. }, Data::Func { name: Some(b), .. }) if sym_str(a).is_some() && sym_str(a) == sym_str(b) && params_same(p, func))
@@ -1020,7 +1018,8 @@ fn func_with_params(func: &N, params: Vec<N>) -> N {
     let Data::Func { kind, name, body, async_, generator, .. } = &func.data else {
         return Rc::clone(func);
     };
-    atom(
+    // keep: drop_unused trims `node.argnames` in place (du 269).
+    edit(
         func,
         Data::Func {
             kind: *kind,
@@ -1463,8 +1462,14 @@ fn polish(n: N, cx: &Cx) -> N {
     })
 }
 
+/// new: terser `make_node(X, orig, ..)`.
 fn atom(orig: &N, data: Data) -> N {
-    Rc::new(Node { start: orig.start.clone(), end: orig.end.clone(), data })
+    Node::make(orig, data)
+}
+
+/// keep: an in-place edit of `orig`.
+fn edit(orig: &N, data: Data) -> N {
+    orig.rebuild(data)
 }
 
 fn num(orig: &N, value: f64) -> N {

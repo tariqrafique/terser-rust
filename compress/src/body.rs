@@ -729,6 +729,7 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                 let seq = eval::atom(&left, Data::Seq { exprs: vec![Rc::clone(&left), right] });
                 transform(&seq, cx)
             };
+            // keep: `sequencesize_2` edits the next statement's slot in place (tb 1317-1347).
             match &stat.data {
                 Data::Return { value } => {
                     let right = match value {
@@ -739,11 +740,11 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                         }
                     };
                     let v = cons_seq(right, &mut out, cx, st);
-                    stat = eval::atom(&stat, Data::Return { value: Some(v) });
+                    stat = eval::edit(&stat, Data::Return { value: Some(v) });
                 }
                 Data::Throw { value } => {
                     let v = cons_seq(Rc::clone(value), &mut out, cx, st);
-                    stat = eval::atom(&stat, Data::Throw { value: v });
+                    stat = eval::edit(&stat, Data::Throw { value: v });
                 }
                 Data::For { init, cond, step, body } => {
                     let init_is_defs = init.as_ref().is_some_and(|i| matches!(i.data, Data::Defs { .. }));
@@ -756,7 +757,7 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                                 Rc::clone(&left)
                             }
                         };
-                        stat = eval::atom(
+                        stat = eval::edit(
                             &stat,
                             Data::For { init: Some(new_init), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
                         );
@@ -765,13 +766,13 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                 Data::ForIn { init, object, body } => {
                     if !matches!(init.data, Data::Defs { .. }) || matches!(init.data, Data::Defs { kind: DefKind::Var, .. }) {
                         let o = cons_seq(Rc::clone(object), &mut out, cx, st);
-                        stat = eval::atom(&stat, Data::ForIn { init: Rc::clone(init), object: o, body: Rc::clone(body) });
+                        stat = eval::edit(&stat, Data::ForIn { init: Rc::clone(init), object: o, body: Rc::clone(body) });
                     }
                 }
                 Data::ForOf { init, object, body, await_ } => {
                     if !matches!(init.data, Data::Defs { .. }) || matches!(init.data, Data::Defs { kind: DefKind::Var, .. }) {
                         let o = cons_seq(Rc::clone(object), &mut out, cx, st);
-                        stat = eval::atom(
+                        stat = eval::edit(
                             &stat,
                             Data::ForOf { init: Rc::clone(init), object: o, body: Rc::clone(body), await_: *await_ },
                         );
@@ -779,15 +780,15 @@ fn sequencesize_2(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
                 }
                 Data::If { cond, body, alt } => {
                     let c = cons_seq(Rc::clone(cond), &mut out, cx, st);
-                    stat = eval::atom(&stat, Data::If { cond: c, body: Rc::clone(body), alt: alt.clone() });
+                    stat = eval::edit(&stat, Data::If { cond: c, body: Rc::clone(body), alt: alt.clone() });
                 }
                 Data::Switch { expr, body } => {
                     let e = cons_seq(Rc::clone(expr), &mut out, cx, st);
-                    stat = eval::atom(&stat, Data::Switch { expr: e, body: body.clone() });
+                    stat = eval::edit(&stat, Data::Switch { expr: e, body: body.clone() });
                 }
                 Data::With { expr, body } => {
                     let e = cons_seq(Rc::clone(expr), &mut out, cx, st);
-                    stat = eval::atom(&stat, Data::With { expr: e, body: Rc::clone(body) });
+                    stat = eval::edit(&stat, Data::With { expr: e, body: Rc::clone(body) });
                 }
                 _ => {}
             }
@@ -888,8 +889,12 @@ fn join_object_assignments(defn: &N, body: &N, cx: &Cx, phantom: &mut std::colle
         match existing {
             Some(i) => {
                 let Data::Prop { method, key: k, value, static_, private, generator, async_ } = &props[i].data else { break };
+                // new: `new AST_Sequence({ start: p.start, expressions: [p.value.clone(),
+                // node.right.clone()], end: p.end })` (tb 1428). terser spans it on the property
+                // and clones both values; the port spans it on the value and shares them.
                 let joined = eval::atom(value, Data::Seq { exprs: vec![Rc::clone(value), Rc::clone(right)] });
-                props[i] = eval::atom(&props[i], Data::Prop { method: *method, key: k.clone(), value: joined, static_: *static_, private: *private, generator: *generator, async_: *async_ });
+                // keep: `p.value = ..` (tb 1428).
+                props[i] = eval::edit(&props[i], Data::Prop { method: *method, key: k.clone(), value: joined, static_: *static_, private: *private, generator: *generator, async_: *async_ });
             }
             None => {
                 let quote = if is_identifier_name(&key) { None } else { Some('"') };
@@ -911,11 +916,13 @@ fn join_object_assignments(defn: &N, body: &N, cx: &Cx, phantom: &mut std::colle
     if !trimmed {
         return None;
     }
-    let new_obj = eval::atom(obj, Data::Object { props });
-    let new_last = eval::atom(last, Data::VarDef { name: Rc::clone(def_name), value: Some(new_obj) });
+    // keep: `def.value.properties.push(..)` edits the object, its definition and the `var` in
+    // place (tb 1423).
+    let new_obj = eval::edit(obj, Data::Object { props });
+    let new_last = eval::edit(last, Data::VarDef { name: Rc::clone(def_name), value: Some(new_obj) });
     let mut new_defs = defs.clone();
     *new_defs.last_mut().unwrap() = new_last;
-    Some((eval::atom(defn, Data::Defs { kind: *kind, defs: new_defs, await_: *await_ }), exprs))
+    Some((eval::edit(defn, Data::Defs { kind: *kind, defs: new_defs, await_: *await_ }), exprs))
 }
 
 fn is_identifier_name(s: &str) -> bool {
@@ -993,7 +1000,8 @@ fn join_consecutive_vars(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
                             new_init = append_defs(&new_init, list);
                         }
                     }
-                    out[p] = eval::atom(
+                    // keep: `stat.init = prev` (tb 1477).
+                    out[p] = eval::edit(
                         &stat,
                         Data::For { init: Some(new_init), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
                     );
@@ -1005,7 +1013,8 @@ fn join_consecutive_vars(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
                     if let Some(Data::Defs { defs: list, .. }) = init.as_ref().map(|i| &i.data) {
                         out[d] = append_defs(&out[d], list);
                     }
-                    out.push(eval::atom(
+                    // keep: `stat.init = null` (tb 1486).
+                    out.push(eval::edit(
                         &stat,
                         Data::For { init: None, cond: cond.clone(), step: step.clone(), body: Rc::clone(body) },
                     ));
@@ -1021,7 +1030,8 @@ fn join_consecutive_vars(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
                         st.changed = true;
                         out[prev_idx.unwrap()] = defs_node;
                         if !rest.is_empty() {
-                            out.push(eval::simple(&stat, make_sequence(body, rest)));
+                            // keep: `stat.body = make_sequence(..)` (tb 1502).
+                            out.push(eval::edit(&stat, Data::Simple { body: make_sequence(body, rest) }));
                         }
                     }
                     None => out.push(Rc::clone(&stat)),
@@ -1057,7 +1067,8 @@ fn join_consecutive_vars(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
     *stmts = out;
 }
 
-/// The statement with its `extract_object_assignments` slot replaced.
+/// The statement with its `extract_object_assignments` slot replaced. keep: `stat.value =` /
+/// `stat.condition =` / .. (tb 1463-1508).
 fn replace_slot(stat: &N, v: N) -> N {
     let data = match &stat.data {
         Data::Return { .. } => Data::Return { value: Some(v) },
@@ -1069,7 +1080,7 @@ fn replace_slot(stat: &N, v: N) -> N {
         Data::ForOf { init, body, await_, .. } => Data::ForOf { init: Rc::clone(init), object: v, body: Rc::clone(body), await_: *await_ },
         _ => return Rc::clone(stat),
     };
-    eval::atom(stat, data)
+    eval::edit(stat, data)
 }
 
 fn append_defs(n: &N, more: &[N]) -> N {
@@ -1078,7 +1089,8 @@ fn append_defs(n: &N, more: &[N]) -> N {
     };
     let mut defs = defs.clone();
     defs.extend(more.iter().cloned());
-    eval::atom(n, Data::Defs { kind: *kind, defs, await_: *await_ })
+    // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1447, 1461).
+    eval::edit(n, Data::Defs { kind: *kind, defs, await_: *await_ })
 }
 
 /// Assignment and `++` / `--` targets that resolve to a `let` / `const` definition.
@@ -1090,7 +1102,7 @@ fn collect_lexical_targets(n: &N, table: &crate::syms::SymTable, out: &mut std::
         _ => None,
     };
     if let Some(t) = target {
-        if matches!(t.data, Data::Symbol { .. }) && table.lookup(&crate::syms::ptr(t)).is_some_and(|id| table.defs[id].lexical) {
+        if matches!(t.data, Data::Symbol { .. }) && table.def_of(t).is_some_and(|id| table.defs[id].lexical) {
             out.insert(crate::syms::ptr(t));
         }
     }
@@ -1104,16 +1116,13 @@ fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::coll
     match &n.data {
         Data::Func { .. } | Data::Class { .. } => {}
         Data::VarDef { name, .. } => {
-            if let Some(id) = table.lookup(&crate::syms::ptr(name)) {
+            if let Some(id) = table.def_of(name) {
                 let d = &table.defs[id];
                 out.insert(crate::syms::ptr(name), d.ref_count().saturating_sub(d.replaced.get() as usize));
             }
         }
         _ => {
-            let _ = ast::map_children(n, &mut |c| {
-                collect_vardef_refs(c, table, out);
-                Rc::clone(c)
-            });
+            ast::transform_children(n, &mut |c| collect_vardef_refs(c, table, out));
         }
     }
 }

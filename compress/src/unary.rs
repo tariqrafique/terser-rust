@@ -685,10 +685,7 @@ fn reads_name(n: &N, name: &str) -> bool {
         return true;
     }
     let mut hit = false;
-    let _ = ast::map_children(n, &mut |c| {
-        hit = hit || reads_name(c, name);
-        Rc::clone(c)
-    });
+    ast::transform_children(n, &mut |c| hit = hit || reads_name(c, name));
     hit
 }
 
@@ -736,7 +733,7 @@ fn func_expr_unreferenced(expr: &N, cx: &Cx) -> bool {
     let Some(table) = &cx.syms else {
         return false;
     };
-    let Some(id) = table.lookup(&crate::syms::ptr(name)) else {
+    let Some(id) = table.def_of(name) else {
         return false;
     };
     table.defs.get(id).is_some_and(|d| d.ref_count() == 0)
