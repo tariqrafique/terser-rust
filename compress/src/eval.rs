@@ -2779,48 +2779,59 @@ fn any_child(n: &N, mut f: impl FnMut(&N) -> bool) -> bool {
 }
 
 /// terser `lib/compress/index.js` `def_optimize(AST_Sub)` array-index arm.
+/// terser `def_optimize(AST_Sub)` `FLATTEN`: `[a, b, c][1]`. The elements after the index
+/// keep their side effects; when none has any the result is the sequence of the earlier
+/// side effects and the element, else an array of what is left indexed again.
 fn extract_array(span: &N, expr: &N, prop: &N, cx: &Cx) -> Option<N> {
+    use crate::conditional::has_side_effects;
+    use crate::unary::drop_side_effect_free;
     if !(cx.opts.properties && cx.opts.side_effects) {
         return None;
     }
     let Data::Number { value, .. } = &prop.data else {
         return None;
     };
-    let index = array_index(*value)?;
     let Data::Array { elements } = &expr.data else {
         return None;
     };
-    if index >= elements.len() {
-        return None;
-    }
+    let index = array_index(*value).filter(|i| *i < elements.len())?;
     let ret_value = &elements[index];
-    if matches!(ret_value.data, Data::Spread { .. }) || !safe_to_flatten(ret_value, cx) {
+    if !safe_to_flatten(ret_value, cx) {
         return None;
     }
-    for (i, el) in elements.iter().enumerate() {
-        if i == index {
-            continue;
-        }
-        if matches!(el.data, Data::Spread { .. } | Data::Hole) {
-            return None;
-        }
-        if i > index && expr_has_side_effects(el, cx) {
-            return None;
-        }
-    }
-    let ret_node = if matches!(ret_value.data, Data::Hole) {
-        void0(ret_value)
-    } else {
-        Rc::clone(ret_value)
-    };
-    let mut values = Vec::new();
-    for el in elements.iter().take(index) {
-        if expr_has_side_effects(el, cx) {
-            values.push(Rc::clone(el));
+    let mut flatten = true;
+    let mut values: std::collections::VecDeque<N> = std::collections::VecDeque::new();
+    for el in elements[index + 1..].iter().rev() {
+        if let Some(value) = drop_side_effect_free(el, cx, false) {
+            if flatten && has_side_effects(&value, cx) {
+                flatten = false;
+            }
+            values.push_front(value);
         }
     }
-    values.push(ret_node);
-    Some(make_seq(span, values))
+    if matches!(ret_value.data, Data::Spread { .. }) {
+        return None;
+    }
+    let ret_value = if matches!(ret_value.data, Data::Hole) { void0(ret_value) } else { Rc::clone(ret_value) };
+    if !flatten {
+        values.push_front(Rc::clone(&ret_value));
+    }
+    let mut new_index = index;
+    for el in elements[..index].iter().rev() {
+        if matches!(el.data, Data::Spread { .. }) {
+            return None;
+        }
+        match drop_side_effect_free(el, cx, false) {
+            Some(value) => values.push_front(value),
+            None => new_index -= 1,
+        }
+    }
+    if flatten {
+        values.push_back(ret_value);
+        return Some(crate::sequence::make_and_optimize(span, values.into_iter().collect(), cx));
+    }
+    let array = atom(expr, Data::Array { elements: values.into_iter().collect() });
+    Some(atom(span, Data::Sub { expr: array, prop: num(prop, new_index as f64), optional: false }))
 }
 
 fn array_index(n: f64) -> Option<usize> {
