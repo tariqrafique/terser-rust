@@ -19,7 +19,7 @@ In 23 failing inputs, the port's output uses a name it never declares. Examples:
 | Id | What | Inputs |
 | --- | --- | --- |
 | M2 | A `const` used once is dropped but its read is kept. `const v=d.pop();x=v` becomes `d.pop();x=v`. The same happens inside `if`, `try` and a top-level block. | utilsPrivate, modal/alert/confirm/prompt, testUtils, formattedDateTime, probably the colorPicker `v` inputs |
-| M3 | A function still in use is dropped: `build`, called from two exports. With a `let r=q()` first, the port keeps `q();` and drops the binding. | |
+| M3 | Fixed. A function still in use is dropped: `build`, called from two exports. With a `let r=q()` first, the port keeps `q();` and drops the binding. Cause: `drop_unused` took `x = build();` as a statement for `assign_as_unused` and never walked its right side. Also fixed: a write to an undeclared global at the top level was dropped (`x=f()` became `f()`). M3b now differs only by C1. | |
 | M4 | An inlined function's parameter is assigned without a `var`: terser has `var s,d`, the port `var s`. | formattedTime (`date`) |
 | C2a/b | A destructured local resolves to an outer name with the same spelling. `const {k}=v; return k` becomes `return 1`, and a `{f}=v; f()` call is dropped. | |
 

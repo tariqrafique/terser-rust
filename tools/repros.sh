@@ -55,6 +55,8 @@ r M3b-let-dropped-MISCOMPILE 'let r = q();
 function cre(e){ r(e) }
 function build(){ return () => cre(1) }
 export function g(){ ce = build() }'
+r M3c-assign-stmt-rhs-not-scanned 'function build(){ r() } export function g(){ x = build() } export function h(){ x = build() }'
+r M3d-undeclared-global-write-dropped 'x = f(); y = f()'
 r M4-missing-var-MISCOMPILE 'function pt(s){ return s && p(s) }
 function gi(d){ return d.h + d.m }
 export function n(v){ const r = pt(v); if (!r) return 0; return { i: gi(r) } }'
