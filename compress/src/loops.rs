@@ -64,13 +64,45 @@ fn optimize_do(n: &N, cx: &Cx) -> Option<N> {
         return Some(optimize_for(&for_n, cx).unwrap_or(for_n));
     }
     // falsy, and `common.js` `has_break_or_continue` is clear
-    if has_loop_control(body) {
+    if has_break_or_continue(n, cx.parent()) {
         return None;
     }
-    Some(eval::atom(
-        n,
-        Data::Block { body: vec![Rc::clone(body), cond_stmt] },
-    ))
+    // terser `make_node(AST_BlockStatement, ...).optimize(compressor)`.
+    let block = eval::atom(body, Data::Block { body: vec![Rc::clone(body), cond_stmt] });
+    cx.pre_tighten.borrow_mut().insert(block.id());
+    Some(block)
+}
+
+/// terser `common.js` `has_break_or_continue(loop, parent)`: a `break` / `continue` in the
+/// loop's body, outside nested scopes, whose `loopcontrol_target` is the loop.
+fn has_break_or_continue(lp: &N, parent: Option<&N>) -> bool {
+    let mut stack: Vec<N> = Vec::new();
+    if let Some(p) = parent.filter(|p| matches!(p.data, Data::Labeled { .. })) {
+        stack.push(Rc::clone(p));
+    }
+    stack.push(Rc::clone(lp));
+    let Some(body) = lp.body_node() else { return false };
+    fn go(n: &N, stack: &mut Vec<N>, lp: &N) -> bool {
+        if n.is_scope() {
+            return false;
+        }
+        if matches!(n.data, Data::Break { .. } | Data::Continue { .. }) {
+            stack.push(Rc::clone(n));
+            let hit = loop_target(n, stack).is_some_and(|t| t.id() == lp.id());
+            stack.pop();
+            return hit;
+        }
+        stack.push(Rc::clone(n));
+        let mut found = false;
+        ast::walk_children(n, &mut |c| {
+            if !found {
+                found = go(c, stack, lp);
+            }
+        });
+        stack.pop();
+        found
+    }
+    go(body, &mut stack, lp)
 }
 
 /// terser `def_optimize(AST_For)` and `if_break_in_loop`.
@@ -295,17 +327,6 @@ fn opt_eq(a: &Option<N>, b: &Option<N>) -> bool {
         (None, None) => true,
         (Some(a), Some(b)) => Rc::ptr_eq(a, b),
         _ => false,
-    }
-}
-
-/// A break or continue anywhere under `body`, outside nested functions.
-/// Used by `has_break_or_continue`: an inner-loop control also blocks the unroll,
-/// which only skips an optimization.
-fn has_loop_control(n: &N) -> bool {
-    match &n.data {
-        Data::Func { .. } | Data::Class { .. } | Data::StaticBlock { .. } => false,
-        Data::Break { .. } | Data::Continue { .. } => true,
-        _ => stmt_kids(n).iter().any(has_loop_control),
     }
 }
 
@@ -1114,5 +1135,90 @@ fn stmt_kids(n: &N) -> Vec<N> {
         }
         Data::Catch { body, .. } => vec![Rc::clone(body)],
         _ => Vec::new(),
+    }
+}
+
+/// terser `AST_Label.references` for every label in `root`: the `break` / `continue` nodes
+/// naming it, by the label's id. `figure_out_scope` fills them at the start of each pass
+/// (scope.js 299, 411).
+pub(crate) fn collect_label_refs(root: &N) -> ast::IdMap<ast::IdSet> {
+    let mut out: ast::IdMap<ast::IdSet> = Default::default();
+    let mut stack: Vec<(String, ast::NodeId)> = Vec::new();
+    collect_refs(root, &mut stack, &mut out);
+    out
+}
+
+fn collect_refs(n: &N, stack: &mut Vec<(String, ast::NodeId)>, out: &mut ast::IdMap<ast::IdSet>) {
+    match &n.data {
+        Data::Labeled { label, body } => {
+            out.entry(label.id()).or_default();
+            stack.push((sym_name(label).unwrap_or_default().to_string(), label.id()));
+            collect_refs(body, stack, out);
+            stack.pop();
+        }
+        Data::Break { label: Some(l) } | Data::Continue { label: Some(l) } => {
+            let name = sym_name(l).unwrap_or_default();
+            if let Some((_, id)) = stack.iter().rev().find(|(s, _)| s == name) {
+                out.entry(*id).or_default().insert(n.id());
+            }
+        }
+        _ => ast::walk_children(n, &mut |c| collect_refs(c, stack, out)),
+    }
+}
+
+/// The label's references, counted from `labeled`'s body when the label is not in the
+/// table: a copy made by `clone(true)` (ast.js 355-367 collects the copied jumps).
+fn ensure_label(labeled: &N, cx: &Cx) -> Option<ast::NodeId> {
+    let Data::Labeled { label, .. } = &labeled.data else {
+        return None;
+    };
+    let id = label.id();
+    if !cx.label_refs.borrow().contains_key(&id) {
+        let found = collect_label_refs(labeled).remove(&id).unwrap_or_default();
+        cx.label_refs.borrow_mut().insert(id, found);
+    }
+    Some(id)
+}
+
+/// terser `remove(stat.label.thedef.references, stat)` (tighten-body.js 1034, 1055, 1228).
+pub(crate) fn remove_label_ref(jump: &N, cx: &Cx) {
+    let label = match &jump.data {
+        Data::Break { label: Some(l) } | Data::Continue { label: Some(l) } => l,
+        _ => return,
+    };
+    let Some(name) = sym_name(label) else { return };
+    let Some(labeled) = cx
+        .parents
+        .iter()
+        .rev()
+        .find(|p| matches!(&p.data, Data::Labeled { label, .. } if sym_name(label) == Some(name)))
+    else {
+        return;
+    };
+    if let Some(id) = ensure_label(labeled, cx) {
+        if let Some(set) = cx.label_refs.borrow_mut().get_mut(&id) {
+            set.remove(&jump.id());
+        }
+    }
+}
+
+/// terser `def_optimize(AST_LabeledStatement)`.
+pub(crate) fn optimize_labeled(n: &N, cx: &Cx) -> Option<N> {
+    let Data::Labeled { label, body } = &n.data else {
+        return None;
+    };
+    // `compressor.loopcontrol_target(self.body) === self.body`: `self` is the innermost
+    // labeled statement on the stack, so only a `break` naming this label targets it.
+    if let Data::Break { label: Some(l) } = &body.data {
+        if sym_name(l).is_some() && sym_name(l) == sym_name(label) {
+            return Some(eval::atom(n, Data::Empty));
+        }
+    }
+    let id = ensure_label(n, cx)?;
+    let empty = cx.label_refs.borrow().get(&id).is_none_or(|s| s.is_empty());
+    if empty {
+        Some(Rc::clone(body))
+    } else {
+        None
     }
 }

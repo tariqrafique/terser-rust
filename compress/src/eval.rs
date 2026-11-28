@@ -121,6 +121,8 @@ fn opt_table(n: &N, cx: &Cx) -> Option<N> {
         // terser `def_optimize(AST_VarDef)` / `def_optimize(AST_Definitions)`.
         Data::VarDef { .. } => optimize_vardef(n, cx),
         Data::Defs { .. } => optimize_defs(n),
+        // terser `def_optimize(AST_LabeledStatement)`.
+        Data::Labeled { .. } => crate::loops::optimize_labeled(n, cx),
         _ => None,
     }
 }

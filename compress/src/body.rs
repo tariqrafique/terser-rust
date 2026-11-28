@@ -383,6 +383,9 @@ fn eliminate_dead_code(stmts: &mut Vec<N>, cx: &Cx, st: &mut St) {
                     _ => Rc::ptr_eq(&loop_body(lct), me),
                 };
                 keep = !drop;
+                if drop {
+                    crate::loops::remove_label_ref(&stat, cx);
+                }
             }
         }
         if keep {
@@ -533,6 +536,7 @@ fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
             let ab = aborts_node(Some(&body));
             if let Some(ab) = ab.filter(|ab| can_merge_flow(ab, stmts, i, in_lambda, self_n.as_ref(), cx)) {
                 if let Some(new_else) = as_statement_array_with_return(&body, &ab) {
+                    crate::loops::remove_label_ref(&ab, cx);
                     st.changed = true;
                     let mut then_body = as_statement_array(alt.as_ref());
                     then_body.extend(extract_defuns(stmts, i));
@@ -553,6 +557,7 @@ fn handle_if_return(stmts: &mut Vec<N>, cx: &mut Cx, st: &mut St) {
             if let Some(ab) = ab.filter(|ab| can_merge_flow(ab, stmts, i, in_lambda, self_n.as_ref(), cx)) {
                 let alt_n = alt.clone().unwrap();
                 if let Some(new_else) = as_statement_array_with_return(&alt_n, &ab) {
+                    crate::loops::remove_label_ref(&ab, cx);
                     st.changed = true;
                     let mut then_body = as_statement_array(Some(&body));
                     then_body.extend(extract_defuns(stmts, i));
