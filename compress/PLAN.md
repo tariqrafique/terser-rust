@@ -6,8 +6,8 @@ Goal: byte-exact terser 5.51.4 output, the lwc-rollup options first. The acorn/E
 
 ## Status (2026-11-28)
 
-- Compress default board 2407/2671, lwc 337/339, bundles 0/3 (after the round-2 fixes and R1, terser's `size()`).
-- lwc-rollup: all 260 inputs under 200 KB match; 595 of 779 overall (184 failing, all over 300 KB; the first difference is now around byte 80 000, was around 2 800). Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
+- Compress default board 2419/2671, lwc 338/339, bundles 0/3 (after the round-2 fixes, R1 (terser's `size()`) and node-id steps 5-7).
+- lwc-rollup: all 260 inputs under 200 KB match; 596 of 779 overall (183 failing, all over 300 KB; the first difference is now around byte 80 000, was around 2 800). Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
 - Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`.
 
 ## Why a restructure
