@@ -611,7 +611,9 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
                     if let Some(name) = ref_name(left) {
                         // terser `get_lhs`: `let` / `const` / `using` are not collapsed.
                         // A free or global target is left for `may_modify`.
-                        if !block_names.contains(name) && env.locals.contains(name) {
+                        // A `var` `flatten_fn` injected is a local too (still pending here).
+                        let injected = env.block_only && INJECTED.with(|i| i.borrow().contains_key(name));
+                        if !block_names.contains(name) && (env.locals.contains(name) || injected) {
                             out.push(Cand {
                                 path: path.clone(),
                                 kind: Kind::Assign,
@@ -785,9 +787,14 @@ fn apply_candidate(
     // In a nested block: the block's own `let` / `const`, or an assignment
     // to a function local that is moved (never dropped: reads after the
     // block are not counted here).
+    // A `var` `flatten_fn` injected is already in the scope body in terser
+    // (`scope.body.splice`), though here it is still pending.
+    // Only in a nested block: at function level terser's timing differs
+    // (`functions/issue_2657` keeps `o=n,o||o()`).
+    let injected_name = env.block_only && INJECTED.with(|i| i.borrow().contains_key(&cand.name));
     let block_assign = env.block_only
         && cand.kind == Kind::Assign
-        && env.locals.contains(&cand.name)
+        && (env.locals.contains(&cand.name) || injected_name)
         && !BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
     if env.block_only && !block_assign && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
@@ -874,7 +881,7 @@ fn apply_candidate(
     // terser `is_lhs_local` reads `lvalues` before the lhs name is inserted.
     let value_reads_lhs = lvalues.contains_key(&cand.name);
     let compound = cand.kind == Kind::Assign && cand.op != "=";
-    let lhs_local = env.locals.contains(&cand.name)
+    let lhs_local = (env.locals.contains(&cand.name) || injected_name)
         && !(env.in_loop
             && (value_reads_lhs || matches!(cand.kind, Kind::Post | Kind::Pre) || compound));
     // The lhs itself is an lvalue that later writes must not cross.
@@ -901,6 +908,7 @@ fn apply_candidate(
         may_throw,
         in_try: env.in_try,
         reads_left: target_reads,
+        block_only: env.block_only,
         inner_shadow: inner_lvalue_names(&cand.value).iter().any(|n| env.declared.contains(n) || env.locals.contains(n)),
     };
     scan_node(&stmts[index], &mut scan);
@@ -967,6 +975,8 @@ struct Scan<'a> {
     /// binding of a function inside the value, `shadows` finds a different
     /// definition at any site where the name is declared.
     inner_shadow: bool,
+    /// Collapsing a nested block's statements.
+    block_only: bool,
 }
 
 fn scan_node(n: &N, st: &mut Scan<'_>) {
@@ -1108,7 +1118,9 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
             false
         }
     }) || (!st.replace_all
-        && ref_name(n).is_some_and(|name| !st.declared.contains(name) && !pure_global(name)))
+        && ref_name(n).is_some_and(|name| {
+            !st.declared.contains(name) && !pure_global(name) && !(st.block_only && INJECTED.with(|i| i.borrow().contains_key(name)))
+        }))
 }
 
 fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
