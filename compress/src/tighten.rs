@@ -1185,8 +1185,10 @@ fn immediate_abort(n: &N, parent: Option<&N>, st: &Scan<'_>) -> bool {
         }))
 }
 
+/// terser's scanner `stop_after` test: one `||` chain, so a node whose own
+/// clause is false still meets the `may_throw` clause.
 fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
-    match &n.data {
+    let own = match &n.data {
         Data::Call { .. } => true,
         Data::Return { .. } | Data::Throw { .. } => {
             st.side_effects || may_modify(&st.cand.name, st)
@@ -1206,21 +1208,25 @@ fn stop_after_node(n: &N, st: &Scan<'_>) -> bool {
         } => sym_name(name).is_some_and(|sym| {
             st.lvalues.contains_key(sym) || (st.side_effects && may_modify(sym, st))
         }),
-        Data::Assign { left, .. } | Data::Unary { expr: left, .. } => {
+        // `is_lhs(node.left, node)`: an assignment target, or the operand of
+        // `delete` / `++` / `--`.
+        Data::Assign { left, .. } => {
+            is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym))
+        }
+        Data::Unary { op, expr: left, .. } if matches!(op.as_str(), "delete" | "++" | "--") => {
             is_prop(left) || ref_name(left).is_some_and(|sym| st.lvalues.contains_key(sym))
         }
         Data::ForIn { init, .. } | Data::ForOf { init, .. } => {
             is_prop(init) || ref_name(init).is_some_and(|sym| st.lvalues.contains_key(sym))
         }
-        _ => {
-            st.may_throw
-                && if st.in_try {
-                    expr_effects(n, st.declared)
-                } else {
-                    side_effects_external(n, st.locals)
-                }
+        _ => false,
+    };
+    own || st.may_throw
+        && if st.in_try {
+            node_effects(n, st.declared)
+        } else {
+            side_effects_external(n, st.locals)
         }
-    }
 }
 
 fn may_modify(name: &str, st: &Scan<'_>) -> bool {
@@ -2397,6 +2403,48 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
         }
         Data::Chain { expr } => expr_effects(expr, locals),
         _ => true,
+    }
+}
+
+/// terser `inference.js` `has_side_effects` for any node the scanner meets:
+/// statements and declaration names here, expressions in `expr_effects`.
+fn node_effects(n: &N, declared: &HashSet<String>) -> bool {
+    let any = |list: &[N]| list.iter().any(|s| node_effects(s, declared));
+    match &n.data {
+        Data::Empty => false,
+        Data::Block { body } | Data::StaticBlock { body } | Data::Default { body } => any(body),
+        Data::Simple { body } | Data::Labeled { body, .. } => node_effects(body, declared),
+        Data::Catch { body, .. } | Data::Finally { body } => node_effects(body, declared),
+        Data::If { cond, body, alt } => {
+            node_effects(cond, declared)
+                || node_effects(body, declared)
+                || alt.as_ref().is_some_and(|a| node_effects(a, declared))
+        }
+        Data::Switch { expr, body } | Data::Case { expr, body } => {
+            node_effects(expr, declared) || any(body)
+        }
+        Data::Try { body, catch, finally } => {
+            node_effects(body, declared)
+                || catch.as_ref().is_some_and(|c| node_effects(c, declared))
+                || finally.as_ref().is_some_and(|f| node_effects(f, declared))
+        }
+        Data::Defs { defs, .. } => any(defs),
+        Data::VarDef { value, .. } => value.is_some(),
+        // `AST_SymbolExport` is an `AST_SymbolRef`.
+        Data::Symbol { kind: SymKind::Export, name, .. } => !declared.contains(name) && !pure_global(name),
+        // `AST_SymbolDeclaration` and `AST_SymbolClassProperty`; the other
+        // plain `AST_Symbol`s are `AST_Node` (true).
+        Data::Symbol { kind, .. } if !matches!(
+            kind,
+            SymKind::Ref
+                | SymKind::Method
+                | SymKind::Label
+                | SymKind::LabelRef
+                | SymKind::ImportForeign
+                | SymKind::ExportForeign
+                | SymKind::Private
+        ) => false,
+        _ => expr_effects(n, declared),
     }
 }
 
