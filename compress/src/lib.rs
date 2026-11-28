@@ -1571,7 +1571,14 @@ fn after_descend(n: N, orig: &N, cx: &mut Cx) -> N {
             if !cx.keep_block && next.is_empty() {
                 return empty(&n);
             }
-            if !cx.keep_block && next.len() == 1 && can_evict(&next[0]) {
+            // terser `def_optimize(AST_BlockStatement)`: outside strict mode an `if` branch
+            // also gives up its block for a function declaration (`can_be_extracted_from_if_block`).
+            let from_if = || {
+                cx.lookup("use strict").is_none()
+                    && matches!(cx.parent().map(|p| &p.data), Some(Data::If { .. }))
+                    && !matches!(next[0].data, Data::Class { .. } | Data::Defs { kind: ast::DefKind::Let | ast::DefKind::Const | ast::DefKind::Using, .. })
+            };
+            if !cx.keep_block && next.len() == 1 && (from_if() || can_evict(&next[0])) {
                 return Rc::clone(&next[0]);
             }
             if same_stmts(body, &next) {
