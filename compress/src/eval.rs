@@ -707,11 +707,10 @@ fn optimize_if(n: &N, cx: &Cx) -> Option<N> {
             } else {
                 binary(n, "&&", Rc::clone(&cond), expr)
             };
-            let expr = crate::unary::made_fresh(cx, expr);
             return Some(simple_opt(n, expr, cx));
         }
         (StmtClass::Empty, StmtClass::Expr(expr)) => {
-            let expr = crate::unary::made_fresh(cx, binary(n, "||", Rc::clone(&cond), expr));
+            let expr = binary(n, "||", Rc::clone(&cond), expr);
             return Some(simple_opt(n, expr, cx));
         }
         _ => {}
@@ -3471,7 +3470,7 @@ fn statement_from_drop(span: &N, body: &N, cx: &Cx) -> Option<N> {
     match crate::unary::drop_side_effect_free(body, cx, true) {
         None => Some(empty(span)),
         Some(node) if Rc::ptr_eq(&node, body) => None,
-        Some(node) => Some(crate::unary::made_fresh(cx, simple(span, node))),
+        Some(node) => Some(simple(span, node)),
     }
 }
 

@@ -602,7 +602,6 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(ast::IdSet::default()),
         foreign_lambda: 0,
-        fresh: RefCell::new(ast::IdSet::default()),
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
     };
@@ -691,8 +690,7 @@ struct Cx {
     /// edit) keeps them; ids are never reused, so nothing has to be kept alive.
     squeezed: RefCell<ast::IdSet>,
     /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` set only where terser sets the
-    /// flag, never by the carry-overs onto new nodes (`carry_squeezed`, `carry_optimized`).
-    /// Nothing decides by them.
+    /// flag. With no carry-overs left they equal the sets above. Nothing decides by them.
     squeezed_ids: RefCell<ast::IdSet>,
     optimized_ids: RefCell<ast::IdSet>,
     /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
@@ -723,9 +721,6 @@ struct Cx {
     /// not on the stack: `find_scope()` is the enclosing scope and
     /// `compressor.self()` is not a lambda.
     foreign_lambda: usize,
-    /// Nodes terser makes fresh inside `tighten_body` (no flags), so the
-    /// descend after `drop_unused` still optimizes them.
-    fresh: RefCell<ast::IdSet>,
     /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
     injected: RefCell<HashMap<usize, HashSet<String>>>,
     /// terser `def.references.length` of an injected name: the parameter's
@@ -1228,11 +1223,9 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // its one statement returns that statement, a different node.
     let same = out.id() == n.id();
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
-        // Nodes built by this optimize (a switch turned into `if`, then a comma
-        // pulled into its condition) are already in their final shape. Terser
-        // mutates them in place and leaves `OPTIMIZED` set, so the descend after
-        // `drop_unused` does not fold them again.
-        mark_tree_squeezed(&out, cx);
+        // `drop_unused` edits in place (its rebuilds keep the ids, so the flags); the
+        // descend after it walks what is not `SQUEEZED`: what it made, and what an
+        // optimizer replaced (`OPTIMIZED` only).
         let traced = if trace::on() { Some(trace::code(&out)) } else { None };
         let dropped = drop_unused::drop_unused_cx(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs, cx);
         if let Some(code) = traced {
@@ -1240,7 +1233,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             let after = if after == code { "=".to_string() } else { after };
             trace::trace!("drop_unused", t = trace::type_name(&out), code = code, out = after);
         }
-        transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
         cx.redescend += 1;
         out = map_children(&dropped, cx);
@@ -1250,11 +1242,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     cx.set_optimized(&out);
     if same {
         mark_squeezed(cx, &out);
-    } else if !cx.is_squeezed(&out) {
-        // terser: a replacement is `OPTIMIZED` but not `SQUEEZED`, so a later
-        // descend (the one after the enclosing scope's `drop_unused`) still
-        // walks its children.
-        cx.fresh.borrow_mut().insert(out.id());
     }
     cx.stack.pop();
     cx.leave(entered);
@@ -1309,76 +1296,6 @@ fn set_parent(cx: &mut Cx, n: &N) {
 
 fn was_scope(data: &Data) -> bool {
     matches!(data, Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. })
-}
-
-/// Copy `SQUEEZED` / `OPTIMIZED` from `old` onto `new` when `drop_unused` rebuilt
-/// the same shape. A different shape is a replacement and must be compressed.
-fn mark_tree_squeezed(n: &N, cx: &mut Cx) {
-    let fresh = cx.fresh.borrow_mut().remove(&n.id());
-    if !fresh {
-        carry_squeezed(cx, n);
-        carry_optimized(cx, n);
-    }
-    for child in child_refs(&n.data) {
-        mark_tree_squeezed(child, cx);
-    }
-}
-
-fn transfer_flags(old: &N, new: &N, cx: &mut Cx) {
-    if Rc::ptr_eq(old, new) {
-        return;
-    }
-    if std::mem::discriminant(&old.data) != std::mem::discriminant(&new.data) {
-        return;
-    }
-    if cx.fresh.borrow().contains(&old.id()) {
-        cx.fresh.borrow_mut().insert(new.id());
-    }
-    // A rebuilt function or class (hoist_props rewrote a reference in it) is
-    // the same `fixed` value. The source position guards against the greedy
-    // alignment pairing two different nodes.
-    if matches!(old.data, Data::Func { .. } | Data::Class { .. })
-        && old.start.as_ref().map(|t| t.pos) == new.start.as_ref().map(|t| t.pos)
-    {
-        retarget(cx, old, new);
-    }
-    if cx.is_squeezed(old) {
-        carry_squeezed(cx, new);
-    }
-    if cx.is_optimized(old) {
-        carry_optimized(cx, new);
-    }
-    let (left, right) = (child_refs(&old.data), child_refs(&new.data));
-    let same_shape = left.len() == right.len()
-        && left.iter().zip(right.iter()).all(|(a, b)| std::mem::discriminant(&a.data) == std::mem::discriminant(&b.data));
-    if same_shape {
-        for (a, b) in left.iter().zip(right.iter()) {
-            transfer_flags(a, b, cx);
-        }
-        return;
-    }
-    // `drop_unused` removed, split, or spliced statements. Pair each new child
-    // with the next old child of the same type, as terser keeps those objects.
-    // A spliced block's statements are candidates too.
-    let mut left_flat: Vec<&N> = Vec::new();
-    for a in &left {
-        left_flat.push(a);
-        if let Data::Block { body } = &a.data {
-            left_flat.extend(body.iter());
-        }
-    }
-    let left = left_flat;
-    let mut j = 0;
-    for b in &right {
-        let mut k = j;
-        while k < left.len() && std::mem::discriminant(&left[k].data) != std::mem::discriminant(&b.data) {
-            k += 1;
-        }
-        if k < left.len() {
-            transfer_flags(left[k], b, cx);
-            j = k + 1;
-        }
-    }
 }
 
 fn child_refs(data: &Data) -> Vec<&N> {
@@ -1472,11 +1389,6 @@ fn child_refs(data: &Data) -> Vec<&N> {
     out
 }
 
-/// `OPTIMIZED` without the audit's set: a carry-over onto a new node.
-fn carry_optimized(cx: &mut Cx, n: &N) {
-    cx.optimized.borrow_mut().insert(n.id());
-}
-
 /// Shadow audit of a flag read outside `transform`: `by_ptr` is the pointer answer for
 /// "`n` is SQUEEZED (when `squeezed`) or OPTIMIZED (when `optimized`)".
 pub(crate) fn audit_flags(cx: &Cx, decision: &str, n: &N, by_ptr: bool, squeezed: bool, optimized: bool) {
@@ -1487,13 +1399,8 @@ pub(crate) fn audit_flags(cx: &Cx, decision: &str, n: &N, by_ptr: bool, squeezed
 }
 
 fn mark_squeezed(cx: &mut Cx, n: &N) {
-    carry_squeezed(cx, n);
-    cx.squeezed_ids.borrow_mut().insert(n.id());
-}
-
-/// `SQUEEZED` without the audit's set: a carry-over onto a new node.
-fn carry_squeezed(cx: &mut Cx, n: &N) {
     cx.squeezed.borrow_mut().insert(n.id());
+    cx.squeezed_ids.borrow_mut().insert(n.id());
 }
 
 fn transform_block(n: &N, cx: &mut Cx) -> N {
