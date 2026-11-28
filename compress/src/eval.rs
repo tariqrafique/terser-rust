@@ -1269,7 +1269,7 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
     }
     // terser `def_optimize(AST_Binary)`: a boolean binary outside another binary
     // becomes `!negate(self)` when that is shorter. The result is no longer a binary.
-    if cx.opts.comparisons && is_boolean_value(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
+    if cx.opts.comparisons && is_boolean(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
         let negated = unary(&cur, "!", crate::unary::negate(&cur, cx, crate::unary::first_in_statement(cx)));
         let best = crate::unary::best_of(cx, &cur, &negated);
         if Rc::ptr_eq(&best, &negated) {
@@ -2293,17 +2293,7 @@ fn same_compare_type(left: &N, right: &N) -> bool {
         || is_boolean(left) && is_boolean(right)
 }
 
-/// terser `inference.js` `is_boolean`, all node types.
-fn is_boolean_value(n: &N) -> bool {
-    match &n.data {
-        Data::Binary { op, left, right } if matches!(op.as_str(), "&&" | "||" | "??") => is_boolean_value(left) && is_boolean_value(right),
-        Data::Cond { cons, alt, .. } => is_boolean_value(cons) && is_boolean_value(alt),
-        Data::Assign { op, logical: false, right, .. } if op == "=" => is_boolean_value(right),
-        Data::Seq { exprs } => exprs.last().is_some_and(is_boolean_value),
-        _ => is_boolean(n),
-    }
-}
-
+/// terser `inference.js` `is_boolean`.
 fn is_boolean(n: &N) -> bool {
     match &n.data {
         Data::True | Data::False => true,
@@ -2312,6 +2302,9 @@ fn is_boolean(n: &N) -> bool {
             matches!(op.as_str(), "in" | "instanceof" | "==" | "!=" | "===" | "!==" | "<" | "<=" | ">" | ">=")
                 || matches!(op.as_str(), "&&" | "||" | "??") && is_boolean(left) && is_boolean(right)
         }
+        Data::Cond { cons, alt, .. } => is_boolean(cons) && is_boolean(alt),
+        Data::Assign { op, logical: false, right, .. } if op == "=" => is_boolean(right),
+        Data::Seq { exprs } => exprs.last().is_some_and(is_boolean),
         _ => false,
     }
 }
