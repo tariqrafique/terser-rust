@@ -132,8 +132,14 @@ fn resolve_callee(expr: &N, cx: &Cx, noinline: bool) -> Resolved {
     let Some(fixed) = fixed_lambda(expr, cx) else {
         return Resolved { func: None, direct: false, stop: false };
     };
-    if retain_top(cx, &fixed) || (def_flag(expr, cx, |d| d.global) && !cx.opts.toplevel_funcs) {
+    if retain_top(cx, &fixed) {
         return Resolved { func: None, direct: false, stop: true };
+    }
+    // `inline_into_call` returns for a global callee, but `def_optimize(AST_Call)`
+    // has already trimmed the arguments against `fn.fixed_value()` (a global
+    // `const` keeps its fixed value when exposed).
+    if def_flag(expr, cx, |d| d.global) && !cx.opts.toplevel_funcs {
+        return Resolved { func: Some(fixed), direct: false, stop: true };
     }
     Resolved { func: Some(fixed), direct: false, stop: false }
 }
@@ -1012,9 +1018,6 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     let Data::Func { args: params, body, .. } = &func.data else {
         return (Some(Rc::clone(func)), args.to_vec(), false);
     };
-    if params.iter().any(|p| !is_simple_funarg(p)) {
-        return (Some(Rc::clone(func)), args.to_vec(), false);
-    }
     // The IIFE's unused parameters are popped later, by `drop_unused` (du 262-285).
     // terser reads the parameters' `UNUSED` flags, which `drop_unused` sets
     // after the function's own body is optimized: a call from inside the
@@ -1025,11 +1028,32 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
         Rc::ptr_eq(p, func)
             || matches!((&p.data, &func.data), (Data::Func { name: Some(a), .. }, Data::Func { name: Some(b), .. }) if sym_str(a).is_some() && sym_str(a) == sym_str(b) && params_same(p, func))
     });
+    // `drop_unused` flags a parameter `UNUSED` on its symbol: a plain one, or
+    // the expression of a rest parameter. A default or a pattern (the flag is
+    // on its `left`, not on `argnames[i]`) is never trimmed. A read in another
+    // parameter's default keeps a parameter in use.
+    let unused_sym = |p: &N| !inside_callee && is_simple_funarg(p) && sym_str(p).is_some_and(|name| !refs_name(body, name) && !refs_name(params, name));
     let mut kept = Vec::new();
     let mut last = 0usize;
-    for (i, arg) in args.iter().enumerate() {
-        let extra = i >= params.len();
-        let unused = extra || (!inside_callee && sym_str(&params[i]).is_some_and(|name| !refs_name(body, name)));
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        if let Some(Data::Spread { expr: rest }) = params.get(i).map(|p| &p.data) {
+            if unused_sym(rest) {
+                for a in &args[i..] {
+                    if let Some(node) = crate::unary::drop_side_effect_free(a, cx, false) {
+                        kept.push(node);
+                    }
+                }
+            } else {
+                kept.extend(args[i..].iter().cloned());
+            }
+            last = kept.len();
+            break;
+        }
+        i += 1;
+        let extra = i > params.len();
+        let unused = extra || unused_sym(&params[i - 1]);
         if unused {
             // terser `self.args[i].drop_side_effect_free(compressor)`.
             match crate::unary::drop_side_effect_free(arg, cx, false) {
