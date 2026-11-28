@@ -461,6 +461,9 @@ fn walk(n: &N, tw: &mut Tw) {
                 if safe && (op == "=" || prev.is_some()) {
                     // A compound assignment's value is `old fixed <op> right`
                     // (`make_node(AST_Binary, node, ...)`); it escapes as the assignment itself.
+                    if op != "=" {
+                        tw.table.defs[id].chained = true;
+                    }
                     let (value, escaped) = match prev {
                         None => (Rc::clone(right), Rc::clone(right)),
                         Some(old) => (
@@ -506,6 +509,7 @@ fn walk(n: &N, tw: &mut Tw) {
                 if safe {
                     if let Some(fixed) = tw.table.defs[id].fixed.clone() {
                         tw.table.defs[id].references.push(expr.id());
+                        tw.table.defs[id].chained = true;
                         let bin_op = if op == "++" { "+" } else { "-" };
                         let value = span_node(
                             n,
@@ -634,6 +638,7 @@ fn reset_def(tw: &mut Tw, id: usize) {
     d.escaped = 0;
     d.direct_access = false;
     d.recursive_refs = 0;
+    d.chained = false;
     d.replaced.set(0);
     // terser `reset_def`: a funarg named `arguments` in a function that uses
     // `arguments` is not fixed. A `function arguments(){}` shares that binding.

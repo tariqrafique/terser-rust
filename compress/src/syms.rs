@@ -53,6 +53,9 @@ pub struct SymbolDef {
     /// terser `reduce-vars.js` `mark_escaped`: the name is used as a value, not only as `obj.prop`.
     pub direct_access: bool,
     pub recursive_refs: u32,
+    /// terser `def.chained`: a compound assignment or update made `fixed` a
+    /// computed value (`reduce-vars.js`).
+    pub chained: bool,
     /// The `SymbolRef` nodes read or written, by id.
     pub references: Vec<NodeId>,
     /// References a `clone(true, toplevel)` copy added during compress: terser
@@ -630,6 +633,7 @@ fn define(
         escaped: 0,
         direct_access: false,
         recursive_refs: 0,
+        chained: false,
         references: Vec::new(),
         clone_refs: Cell::new(0),
         single_use: SingleUse::No,
@@ -713,6 +717,7 @@ impl SymTable {
                     escaped: 0,
                     direct_access: false,
                     recursive_refs: 0,
+                    chained: false,
                     references: Vec::new(),
                     clone_refs: Cell::new(0),
                     single_use: SingleUse::No,

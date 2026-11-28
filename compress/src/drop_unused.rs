@@ -112,9 +112,10 @@ struct Use<'a> {
     in_use: HashSet<usize>,
     /// def id → initializer nodes (`initializations` in drop-unused.js).
     inits: HashMap<usize, Vec<N>>,
-    /// def id → the vardef that is still the fixed value (`fixed_ids`).
-    fixed: HashSet<usize>,
-    wrote: HashSet<usize>,
+    /// terser `fixed_ids`: def id → the `VarDef` or `=` (by pointer) whose value is the
+    /// definition's final `fixed` value, when no compound assignment or update
+    /// computed it (`!def.chained`).
+    fixed_ids: std::cell::RefCell<HashMap<usize, usize>>,
     /// The scope `drop_unused` runs on (terser `self`).
     scope: Option<usize>,
     /// terser `var_defs_by_id`: each `var` definition of a name, in source
@@ -143,8 +144,7 @@ fn passes(stmts: &[N], original: &[N], params: &[N], table: &SymTable, scope_id:
         cx,
         in_use: HashSet::new(),
         inits: HashMap::new(),
-        fixed: HashSet::new(),
-        wrote: HashSet::new(),
+        fixed_ids: Default::default(),
         scope: scope_id,
         var_defs: Default::default(),
         orig_index: HashMap::new(),
@@ -301,8 +301,7 @@ fn scan_in_use(nodes: &[N], table: &SymTable) -> HashSet<usize> {
         cx: None,
         in_use: HashSet::new(),
         inits: HashMap::new(),
-        fixed: HashSet::new(),
-        wrote: HashSet::new(),
+        fixed_ids: Default::default(),
         scope: None,
         var_defs: Default::default(),
         orig_index: HashMap::new(),
@@ -423,11 +422,12 @@ fn strict_body(body: &[N]) -> bool {
 /// `scan_ref_scoped` in drop-unused.js. `record_inits` is pass 1; pass 2 only marks refs.
 fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
     // `self.variables.get(sym.name) === sym.definition()`: only this scope's own bindings.
-    if let Some(id) = assign_as_unused(n, table, u).and_then(|sym| owned(table, u, sym, u.scope)) {
-        u.wrote.insert(id);
-        u.fixed.remove(&id);
+    if let Some((sym, id)) = assign_as_unused(n, table, u).and_then(|sym| Some((sym, owned(table, u, sym, u.scope)?))) {
         if let Data::Assign { right, .. } = &n.data {
             scan_ref_scoped(right, table, u, record_inits);
+            if fixed_is(u, sym, right) {
+                u.fixed_ids.borrow_mut().insert(id, ptr(n));
+            }
         }
         return;
     }
@@ -446,8 +446,8 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
                 if let Some(id) = def_id(table, name) {
                     if let Some(value) = value {
                         u.inits.entry(id).or_default().push(Rc::clone(value));
-                        if !u.wrote.contains(&id) {
-                            u.fixed.insert(id);
+                        if fixed_is(u, name, value) {
+                            u.fixed_ids.borrow_mut().insert(id, ptr(def));
                         }
                         // Pass 1 walks the value only when it has side effects.
                         if has_side_effects(value) {
@@ -481,6 +481,21 @@ fn scan_ref_scoped(n: &N, table: &SymTable, u: &mut Use, record_inits: bool) {
         }
         _ => ast::walk_children(n, &mut |c| scan_ref_scoped(c, table, u, record_inits)),
     }
+}
+
+/// `!def.chained && sym.fixed_value() === value`, from the pass's symbol table
+/// (reduce_vars ran on it); `fixed` holds the value node it was given, followed
+/// through rebuilds.
+fn fixed_is(u: &Use, sym: &N, value: &N) -> bool {
+    let Some(t) = u.cx.and_then(|cx| cx.syms.as_ref()) else { return false };
+    let Some(d) = t.def_of(sym) else { return false };
+    let d = &t.defs[d];
+    !d.chained && d.fixed.as_ref().is_some_and(|f| f.id() == value.id())
+}
+
+/// `fixed_ids.has(def.id) && fixed_ids.get(def.id) !== node`.
+fn overwritten(u: &Use, id: usize, n: &N) -> bool {
+    u.fixed_ids.borrow().get(&id).is_some_and(|p| *p != ptr(n))
 }
 
 /// `assign_as_unused`: `=` of a `var` symbol. A `let`/`const` (`AST_SymbolBlockDeclaration`)
@@ -564,6 +579,14 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             let id = owned(table, u, name, scope_id);
             let in_use = !drop_vars || !is_sym || id.is_none_or(|id| u.in_use.contains(&id));
             if in_use {
+                // du 334: an initializer a later write overwrites before any read.
+                let value2 = match (value2, id) {
+                    (Some(v), Some(id)) if overwritten(u, id, def) => {
+                        changed = true;
+                        value_effects(&v, u)
+                    }
+                    (v, _) => v,
+                };
                 if let (DefKind::Var, Some(id), true) = (kind, id, is_sym) {
                     let dp = ptr(def);
                     let listed = u.var_defs.borrow().get(&id).is_some_and(|v| v.contains(&dp));
@@ -578,7 +601,18 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                                 Data::Symbol { name: nm, quote, .. } => node(name, Data::Symbol { name: nm.clone(), kind: SymKind::Ref, quote: *quote }),
                                 _ => Rc::clone(name),
                             };
-                            side.push(node(def, Data::Assign { op: "=".into(), left: sym, right: v, logical: false }));
+                            // `assign.transform(tt)`: an overwritten one is its value
+                            // (`maintain_this_binding` in the definitions' context).
+                            let fixed = u.fixed_ids.borrow().get(&id).copied();
+                            if fixed == Some(dp) || fixed.is_none() {
+                                let assign = node(def, Data::Assign { op: "=".into(), left: sym, right: v, logical: false });
+                                if fixed == Some(dp) {
+                                    u.fixed_ids.borrow_mut().insert(id, ptr(&assign));
+                                }
+                                side.push(assign);
+                            } else {
+                                side.push(v);
+                            }
                         }
                         if let Some(list) = u.var_defs.borrow_mut().get_mut(&id) {
                             list.retain(|p| *p != dp);
@@ -607,7 +641,7 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                         if !tail.is_empty() {
                             changed = true;
                         }
-                        head.push(Rc::clone(def));
+                        head.push(if value.is_some() { renode(def, Data::VarDef { name: Rc::clone(name), value: None }) } else { Rc::clone(def) });
                     }
                 }
             } else if id.is_some_and(|id| is_catch_def(table, id)) {
@@ -718,9 +752,9 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             if let Some(id) = owned(table, u, sym, scope_id) {
                 let in_use = u.in_use.contains(&id);
                 if let Data::Assign { right, .. } = &n.data {
-                    if !in_use {
+                    if !in_use || overwritten(u, id, n) {
                         let rhs = rewrite_expr(right, table, u, scope_id, drop_vars, false).unwrap_or_else(|| num0(right));
-                        if !side_effects(&rhs, u) && discarded {
+                        if !in_use && !side_effects(&rhs, u) && discarded {
                             return None;
                         }
                         return Some(rhs);
