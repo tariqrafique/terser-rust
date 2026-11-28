@@ -244,6 +244,15 @@ thread_local! {
     static LEXICAL_TARGETS: std::cell::RefCell<HashSet<usize>> = Default::default();
     /// terser `def.references.length - def.replaced` by declaration name node.
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// See `set_visible`.
+    static VISIBLE: std::cell::RefCell<Option<HashSet<String>>> = Default::default();
+}
+
+/// Names `find_variable` reaches from the scope being collapsed (terser
+/// `shadows`' `nearest_scope` and its `parent_scope` chain), from the symbol
+/// table. `None` without one: the name sets stand in.
+pub(crate) fn set_visible(set: Option<HashSet<String>>) {
+    VISIBLE.with(|d| *d.borrow_mut() = set);
 }
 
 pub(crate) fn set_injected(map: HashMap<String, usize>) {
@@ -879,9 +888,18 @@ fn apply_candidate(
         block_only: env.block_only,
         // terser `lvalues.set(lhs.name, ...)` replaces an inner name equal to
         // the lhs with the lhs's own definition, so that one never shadows.
-        inner_shadow: inner_lvalue_names(&cand.value)
-            .iter()
-            .any(|n| *n != cand.name && (env.declared.contains(n) || env.locals.contains(n))),
+        // A name bound inside the value has that inner definition, so any
+        // definition `find_variable` reaches from here is another one.
+        inner_shadow: VISIBLE.with(|v| {
+            let v = v.borrow();
+            inner_lvalue_names(&cand.value).iter().any(|n| {
+                *n != cand.name
+                    && match v.as_ref() {
+                        Some(visible) => visible.contains(n),
+                        None => env.declared.contains(n) || env.locals.contains(n),
+                    }
+            })
+        }),
     };
     scan_node(&stmts[index], &mut scan);
     if !scan.abort {
