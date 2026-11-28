@@ -2383,6 +2383,20 @@ fn expr_effects(n: &N, locals: &HashSet<String>) -> bool {
             }
         }
         Data::Chain { expr } => expr_effects(expr, locals),
+        // terser `AST_Class.has_side_effects`: `extends`, computed keys,
+        // static field values and static blocks.
+        Data::Class { extends, props, .. } => {
+            extends.as_ref().is_some_and(|e| expr_effects(e, locals))
+                || props.iter().any(|p| match &p.data {
+                    Data::StaticBlock { body } => body.iter().any(|s| node_effects(s, locals)),
+                    Data::Field { key, value, static_, .. } => {
+                        matches!(key, Key::Computed(k) if expr_effects(k, locals))
+                            || *static_ && value.as_ref().is_some_and(|v| expr_effects(v, locals))
+                    }
+                    Data::Prop { key, .. } => matches!(key, Key::Computed(k) if expr_effects(k, locals)),
+                    _ => true,
+                })
+        }
         _ => true,
     }
 }
