@@ -827,8 +827,14 @@ fn prune_into_default(arms: &mut Vec<Arm>, marker: Option<u32>, cx: &Cx) {
     } else {
         arms[default_index].body = body;
     }
-    arms.drain(after + 1..=default_body_index);
-    arms.drain(before..default_index);
+    // `splice` with a negative count removes nothing: `before` is past the
+    // default when a side-effect case after it is kept.
+    if after < default_body_index {
+        arms.drain(after + 1..=default_body_index);
+    }
+    if before < default_index {
+        arms.drain(before..default_index);
+    }
 }
 
 fn pop_switch_breaks(body: &mut Vec<N>, cx: &Cx) {

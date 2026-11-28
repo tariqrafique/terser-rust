@@ -98,6 +98,12 @@ pub struct SymTable {
     /// Names `flatten_fn` added to a scope's `variables` (`append_var`), by
     /// scope id. Their definitions stay the callee's.
     pub injected_vars: RefCell<HashMap<usize, HashSet<String>>>,
+    /// Name nodes of `var`s declared inside a block scope (a block, loop, `switch`,
+    /// `try` or `catch`): terser leaves their `sym.scope` on that block scope
+    /// (`figure_out_scope` only moves references to the defun scope).
+    pub block_vars: ast::IdSet,
+    /// Scope indexes of classes (block scopes in this table, scopes of their own in terser).
+    pub class_scopes: HashSet<usize>,
 }
 
 struct Scope {
@@ -130,6 +136,8 @@ pub fn bind(root: &N) -> SymTable {
         fixed_of_node: ast::IdMap::default(),
         inlined_scopes: RefCell::new(HashSet::new()),
         injected_vars: RefCell::new(HashMap::new()),
+        block_vars: ast::IdSet::default(),
+        class_scopes: HashSet::new(),
     };
     table.bind_scope(root, 0);
     if let Data::Toplevel { body } = &root.data {
@@ -188,6 +196,7 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
             }
             let id = push_block(scope, scopes);
             table.bind_scope(n, id);
+            table.class_scopes.insert(id);
             if let Some(name) = name {
                 if let Some(sym_name) = sym(name) {
                     let (dest, kind) = if *stmt {
@@ -270,6 +279,9 @@ fn walk(n: &N, scope: usize, scopes: &mut Vec<Scope>, table: &mut SymTable) {
                     continue;
                 };
                 define(table, scopes, dest, sym_name, name, sk, value.clone(), false);
+                if dest != scope {
+                    table.block_vars.insert(name.id());
+                }
                 if let Some(value) = value {
                     walk(value, scope, scopes, table);
                 }

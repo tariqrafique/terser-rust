@@ -96,36 +96,35 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
     if single && parent.is_some_and(|p| matches!(p.data, Data::Export { .. })) && is_lambda(&fixed) && func_name(&fixed).is_some() {
         single = false;
     }
-    if single && (value_side_effects(&fixed) || value_may_throw(&fixed)) {
+    if single && (value_side_effects(&fixed) || value_may_throw(&fixed) || class_side_effects(&fixed, table)) {
         single = false;
     }
     // A class is not inlined into another scope (`inline.js`).
-    if matches!(fixed.data, Data::Class { .. }) && self_scope(table, at.parents, n) != Some(scope) {
+    if matches!(fixed.data, Data::Class { .. }) && self_scope(table, at.parents, n, id) != Some(scope) {
         return None;
     }
     if single && is_lambda_or_class(&fixed) {
         single = lambda_inline_ok(table, at, id, &fixed, n);
     }
     if single && is_lambda_or_class(&fixed) {
-        // `scope_encloses_variables_in_this_scope(nearest_scope, fixed)`: the scope the
-        // reference sits in now; `def.scope === self.scope`: the one it was bound in.
-        let nearest = symbol_scope(table, at.parents);
-        let conflict = nearest.is_some_and(|s| scope_encloses_conflict(table, s, &fixed));
+        // `scope_encloses_variables_in_this_scope(nearest_scope, fixed)`
+        let conflict = nearest_scope(table, at.parents).is_some_and(|s| scope_encloses_conflict(table, s, &fixed));
         let direct_call = parent.is_some_and(|p| call_targets(p, n));
         let recursive_name = named_recursive(table, &fixed);
-        single = (self_scope(table, at.parents, n) == Some(scope) && !conflict) || (direct_call && !conflict && !recursive_name);
+        single = (self_scope(table, at.parents, n, id) == Some(scope) && !conflict) || (direct_call && !conflict && !recursive_name);
     }
     if single {
         let def = &table.defs[id];
         def.replaced.set(def.replaced.get().saturating_add(1));
-        // terser `fixed.clone(true)` when the lambda moves to another scope:
-        // fresh nodes (no optimizer flags) that keep their definitions.
-        // A self-recursive declaration is copied whole as well: terser moves its inner
-        // references to the lambda's name (il 251-267), which the port does by copying.
+        // terser `fixed.clone(true)` when the lambda moves to another scope
+        // (`fixed.parent_scope !== nearest_scope`): fresh nodes (no optimizer
+        // flags) that keep their definitions. A self-recursive declaration is
+        // copied whole as well: terser moves its inner references to the lambda's
+        // name (il 251-267), which the port does by copying.
         let recursive = matches!(fixed.data, Data::Func { kind: FuncKind::Decl, .. }) && def.recursive_refs > 0;
-        if (is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope)) || recursive {
+        if (is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope)) || recursive {
             let copy = table.clone_deep(&fixed);
-            if is_lambda_or_class(&fixed) && symbol_scope(table, at.parents) != Some(scope) {
+            if is_lambda_or_class(&fixed) && nearest_scope(table, at.parents) != Some(scope) {
                 count_clone_refs(table, &fixed);
             }
             let out = expr_value(&copy);
@@ -133,8 +132,9 @@ pub fn inline_ref(n: &N, table: &SymTable, at: &At) -> Option<N> {
             table.copy_binding(&copy, &out);
             return Some(out);
         }
-        // `make_node(AST_Function, fixed, fixed)` (il 247-250): a copy of the top node
-        // only; the body is the declaration's, flags and all.
+        // `make_node(AST_Function, fixed, fixed)` (il 247-250) and
+        // `make_node(AST_ClassExpression, fixed, fixed)`: a copy of the top node only,
+        // which keeps the scope; the body is the declaration's, flags and all.
         let out = expr_value(&fixed);
         if !Rc::ptr_eq(&out, &fixed) {
             table.copy_binding(&fixed, &out);
@@ -1439,17 +1439,49 @@ fn name_defines(table: &SymTable, node: &N, id: usize, name: &str) -> bool {
     }
 }
 
-/// terser `self.scope` of reference `n`: the scope it was bound in, which an optimizer
-/// that moves the reference (a flatten, a collapse) does not change.
-fn self_scope(table: &SymTable, parents: &[N], n: &N) -> Option<usize> {
-    table.ref_scope_of(n).or_else(|| symbol_scope(table, parents))
+/// terser `self.scope` of reference `n` to `id`: the scope it was bound in, which an
+/// optimizer that moves the reference (a flatten, a collapse) does not change, lifted
+/// out of block scopes as `symbol_scope` does. Without a bound scope, `symbol_scope`.
+fn self_scope(table: &SymTable, parents: &[N], n: &N, id: usize) -> Option<usize> {
+    let Some(mut s) = table.ref_scope_of(n) else { return symbol_scope(table, parents, id) };
+    if !block_decl(&table.defs[id]) {
+        while table.fn_of.get(s).is_some_and(|&f| f != s) && !table.class_scopes.contains(&s) {
+            match table.scope_parent.get(s).copied().flatten() {
+                Some(p) => s = p,
+                None => break,
+            }
+        }
+    }
+    Some(s)
 }
 
-/// terser `compressor.find_scope()`: the scope around the node being optimized.
-fn symbol_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
+/// terser `compressor.find_scope()`: the nearest scope, block scopes included.
+fn nearest_scope(table: &SymTable, parents: &[N]) -> Option<usize> {
     // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
     // pointer is not in `node_scope`.
     parents.iter().rev().skip(1).find_map(|n| table.scope_of(n)).or(Some(0))
+}
+
+/// terser `AST_SymbolRef.scope` of the reference at the end of `parents` to `id`: the
+/// nearest scope, moved out of block scopes to the defun scope unless the name is a
+/// block declaration (`figure_out_scope`: `let`, `const`, `using`, a class
+/// declaration or a catch parameter).
+fn symbol_scope(table: &SymTable, parents: &[N], id: usize) -> Option<usize> {
+    let block_decl = block_decl(&table.defs[id]);
+    for n in parents.iter().rev().skip(1) {
+        let Some(scope) = table.scope_of(n) else { continue };
+        if block_decl || matches!(n.data, Data::Func { .. } | Data::Class { .. } | Data::Toplevel { .. }) {
+            return Some(scope);
+        }
+    }
+    // The root is scope 0. `hoist` may have rebuilt the toplevel node, so its
+    // pointer is not in `node_scope`.
+    Some(0)
+}
+
+/// A name `figure_out_scope` leaves in its block scope.
+fn block_decl(def: &SymbolDef) -> bool {
+    def.block_scoped || def.lexical || matches!(def.init.as_ref().map(|i| &i.data), Some(Data::Class { stmt: true, .. }))
 }
 
 /// terser `lib/compress/inline.js` `inline_into_symbolref` lambda and class checks.
@@ -1461,7 +1493,7 @@ fn lambda_inline_ok(table: &SymTable, at: &At, id: usize, fixed: &N, sym: &N) ->
         let def = &table.defs[id];
         (def.scope, def.escaped, def.funarg)
     };
-    let sym_scope = self_scope(table, at.parents, sym);
+    let sym_scope = self_scope(table, at.parents, sym, id);
     let cross = sym_scope != Some(def_scope);
     if cross && (escaped == 1 || scope_is_inlined(table, fixed) || within_array_or_object(at.parents) || !at.reduce_funcs) {
         return false;
@@ -1685,6 +1717,11 @@ pub(crate) fn lambda_is_constant(func: &N, table: &SymTable, scope: Option<usize
     !matches!(all_refs_local(func, table, scope), CExpr::No)
 }
 
+/// terser `is_constant_expression(scope)`, `"f"` included.
+pub(crate) fn is_constant_expression(n: &N, table: &SymTable, scope: Option<usize>) -> bool {
+    const_expr_truthy(n, table, scope)
+}
+
 fn const_expr_truthy(n: &N, table: &SymTable, scope: Option<usize>) -> bool {
     !matches!(const_expr(n, table, scope), CExpr::No)
 }
@@ -1708,16 +1745,28 @@ fn const_expr(n: &N, table: &SymTable, scope: Option<usize>) -> CExpr {
         Data::Object { props } => props.iter().fold(CExpr::Yes, |acc, prop| join_expr(acc, const_expr(prop, table, None))),
         Data::Prop { method: None, key: Key::Static { .. }, value, .. } => const_expr(value, table, None),
         Data::Func { .. } => all_refs_local(n, table, scope),
+        // `AST_Class`: the heritage, computed keys and static values; then
+        // `all_refs_local`.
         Data::Class { extends, props, .. } => {
             let mut acc = CExpr::Yes;
             if let Some(extends) = extends {
                 acc = join_expr(acc, const_expr(extends, table, scope));
             }
             for prop in props {
-                if matches!(prop.data, Data::StaticBlock { .. }) {
-                    return CExpr::No;
+                let (key, value, static_) = match &prop.data {
+                    Data::StaticBlock { .. } => return CExpr::No,
+                    Data::Field { key, value, static_, .. } => (key, value.as_ref(), *static_),
+                    Data::Prop { key, value, static_, .. } => (key, Some(value), *static_),
+                    _ => return CExpr::No,
+                };
+                if let Key::Computed(k) = key {
+                    acc = join_expr(acc, const_expr(k, table, scope));
                 }
-                acc = join_expr(acc, const_expr(prop, table, scope));
+                if static_ {
+                    if let Some(v) = value {
+                        acc = join_expr(acc, const_expr(v, table, scope));
+                    }
+                }
             }
             join_expr(acc, all_refs_local(n, table, scope))
         }
@@ -1793,6 +1842,29 @@ fn value_side_effects(n: &N) -> bool {
         return false;
     }
     has_side_effects(n)
+}
+
+/// terser `has_side_effects` / `may_throw` of an `AST_Class`: its heritage, computed
+/// keys and static initializers run when the class is evaluated. A read of an
+/// undeclared name there is an effect (`AST_SymbolRef.has_side_effects`).
+fn class_side_effects(n: &N, table: &SymTable) -> bool {
+    let Data::Class { extends, props, .. } = &n.data else { return false };
+    let fx = |e: &N| match &e.data {
+        Data::Symbol { kind: SymKind::Ref, name, .. } => {
+            table.def_of(e).is_none_or(|id| table.defs[id].undeclared)
+                && !matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
+        }
+        _ => has_side_effects(e) || may_throw(e),
+    };
+    extends.as_ref().is_some_and(|e| fx(e))
+        || props.iter().any(|p| match &p.data {
+            Data::Field { key, value, static_, .. } => {
+                matches!(key, Key::Computed(k) if fx(k)) || (*static_ && value.as_ref().is_some_and(|v| fx(v)))
+            }
+            Data::Prop { key: Key::Computed(k), .. } => fx(k),
+            Data::StaticBlock { body } => !body.is_empty(),
+            _ => false,
+        })
 }
 
 fn value_may_throw(n: &N) -> bool {
