@@ -949,7 +949,7 @@ fn apply_candidate(
     // (`functions/issue_2657` keeps `o=n,o||o()`).
     let injected_name = env.block_only && INJECTED.with(|i| i.borrow().contains_key(&cand.name));
     let block_assign = env.block_only
-        && cand.kind == Kind::Assign
+        && matches!(cand.kind, Kind::Assign | Kind::Pre | Kind::Post)
         && (env.locals.contains(&cand.name) || injected_name)
         && !BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
