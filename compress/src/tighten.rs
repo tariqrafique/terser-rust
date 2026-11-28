@@ -2188,24 +2188,42 @@ fn count_decls(stmts: &[N], name: &str) -> usize {
     stmts.iter().map(|s| rec(s, name)).sum()
 }
 
+/// terser `may_modify`: names with a reference from a nested function
+/// (`ref.scope.get_defun_scope() !== scope`). A name the nested function
+/// binds itself is another definition.
 fn escaped_names(stmts: &[N]) -> HashSet<String> {
     let mut out = HashSet::new();
-    fn rec(n: &N, in_fn: bool, out: &mut HashSet<String>) {
-        if let Data::Func { body, .. } = &n.data {
-            for s in body {
-                rec(s, true, out);
+    fn rec(n: &N, bound: &mut Vec<HashSet<String>>, out: &mut HashSet<String>) {
+        if let Data::Func { kind, name, args, body, .. } = &n.data {
+            let mut own = HashSet::new();
+            if !matches!(kind, ast::FuncKind::Decl) {
+                if let Some(nm) = name.as_ref().and_then(sym_name) {
+                    own.insert(nm.to_string());
+                }
             }
+            collect_locals(args, &mut own);
+            collect_locals(body, &mut own);
+            bound.push(own);
+            for a in args {
+                rec(a, bound, out);
+            }
+            for s in body {
+                rec(s, bound, out);
+            }
+            bound.pop();
             return;
         }
-        if in_fn {
+        if !bound.is_empty() {
             if let Some(name) = ref_name(n) {
-                out.insert(name.to_string());
+                if !bound.iter().any(|b| b.contains(name)) {
+                    out.insert(name.to_string());
+                }
             }
         }
-        ast::walk_children(n, &mut |c| rec(c, in_fn, out));
+        ast::walk_children(n, &mut |c| rec(c, bound, out));
     }
     for s in stmts {
-        rec(s, false, &mut out);
+        rec(s, &mut Vec::new(), &mut out);
     }
     out
 }
