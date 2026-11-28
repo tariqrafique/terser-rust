@@ -2241,12 +2241,8 @@ fn inner_lvalue_names(value: &N) -> HashSet<String> {
             }
         }
         let pushed = if let Data::Func { args, body, name, .. } = &n.data {
-            let mut own = HashSet::new();
-            for a in args {
-                if let Some(nm) = sym_name(a) {
-                    own.insert(nm.to_string());
-                }
-            }
+            // Parameters with defaults and destructured ones bind too.
+            let mut own = scope_bindings(args, &[]);
             if let Some(nm) = name.as_ref().and_then(sym_name) {
                 own.insert(nm.to_string());
             }
