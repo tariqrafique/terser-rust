@@ -898,6 +898,14 @@ fn lhs_bad(n: &N) -> bool {
     }
 }
 
+/// The symbol an assignment or `++` / `--` candidate writes.
+fn cand_target(cand: &Cand) -> &N {
+    match &cand.node.data {
+        Data::Assign { left, .. } => left,
+        _ => &cand.value,
+    }
+}
+
 /// What `apply_candidate` decided, for the `collapse` trace event (terser's
 /// `get_lhs` result, `abort`, `replaced`, `value_def`).
 #[derive(Default)]
@@ -950,7 +958,7 @@ fn apply_candidate(
     let injected_name = env.block_only && INJECTED.with(|i| i.borrow().contains_key(&cand.name));
     let block_assign = env.block_only
         && matches!(cand.kind, Kind::Assign | Kind::Pre | Kind::Post)
-        && (env.locals.contains(&cand.name) || injected_name)
+        && (env.locals.contains(&cand.name) || injected_name || is_declared(cand_target(cand), &cand.name, env.declared))
         && !BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
     // terser `get_lhs`: no references, nothing to fold.

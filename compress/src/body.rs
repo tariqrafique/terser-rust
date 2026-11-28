@@ -216,7 +216,12 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
     // is the enclosing scope, so none of the lambda's own names are local,
     // and `shadows` looks them up from the enclosing scope.
     let foreign = matches!(me.data, Data::Func { .. }) && foreign(cx);
-    let (locals, own) = if foreign { (Default::default(), locals) } else { (locals, Default::default()) };
+    // A plain `clone(true)` copy (flatten's `expressions.map(exp => exp.clone(true))`):
+    // its names keep the definitions of the function it was copied from, whose
+    // `scope` is that other node, so none of them is local (`is_lhs_local`,
+    // `may_modify`). The `variables` map is shared, so they do not shadow.
+    let copied = matches!(me.data, Data::Func { .. }) && cx.syms.as_ref().is_some_and(|t| copied_lambda(&me, stmts, t));
+    let (locals, own) = if foreign || copied { (Default::default(), locals) } else { (locals, Default::default()) };
     let mut declared = locals.clone();
     let mut outer: std::collections::HashSet<String> = Default::default();
     let len = cx.parents.len();
@@ -246,6 +251,25 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
     };
     crate::tighten::set_foreign_shadow(shadowed);
     Some((locals, declared, in_fn, block))
+}
+
+/// A lambda whose parameters or own `var` names are a plain `clone(true)` copy's
+/// (`SymTable.copied_decls`).
+fn copied_lambda(me: &N, stmts: &[N], table: &crate::syms::SymTable) -> bool {
+    let Data::Func { args, .. } = &me.data else { return false };
+    let copied = table.copied_decls.borrow();
+    fn decl(n: &N, copied: &ast::IdSet) -> bool {
+        match &n.data {
+            Data::Func { .. } | Data::Class { .. } => false,
+            Data::VarDef { name, .. } => copied.contains(&name.id()),
+            _ => {
+                let mut hit = false;
+                ast::walk_children(n, &mut |c| hit = hit || decl(c, copied));
+                hit
+            }
+        }
+    }
+    args.iter().any(|a| copied.contains(&a.id())) || stmts.iter().any(|s| decl(s, &copied))
 }
 
 /// terser `shadows`: the names `find_variable` reaches from `nearest_scope`
