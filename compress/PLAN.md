@@ -9,6 +9,7 @@ Goal: byte-exact terser 5.51.4 output, the lwc-rollup options first. The acorn/E
 - Compress default board 2362/2671, lwc 319/339, bundles 0/3.
 - lwc-rollup: 258 of 260 inputs under 200 KB match; 480 of 757 overall. Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
 - Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`, internationalizationLibrary, testUtils.
+- Trace diff, internationalizationLibrary: first divergence is `var singleChar=_step.value` (loop body inside `try`), which terser collapses into `codePoint=singleChar.codePointAt(0)` and the port aborts.
 
 ## Why a restructure
 
@@ -21,7 +22,7 @@ Recent fixes fell into three classes, none of them missing optimizations:
 ## Steps
 
 - [x] Commit the tools (`tools/`) and this plan.
-- [ ] Trace diff: log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
+- [x] Trace diff (`tools/trace-diff.sh`): log the same decisions from an instrumented terser and from the port (collapse candidates and outcomes, inline decisions, drop_unused calls, optimize results), diff the logs, report the first divergent decision.
 - [x] Canonical traversals: `ast::walk_children` (`_walk`), `ast::transform_children` / `map_children` (`def_transform`), `ast::children_backwards` (`_children_backwards`, the `walk()` helper); `parser/tests/walk_order.rs` checks them against terser through `tools/walk-order.mjs`. tighten, drop_unused, the binder, reduce_vars, hoist and `is_reachable` use them. Left: reduce_vars `collect_local_refs` / `collect_calls` (an approximation of `handle_defined_after_hoist`) and `contains_break` (not `has_break_or_continue`); reduce_vars lacks terser's frames for optional chains, classes, labels and loop `break`/`continue`; the concise-method value is `FuncKind::Expr` where terser has `AST_Accessor`; the `scope` crate's own walker.
 - [ ] Stable node ids (design: `NODE_IDS.md`): an id in every node; rebuilding with new children keeps it (terser's in-place edit), `make_node` and `clone(true)` make new ones (`clone(true)` copies definitions). Side tables keyed by id; retire the identity work-arounds one by one.
 - [ ] Complete the compressor's binder (patterns, defaults, hoisted and injected names), then make collapse definition-based (`is_lhs_local`, `may_modify`, `shadows` by definition) and drop the name sets.

@@ -16,6 +16,7 @@ mod hoist;
 mod loops;
 mod object;
 mod tighten;
+mod trace;
 mod reduce_vars;
 mod syms;
 mod unary;
@@ -496,7 +497,8 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if expression {
         tree = process_expression(&tree, true);
     }
-    for _ in 0..passes {
+    for pass in 0..passes {
+        trace::trace!("pass", n = pass);
         tree = compress_pass(&tree, opts.clone(), mangle);
     }
     eval::set_mangled_symbols(HashSet::new());
@@ -1113,6 +1115,8 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // runs once, after both descends. Running it inside `descend` let the second
     // walk fold a switch-built `if` into `&&`.
     cx.keep_block = keep_block;
+    // Trace: the node as terser's `optimize` receives it (tighten_body is part of it).
+    let traced_in = if trace::opt_on() { Some(trace::code(&twice)) } else { None };
     let twice = if already || pre { twice } else { after_descend(twice, n, cx) };
     let twice_ptr = Rc::as_ptr(&twice) as usize;
     // `def_optimize`: debugger and directives are handled in `optimize`.
@@ -1149,6 +1153,12 @@ fn transform(n: &N, cx: &mut Cx) -> N {
             out = tightened;
         }
     }
+    if let Some(traced_in) = traced_in {
+        let traced_out = trace::code(&out);
+        if traced_out != traced_in {
+            trace::trace!("opt", t = trace::type_name(n), code = traced_in, out = traced_out);
+        }
+    }
     let same = Rc::ptr_eq(&out, &twice);
     if was_scope(&n.data) && was_scope(&out.data) && cx.opts.unused && !cx.in_asm() {
         // Nodes built by this optimize (a switch turned into `if`, then a comma
@@ -1156,7 +1166,13 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         // mutates them in place and leaves `OPTIMIZED` set, so the descend after
         // `drop_unused` does not fold them again.
         mark_tree_squeezed(&out, cx);
+        let traced = if trace::on() { Some(trace::code(&out)) } else { None };
         let dropped = drop_unused::drop_unused_cx(&out, cx.opts.toplevel_vars, cx.opts.toplevel_funcs, cx);
+        if let Some(code) = traced {
+            let after = trace::code(&dropped);
+            let after = if after == code { "=".to_string() } else { after };
+            trace::trace!("drop_unused", t = trace::type_name(&out), code = code, out = after);
+        }
         transfer_flags(&out, &dropped, cx);
         set_parent(cx, &dropped);
         out = map_children(&dropped, cx);

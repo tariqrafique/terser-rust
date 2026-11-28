@@ -383,35 +383,56 @@ fn rewrite_global(n: &N, cx: &Cx) -> Option<N> {
     let lhs = cx.in_lhs
         && !cx.parent().is_some_and(|p| matches!(p.data, Data::Dot { .. } | Data::Sub { .. } | Data::Call { .. }));
     if cx.opts.reduce_vars && !lhs {
-        if let Some(table) = &cx.syms {
-            if let Some(value) = crate::reduce_vars::inline_ref(
-                n,
-                table,
-                &crate::reduce_vars::At {
-                    env: &crate::reduce_vars::Env {
-                        unused: cx.opts.unused,
-                        evaluate: cx.opts.evaluate,
-                        toplevel_vars: cx.opts.toplevel_vars,
-                        toplevel_funcs: cx.opts.toplevel_funcs,
-                    },
-                    parents: &cx.parents,
-                    in_loop: cx.in_loop(),
-                    reduce_funcs: cx.opts.reduce_funcs,
-                    in_computed_key: cx.in_computed_key(),
-                    top_retain: cx.opts.top_retain.as_deref(),
+        if !crate::trace::on() {
+            return inline_symbolref(n, name, cx);
+        }
+        // Trace: every inlining, and every read of a single-use definition.
+        let single = cx.syms.as_ref().is_some_and(|table| {
+            table.lookup(&crate::syms::ptr(n)).is_some_and(|id| {
+                matches!(table.defs[id].single_use, crate::syms::SingleUse::Yes | crate::syms::SingleUse::Modified)
+            })
+        });
+        let slot = crate::trace::reserve();
+        let out = inline_symbolref(n, name, cx);
+        let event = (out.is_some() || single).then(|| {
+            ("inline", crate::trace::fields!(name = name, single = single, out = out.as_ref().map(crate::trace::code)))
+        });
+        crate::trace::fill(slot, event);
+        return out;
+    }
+    None
+}
+
+/// terser `inline.js` `inline_into_symbolref` (with `reduce_vars`, not an lhs).
+fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
+    if let Some(table) = &cx.syms {
+        if let Some(value) = crate::reduce_vars::inline_ref(
+            n,
+            table,
+            &crate::reduce_vars::At {
+                env: &crate::reduce_vars::Env {
+                    unused: cx.opts.unused,
+                    evaluate: cx.opts.evaluate,
+                    toplevel_vars: cx.opts.toplevel_vars,
+                    toplevel_funcs: cx.opts.toplevel_funcs,
                 },
-            ) {
-                // terser `fixed.optimize(compressor)`: a lambda that was not yet
-                // optimized gets its one `tighten_body` now.
-                if matches!(value.data, Data::Func { .. }) && !cx.optimized.contains(&(Rc::as_ptr(&value) as usize)) {
-                    cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
-                }
-                return Some(value);
+                parents: &cx.parents,
+                in_loop: cx.in_loop(),
+                reduce_funcs: cx.opts.reduce_funcs,
+                in_computed_key: cx.in_computed_key(),
+                top_retain: cx.opts.top_retain.as_deref(),
+            },
+        ) {
+            // terser `fixed.optimize(compressor)`: a lambda that was not yet
+            // optimized gets its one `tighten_body` now.
+            if matches!(value.data, Data::Func { .. }) && !cx.optimized.contains(&(Rc::as_ptr(&value) as usize)) {
+                cx.pre_tighten.borrow_mut().insert(Rc::as_ptr(&value) as usize, Rc::clone(&value));
             }
+            return Some(value);
         }
-        if let Some(value) = cx.const_value(name) {
-            return Some(Rc::clone(value));
-        }
+    }
+    if let Some(value) = cx.const_value(name) {
+        return Some(Rc::clone(value));
     }
     None
 }

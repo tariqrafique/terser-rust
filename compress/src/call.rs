@@ -54,13 +54,18 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
         return finish_call(n, callee, &args, trimmed, spread);
     }
     if let Some(func) = &func {
-        if let Some(rewritten) = inline_into_call(n, expr, func, &args, cx, &ann, resolved.direct) {
-            if !resolved.direct {
-                note_replaced(expr, cx);
-            }
-            return Some(rewritten);
+        let slot = crate::trace::reserve();
+        let how = crate::trace::enter_how();
+        let mut inlined = inline_into_call(n, expr, func, &args, cx, &ann, resolved.direct);
+        let mut how = crate::trace::leave_how(how);
+        if inlined.is_none() {
+            inlined = drop_empty_call(n, func, &args, cx);
+            how = Some("drop_empty");
         }
-        if let Some(rewritten) = drop_empty_call(n, func, &args, cx) {
+        if slot.is_some() {
+            crate::trace::fill(slot, inlined.as_ref().map(|out| trace_inline_call(n, expr, &args, how, out)));
+        }
+        if let Some(rewritten) = inlined {
             if !resolved.direct {
                 note_replaced(expr, cx);
             }
@@ -69,6 +74,16 @@ pub(crate) fn optimize(n: &N, cx: &Cx) -> Option<N> {
     }
     let callee = trimmed_callee(expr, func.as_ref(), trimmed, resolved.direct);
     finish_call(n, callee, &args, trimmed, spread)
+}
+
+/// The `inline_call` trace event: the call as terser's `inline_into_call` sees it
+/// (unused arguments trimmed, the callee as it was) and what replaced it.
+fn trace_inline_call(n: &N, expr: &N, args: &[N], how: Option<&'static str>, out: &N) -> (&'static str, Vec<(&'static str, serde_json::Value)>) {
+    let call = atom(n, Data::Call { expr: Rc::clone(expr), args: args.to_vec(), optional: false, is_new: false });
+    (
+        "inline_call",
+        crate::trace::fields!(how = how.unwrap_or("?"), call = crate::trace::code(&call), out = crate::trace::code(out)),
+    )
 }
 
 fn trimmed_callee<'a>(expr: &'a N, func: Option<&'a N>, trimmed: bool, direct: bool) -> &'a N {
@@ -221,6 +236,7 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
                 // terser `returned.clone(true)`: a fresh copy without optimizer
                 // flags, so a returned lambda is compressed again.
                 exprs.push(value.as_ref().map(|v| fresh_copy(v, cx)).unwrap_or_else(|| void0(n)));
+                crate::trace::set_how("const_return");
                 return Some(finish_seq(n, exprs, cx));
             }
             if params.len() == 1
@@ -235,6 +251,7 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
                                 Some(arg) => polish(Rc::clone(arg), cx),
                                 None => void0(n),
                             };
+                            crate::trace::set_how("identity");
                             if is_prop_access(&replacement) && cx.parent_calls(n) {
                                 return Some(seq_node(n, vec![num(n, 0.0), replacement]));
                             }
@@ -245,6 +262,7 @@ fn inline_into_call(n: &N, expr: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, d
             }
         }
     }
+    crate::trace::set_how("flatten");
     flatten_call(n, func, args, cx, ann, direct)
 }
 
