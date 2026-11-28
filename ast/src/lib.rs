@@ -108,7 +108,18 @@ pub struct Node {
     pub start: Option<Tok>,
     pub end: Option<Tok>,
     pub data: Data,
+    /// terser `_annotations` (`utils/index.js` `set_annotation`): the parser's
+    /// `annotate` sets it from `@__PURE__`-style comments. An in-place edit and
+    /// `clone` keep it; `make_node` starts at 0.
+    ann: std::cell::Cell<u8>,
 }
+
+/// terser `lib/parse.js` annotation bits.
+pub const ANN_INLINE: u8 = 1 << 0;
+pub const ANN_NOINLINE: u8 = 1 << 1;
+pub const ANN_PURE: u8 = 1 << 2;
+pub const ANN_KEY: u8 = 1 << 3;
+pub const ANN_MANGLEPROP: u8 = 1 << 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DefKind {
@@ -342,12 +353,20 @@ impl Node {
 
     /// terser `new AST_X({ start, end, .. })` (the parser): a new id.
     pub fn spanned(start: Option<Tok>, end: Option<Tok>, data: Data) -> N {
-        Rc::new(Node { id: mint(), start, end, data })
+        Rc::new(Node { id: mint(), start, end, data, ann: std::cell::Cell::new(0) })
     }
 
     /// terser `make_node(X, orig, {..})`: a new id with `orig`'s span.
     pub fn make(orig: &Node, data: Data) -> N {
         Node::spanned(orig.start.clone(), orig.end.clone(), data)
+    }
+
+    /// terser `orig.clone()` (shallow) with new children: a new id, `orig`'s
+    /// span and annotations (`clone` copies every property).
+    pub fn copy(orig: &Node, data: Data) -> N {
+        let n = Node::make(orig, data);
+        n.ann.set(orig.ann.get());
+        n
     }
 
     /// terser's in-place edit (`self.x = ..; return self`, `descend`): the same id and span,
@@ -358,7 +377,22 @@ impl Node {
         data_children(&data, &mut |c| {
             assert!(c.id != self.id, "rebuild: {} {:?} holds itself as a child", terser_type(self), self.id)
         });
-        Rc::new(Node { id: self.id, start: self.start.clone(), end: self.end.clone(), data })
+        Rc::new(Node { id: self.id, start: self.start.clone(), end: self.end.clone(), data, ann: self.ann.clone() })
+    }
+
+    /// terser `has_annotation(node, mask)`.
+    pub fn has_annotation(&self, mask: u8) -> bool {
+        self.ann.get() & mask != 0
+    }
+
+    /// terser `set_annotation(node, mask)`.
+    pub fn set_annotation(&self, mask: u8) {
+        self.ann.set(self.ann.get() | mask);
+    }
+
+    /// terser `_annotations`.
+    pub fn annotations(&self) -> u8 {
+        self.ann.get()
     }
 
     pub fn id(&self) -> NodeId {

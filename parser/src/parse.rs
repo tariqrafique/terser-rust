@@ -1385,7 +1385,13 @@ impl Parser {
                         let end = self.prev.unwrap_or(start);
                         self.mk(Data::Call { expr: callee, args: exprs, optional: false, is_new: false }, start, end)
                     } else if exprs.len() == 1 {
-                        self.stamp_start(exprs.into_iter().next().unwrap(), paren)
+                        let ex = self.stamp_start(exprs.into_iter().next().unwrap(), paren);
+                        // `if (ex instanceof AST_Call) annotate(ex)`: the comments
+                        // outside the parentheses.
+                        if matches!(ex.data, Data::Call { .. }) {
+                            annotate(&ex, ex.start.as_ref());
+                        }
+                        ex
                     } else if exprs.is_empty() {
                         return Err(self.croak("Invalid parenthesized expression"));
                     } else {
@@ -1504,6 +1510,7 @@ impl Parser {
             Vec::new()
         };
         let node = self.mk(Data::Call { expr, args, optional: false, is_new: true }, start, self.prev.unwrap_or(start));
+        annotate(&node, node.start.as_ref());
         self.subscripts(node, allow_calls)
     }
 
@@ -1562,6 +1569,14 @@ impl Parser {
     }
 
     fn subscripts_chain(&mut self, expr: N, allow_calls: bool, is_chain: bool) -> Result<N, ParseError> {
+        let head = expr.start.clone();
+        self.subscripts_from(expr, allow_calls, is_chain, head)
+    }
+
+    /// terser `subscripts`: every node of the chain gets `start = expr.start`,
+    /// the chain's first token (`head`), and `annotate` reads that token. The
+    /// port's nodes start at their own operator token.
+    fn subscripts_from(&mut self, expr: N, allow_calls: bool, is_chain: bool, head: Option<ast::Tok>) -> Result<N, ParseError> {
         let mut expr = expr;
         loop {
             if self.is("punc", Some(".")) || self.is("punc", Some("[")) || (allow_calls && self.is("punc", Some("("))) || self.is("punc", Some("?.")) || self.is("template_head", None)
@@ -1576,10 +1591,10 @@ impl Parser {
                     continue;
                 }
                 if self.is("punc", Some("?.")) {
-                    expr = self.optional_chain(expr, allow_calls)?;
+                    expr = self.optional_chain(expr, allow_calls, head.clone())?;
                     break;
                 }
-                expr = self.one_subscript(expr, allow_calls)?;
+                expr = self.one_subscript(expr, allow_calls, head.as_ref())?;
             } else {
                 break;
             }
@@ -1587,7 +1602,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn one_subscript(&mut self, expr: N, allow_calls: bool) -> Result<N, ParseError> {
+    fn one_subscript(&mut self, expr: N, allow_calls: bool, head: Option<&ast::Tok>) -> Result<N, ParseError> {
         let start = self.token;
         if self.is("punc", Some(".")) {
             self.bump()?;
@@ -1617,23 +1632,23 @@ impl Parser {
         if allow_calls && self.is("punc", Some("(")) {
             self.bump()?;
             let args = self.call_args()?;
-            return Ok(self.mk(
-                Data::Call { expr, args, optional: false, is_new: false },
-                start,
-                self.prev.unwrap_or(start),
-            ));
+            let call = self.mk(Data::Call { expr, args, optional: false, is_new: false }, start, self.prev.unwrap_or(start));
+            annotate(&call, head);
+            return Ok(call);
         }
         Ok(expr)
     }
 
-    fn optional_chain(&mut self, expr: N, allow_calls: bool) -> Result<N, ParseError> {
+    fn optional_chain(&mut self, expr: N, allow_calls: bool, ann_head: Option<ast::Tok>) -> Result<N, ParseError> {
         let head = expr.start.clone();
         let start = self.token;
         self.bump()?;
         let inner = if allow_calls && self.is("punc", Some("(")) {
             self.bump()?;
             let args = self.call_args()?;
-            self.mk(Data::Call { expr, args, optional: true, is_new: false }, start, self.prev.unwrap_or(start))
+            let call = self.mk(Data::Call { expr, args, optional: true, is_new: false }, start, self.prev.unwrap_or(start));
+            annotate(&call, ann_head.as_ref());
+            call
         } else if self.is("name", None) || self.is("privatename", None) {
             if self.is("privatename", None) && !self.in_class {
                 return Err(self.croak("Private field must be used in an enclosing class"));
@@ -1650,7 +1665,7 @@ impl Parser {
         } else {
             return Err(self.unexpected(self.token));
         };
-        let continued = self.subscripts_chain(inner, allow_calls, true)?;
+        let continued = self.subscripts_from(inner, allow_calls, true, ann_head)?;
         if matches!(continued.data, Data::Chain { .. }) {
             return Ok(self.with_start(continued, head));
         }
@@ -2559,4 +2574,33 @@ fn js_key(n: f64) -> String {
 // ryu is not a parser dependency. Format keys with Display.
 fn _touch_val(v: TokVal) -> bool {
     matches!(v, TokVal::Undef)
+}
+
+/// terser `lib/parse.js` `annotate(node, before_token)`: the last annotation
+/// comment before the token sets the node's annotation, and the scan stops
+/// there. Only calls are annotated here; the compressor reads nothing else.
+fn annotate(node: &N, before: Option<&ast::Tok>) {
+    let Some(tok) = before else { return };
+    let marked = |v: &str, tag: &str| v.contains(&format!("@{tag}")) || v.contains(&format!("#{tag}"));
+    for c in tok.comments_before.iter().rev() {
+        let v = c.value.as_str();
+        if !(v.contains("@__") || v.contains("#__")) {
+            continue;
+        }
+        let mask = if marked(v, "__PURE__") {
+            ast::ANN_PURE
+        } else if marked(v, "__INLINE__") {
+            ast::ANN_INLINE
+        } else if marked(v, "__NOINLINE__") {
+            ast::ANN_NOINLINE
+        } else if marked(v, "__KEY__") {
+            ast::ANN_KEY
+        } else if marked(v, "__MANGLE_PROP__") {
+            ast::ANN_MANGLEPROP
+        } else {
+            continue;
+        };
+        node.set_annotation(mask);
+        break;
+    }
 }

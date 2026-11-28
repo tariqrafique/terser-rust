@@ -1059,10 +1059,10 @@ fn apply_candidate(
     // to a function local that is moved (never dropped: reads after the
     // block are not counted here).
     // A `var` `flatten_fn` injected is already in the scope body in terser
-    // (`scope.body.splice`), though here it is still pending.
-    // Only in a nested block: at function level terser's timing differs
-    // (`functions/issue_2657` keeps `o=n,o||o()`).
-    let injected_name = env.block_only && INJECTED.with(|i| i.borrow().contains_key(&cand.name));
+    // (`scope.body.splice`), though here it is still pending. Its definition
+    // is the inlined function's parameter, so `is_lhs_local` is false for it
+    // in this pass, in a block or not (lodash `isMasked` keeps `(t=n,Dn&&Dn in t)`).
+    let injected_name = INJECTED.with(|i| i.borrow().contains_key(&cand.name));
     let block_assign = env.block_only
         && matches!(cand.kind, Kind::Assign | Kind::Pre | Kind::Post)
         && (cand.prop.is_some() || env.locals.contains(&cand.name) || injected_name || is_declared(cand_target(cand), &cand.name, env.declared))

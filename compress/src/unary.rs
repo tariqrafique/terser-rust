@@ -579,7 +579,7 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         Data::Binary { op, left, right } => drop_binary(n, op, left, right, cx, first),
         Data::Assign { logical, left, right, .. } => drop_assign(n, *logical, left, right, cx, first),
         Data::Yield { .. } | Data::Await { .. } => Some(Rc::clone(n)),
-        Data::Call { expr, is_new, .. } => drop_call(n, expr, *is_new, cx),
+        Data::Call { expr, .. } => drop_call(n, expr, cx),
         Data::Seq { exprs } => drop_sequence(n, exprs, cx),
         Data::Cond { cond, cons, alt } => drop_cond(n, cond, cons, alt, cx),
         Data::Symbol { .. } => if symbol_read_is_pure(n, cx) { None } else { Some(Rc::clone(n)) },
@@ -762,11 +762,11 @@ fn class_self_referential(name: Option<&N>, extends: Option<&N>, props: &[N], cx
 /// terser `drop_side_effect_free(AST_Call)`. A pure annotation keeps argument
 /// effects. An unreferenced function expression drops its completion value
 /// (`process_expression(false)`).
-fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
+fn drop_call(n: &N, expr: &N, cx: &Cx) -> Option<N> {
     if let Some(effects) = crate::call::pure_effects(n) {
         return seq_from_parts(n, effects);
     }
-    if !is_new && func_expr_unreferenced(expr, cx) {
+    if func_expr_unreferenced(expr, cx) {
         // terser `this.clone()`: the call is a new node even when
         // `process_expression` leaves the function as it was.
         // `process_expression` edits the function in place (it keeps its id and flags).
@@ -774,7 +774,7 @@ fn drop_call(n: &N, expr: &N, is_new: bool, cx: &Cx) -> Option<N> {
         let Data::Call { args, optional, is_new, .. } = &n.data else {
             return Some(Rc::clone(n));
         };
-        return Some(atom(
+        return Some(ast::Node::copy(
             n,
             Data::Call {
                 expr: rewritten,
