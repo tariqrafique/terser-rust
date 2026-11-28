@@ -430,7 +430,6 @@ fn inline_symbolref(n: &N, name: &str, cx: &Cx) -> Option<N> {
             // terser `fixed.optimize(compressor)`: a lambda that was not yet
             // optimized gets its one `tighten_body` now.
             let optimized = cx.is_optimized(&value);
-            crate::audit_flags(cx, "fixed_optimized", &value, optimized, false, true);
             if matches!(value.data, Data::Func { .. }) && !optimized {
                 cx.pre_tighten.borrow_mut().insert(value.id());
             }

@@ -372,9 +372,9 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
     }
     if !declared.is_empty() {
         cx.injected.borrow_mut().entry(inj.key).or_default().extend(declared.iter().cloned());
-        if inj.key & (1 << 60) != 0 {
+        if let crate::ScopeKey::Index(index) = inj.key {
             if let Some(table) = cx.syms.as_ref() {
-                table.injected_vars.borrow_mut().entry(inj.key & !(1 << 60)).or_default().extend(declared.iter().cloned());
+                table.injected_vars.borrow_mut().entry(index).or_default().extend(declared.iter().cloned());
             }
         }
     }
@@ -588,7 +588,7 @@ struct Inject {
     taken: HashSet<String>,
     /// Names the target scope already declares (`scope.variables`).
     scope_vars: HashSet<String>,
-    key: usize,
+    key: crate::ScopeKey,
 }
 
 impl Inject {
@@ -615,7 +615,7 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         match &node.data {
             // The lambda a reference's `fixed.optimize()` is tightening is not on terser's
             // stack; the reference below it is.
-            Data::Func { .. } if cx.foreign_lambda != 0 && Rc::as_ptr(node) as usize == cx.foreign_lambda => {}
+            Data::Func { .. } if cx.foreign_lambda == Some(node.id()) => {}
             Data::Toplevel { .. } | Data::Func { .. } | Data::StaticBlock { .. } => break i,
             Data::Class { .. } => return None,
             // `scope instanceof AST_SymbolRef && scope.fixed_value() instanceof AST_Scope`.
@@ -674,7 +674,10 @@ fn can_inject_symbols(func: &N, params: &[N], body: &[N], cx: &Cx) -> Option<Inj
         _ => {}
     }
     // Names earlier flattens added to this scope (`scope.variables`).
-    let key = cx.syms.as_ref().and_then(|t| t.scope_of(scope)).map(|s| s | (1 << 60)).unwrap_or(Rc::as_ptr(scope) as usize);
+    let key = match cx.syms.as_ref().and_then(|t| t.scope_of(scope)) {
+        Some(index) => crate::ScopeKey::Index(index),
+        None => crate::ScopeKey::Node(scope.id()),
+    };
     if let Some(names) = cx.injected.borrow().get(&key) {
         taken.extend(names.iter().cloned());
         scope_vars.extend(names.iter().cloned());
@@ -975,7 +978,6 @@ fn trim_unused(func: &N, args: &[N], direct: bool, cx: &Cx) -> (Option<N>, Vec<N
     // after the function's own body is optimized: a call from inside the
     // callee sees none.
     let flagged = cx.is_squeezed(func) || cx.is_optimized(func);
-    crate::audit_flags(cx, "callee_processed", func, flagged, true, true);
     let processed = direct || flagged;
     let inside_callee = !processed || cx.parents.iter().any(|p| {
         Rc::ptr_eq(p, func)

@@ -6,7 +6,6 @@
 //! prints exactly like the input tree.
 
 mod assign;
-mod audit;
 mod body;
 mod call;
 mod conditional;
@@ -506,7 +505,6 @@ pub fn compress(root: &N, minify_opts: &Value) -> N {
     if expression {
         tree = process_expression(&tree, false);
     }
-    audit::flush();
     tree
 }
 
@@ -592,16 +590,13 @@ fn compress_pass(root: &N, opts: Opts, mangle: Option<bool>) -> N {
         consts: vec![HashMap::new()],
         syms: None,
         squeezed: RefCell::new(ast::IdSet::default()),
-        squeezed_ids: RefCell::new(ast::IdSet::default()),
-        optimized_ids: RefCell::new(ast::IdSet::default()),
-        redescend: 0,
         optimized: RefCell::new(ast::IdSet::default()),
         stack: Vec::new(),
         parents: Vec::new(),
         pending_vars: RefCell::new(Vec::new()),
         scope_cache: RefCell::new(HashMap::new()),
         pre_tighten: RefCell::new(ast::IdSet::default()),
-        foreign_lambda: 0,
+        foreign_lambda: None,
         injected: RefCell::new(HashMap::new()),
         injected_refs: RefCell::new(HashMap::new()),
     };
@@ -689,12 +684,6 @@ struct Cx {
     /// Flags are keyed by node id, so a rebuild that keeps the id (terser's in-place
     /// edit) keeps them; ids are never reused, so nothing has to be kept alive.
     squeezed: RefCell<ast::IdSet>,
-    /// Shadow audit (`audit.rs`): `SQUEEZED` / `OPTIMIZED` set only where terser sets the
-    /// flag. With no carry-overs left they equal the sets above. Nothing decides by them.
-    squeezed_ids: RefCell<ast::IdSet>,
-    optimized_ids: RefCell<ast::IdSet>,
-    /// Depth of the descends after `drop_unused`; the audit labels their decisions `@redescend`.
-    redescend: u32,
     /// terser `OPTIMIZED` (`index.js` `def_optimize`): the per-type optimizer does not run
     /// again. Set by `transform` on what `optimize` returned, and by an optimizer on a node
     /// it made and optimized itself (`make_node(..).optimize(compressor)`, `set_optimized`):
@@ -720,9 +709,9 @@ struct Cx {
     /// `.optimize()` from the reference or call it replaces, so the lambda is
     /// not on the stack: `find_scope()` is the enclosing scope and
     /// `compressor.self()` is not a lambda.
-    foreign_lambda: usize,
-    /// Names `flatten_fn` has added to a scope's `variables`, by scope key.
-    injected: RefCell<HashMap<usize, HashSet<String>>>,
+    foreign_lambda: Option<ast::NodeId>,
+    /// Names `flatten_fn` has added to a scope's `variables`, by scope.
+    injected: RefCell<HashMap<ScopeKey, HashSet<String>>>,
     /// terser `def.references.length` of an injected name: the parameter's
     /// reads in the inlined body plus the injected assignment.
     injected_refs: RefCell<HashMap<String, usize>>,
@@ -873,7 +862,6 @@ impl Cx {
     /// `n` again.
     pub(crate) fn set_optimized(&self, n: &N) {
         self.optimized.borrow_mut().insert(n.id());
-        self.optimized_ids.borrow_mut().insert(n.id());
     }
 
     fn is_optimized(&self, n: &N) -> bool {
@@ -891,13 +879,7 @@ impl Cx {
         self.set_optimized(out);
         if out.id() == made.id() {
             self.squeezed.borrow_mut().insert(out.id());
-            self.squeezed_ids.borrow_mut().insert(out.id());
         }
-    }
-
-    /// An audit decision's label: `@redescend` inside the descend after `drop_unused`.
-    fn stage(&self, decision: &'static str) -> String {
-        if self.redescend > 0 { format!("{decision}@redescend") } else { decision.to_string() }
     }
 
     /// terser `TreeWalker.parent`: the node wrapped around the one being optimized.
@@ -993,6 +975,14 @@ impl Cx {
         };
         Rc::ptr_eq(expr, node) || self.parents.last().is_some_and(|top| Rc::ptr_eq(expr, top))
     }
+}
+
+/// A scope for `Cx.injected`: its index in the symbol table, or the scope node's id when
+/// the table does not know it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum ScopeKey {
+    Index(usize),
+    Node(ast::NodeId),
 }
 
 enum Enter {
@@ -1098,12 +1088,8 @@ fn scan_lexical(body: &[N], names: &mut HashSet<String>) {
 /// switch that became `if (c) { stmt; }` is not then rewritten to `c && stmt`.
 fn transform(n: &N, cx: &mut Cx) -> N {
     let ptr = Rc::as_ptr(n) as usize;
-    let orig_ptr = ptr;
     let orig = Rc::clone(n);
     let entry = cx.is_squeezed(n);
-    if audit::on() {
-        audit::check(&cx.stage("entry"), n, entry, cx.squeezed_ids.borrow().contains(&n.id()));
-    }
     if entry {
         return Rc::clone(n);
     }
@@ -1143,13 +1129,10 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // terser `def_optimize` skips an `OPTIMIZED` node, and `tighten_body` is
     // part of it. A node made by an optimizer was already optimized there.
     let already = cx.is_optimized(n);
-    if audit::on() {
-        audit::check(&cx.stage("already"), n, already, cx.optimized_ids.borrow().contains(&n.id()));
-    }
     let pre = cx.pre_tighten.borrow_mut().remove(&n.id());
     let pre_node;
     let n = if pre {
-        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(n.data, Data::Func { .. }) { orig_ptr } else { 0 });
+        let saved = std::mem::replace(&mut cx.foreign_lambda, matches!(n.data, Data::Func { .. }).then(|| n.id()));
         pre_node = after_descend(Rc::clone(n), n, cx);
         cx.foreign_lambda = saved;
         set_parent(cx, &pre_node);
@@ -1182,9 +1165,6 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     // `def_optimize`: debugger and directives are handled in `optimize`.
     // Every other node type goes through `eval::fold` (the OPT bodies landed so far).
     let skip = cx.is_optimized(&twice) || cx.is_optimized(n);
-    if audit::on() {
-        audit::check(&cx.stage("skip_optimize"), &twice, skip, cx.optimized_ids.borrow().contains(&twice.id()));
-    }
     let mut out = if skip {
         Rc::clone(&twice)
     } else if let Some(rep) = optimize(&twice, ptr, cx) {
@@ -1202,7 +1182,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
     if cx.pre_tighten.borrow_mut().remove(&out.id()) {
         cx.parents.push(Rc::clone(&out));
         let entered = cx.enter(&out);
-        let saved = std::mem::replace(&mut cx.foreign_lambda, if matches!(out.data, Data::Func { .. }) { Rc::as_ptr(&out) as usize } else { 0 });
+        let saved = std::mem::replace(&mut cx.foreign_lambda, matches!(out.data, Data::Func { .. }).then(|| out.id()));
         let tightened = after_descend(Rc::clone(&out), &out, cx);
         cx.foreign_lambda = saved;
         cx.leave(entered);
@@ -1234,9 +1214,7 @@ fn transform(n: &N, cx: &mut Cx) -> N {
         }
         follow_rebuilt(cx, &out, &dropped);
         set_parent(cx, &dropped);
-        cx.redescend += 1;
         out = map_children(&dropped, cx);
-        cx.redescend -= 1;
         set_parent(cx, &out);
     }
     cx.set_optimized(&out);
@@ -1390,18 +1368,8 @@ fn child_refs(data: &Data) -> Vec<&N> {
     out
 }
 
-/// Shadow audit of a flag read outside `transform`: `by_ptr` is the pointer answer for
-/// "`n` is SQUEEZED (when `squeezed`) or OPTIMIZED (when `optimized`)".
-pub(crate) fn audit_flags(cx: &Cx, decision: &str, n: &N, by_ptr: bool, squeezed: bool, optimized: bool) {
-    if audit::on() {
-        let by_id = (squeezed && cx.squeezed_ids.borrow().contains(&n.id())) || (optimized && cx.optimized_ids.borrow().contains(&n.id()));
-        audit::check(decision, n, by_ptr, by_id);
-    }
-}
-
 fn mark_squeezed(cx: &mut Cx, n: &N) {
     cx.squeezed.borrow_mut().insert(n.id());
-    cx.squeezed_ids.borrow_mut().insert(n.id());
 }
 
 fn transform_block(n: &N, cx: &mut Cx) -> N {

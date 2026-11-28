@@ -227,7 +227,7 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
 
 /// This body is a lambda's `pre_tighten` (`Cx.foreign_lambda`).
 fn foreign(cx: &Cx) -> bool {
-    cx.foreign_lambda != 0 && self_node(cx).is_some_and(|s| Rc::as_ptr(&s) as usize == cx.foreign_lambda)
+    cx.foreign_lambda.is_some() && self_node(cx).is_some_and(|s| Some(s.id()) == cx.foreign_lambda)
 }
 
 fn self_node(cx: &Cx) -> Option<N> {
