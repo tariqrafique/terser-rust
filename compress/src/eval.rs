@@ -1139,6 +1139,23 @@ fn fold_binary(n: &N, cx: &Cx) -> Option<N> {
             cur = next;
         }
     }
+    // terser `def_optimize(AST_Binary)`: `"x" + y` and `y + "x"` are truthy in a
+    // boolean context (`make_sequence(self, [y, true]).optimize(compressor)`).
+    if let Data::Binary { op, left, right } = &cur.data {
+        if op == "+" && in_boolean_context(cx) {
+            let nonempty = |x: &N| matches!(eval(x, cx), Some(Lit::Str(s)) if !s.is_empty());
+            let kept = if nonempty(left) {
+                Some(right)
+            } else if nonempty(right) {
+                Some(left)
+            } else {
+                None
+            };
+            if let Some(kept) = kept {
+                return Some(tighten_seq(&cur, vec![Rc::clone(kept), num(&cur, 1.0)], cx));
+            }
+        }
+    }
     // terser `def_optimize(AST_Binary)`: a boolean binary outside another binary
     // becomes `!negate(self)` when that is shorter. The result is no longer a binary.
     if cx.opts.comparisons && is_boolean_value(&cur) && !cx.parents.iter().rev().nth(1).is_some_and(|p| matches!(p.data, Data::Binary { .. })) {
@@ -1392,8 +1409,9 @@ fn eval_logical(n: &N, cx: &Cx) -> Option<N> {
 }
 
 fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
-    if let Some(ll) = eval(left, cx) {
-        if !ll.truthy() {
+    // `has_flag(self.left, TRUTHY) ? true : has_flag(self.left, FALSY) ? false : evaluate`.
+    if let Some(ll) = cx.truth_flag(left).or_else(|| eval(left, cx).map(|l| l.truthy())) {
+        if !ll {
             return Some(maintain_this(cx, Rc::clone(left)));
         }
         return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
@@ -1403,6 +1421,7 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
             if in_boolean_context(cx) {
                 return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 0.0)], cx));
             }
+            cx.set_truth_flag(span, false);
         } else if left_of(cx, "&&") || in_boolean_context(cx) {
             return Some(maintain_this(cx, Rc::clone(left)));
         }
@@ -1429,8 +1448,8 @@ fn eval_and(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
 }
 
 fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
-    if let Some(ll) = eval(left, cx) {
-        if !ll.truthy() {
+    if let Some(ll) = cx.truth_flag(left).or_else(|| eval(left, cx).map(|l| l.truthy())) {
+        if !ll {
             return Some(tighten_seq(span, vec![Rc::clone(left), Rc::clone(right)], cx));
         }
         return Some(maintain_this(cx, Rc::clone(left)));
@@ -1442,6 +1461,8 @@ fn eval_or(span: &N, left: &N, right: &N, cx: &Cx) -> Option<N> {
             }
         } else if in_boolean_context(cx) {
             return Some(tighten_seq(span, vec![Rc::clone(left), num(span, 1.0)], cx));
+        } else {
+            cx.set_truth_flag(span, true);
         }
     }
     // `(x && true) || y` => `x ? true : y`
@@ -1985,7 +2006,7 @@ fn fold_nullish(span: &N, op: &str, left: &N, right: &N, cx: &Cx) -> Option<N> {
     let Data::Binary { op: right_op, left: right_l, right: right_r } = &right.data else {
         return None;
     };
-    if left_op != want || right_op != want || !read_is_pure(left_r, cx) || !equivalent(left_r, right_r) {
+    if left_op != want || right_op != want || crate::conditional::has_side_effects(left_r, cx) || !equivalent(left_r, right_r) {
         return None;
     }
     let paired = is_undefined_value(left_l, cx) && matches!(right_l.data, Data::Null)
@@ -2182,29 +2203,123 @@ fn is_string(n: &N) -> bool {
 }
 
 fn equivalent(a: &N, b: &N) -> bool {
-    match (&a.data, &b.data) {
-        (Data::Symbol { name: n1, kind: k1, .. }, Data::Symbol { name: n2, kind: k2, .. }) => n1 == n2 && k1 == k2,
-        (
-            Data::Dot { expr: e1, prop: p1, optional: o1, private: v1, .. },
-            Data::Dot { expr: e2, prop: p2, optional: o2, private: v2, .. },
-        ) => p1 == p2 && o1 == o2 && v1 == v2 && equivalent(e1, e2),
-        (Data::Sub { expr: e1, prop: p1, optional: o1 }, Data::Sub { expr: e2, prop: p2, optional: o2 }) => {
-            o1 == o2 && equivalent(e1, e2) && equivalent(p1, p2)
+    equivalent_to(a, b)
+}
+
+/// terser `lib/equivalent-to.js` `equivalent_to`: both trees walked in
+/// `_children_backwards` order, each pair of nodes compared by `shallow_cmp`.
+pub(crate) fn equivalent_to(a: &N, b: &N) -> bool {
+    let mut s1: Vec<N> = vec![Rc::clone(a)];
+    let mut s2: Vec<N> = vec![Rc::clone(b)];
+    while let (Some(n1), Some(n2)) = (s1.pop(), s2.pop()) {
+        if !shallow_cmp(&n1, &n2) {
+            return false;
         }
-        (Data::Unary { op: o1, expr: e1, prefix: p1 }, Data::Unary { op: o2, expr: e2, prefix: p2 }) => {
-            o1 == o2 && p1 == p2 && equivalent(e1, e2)
+        ast::children_backwards(&n1, &mut |c| s1.push(Rc::clone(c)));
+        ast::children_backwards(&n2, &mut |c| s2.push(Rc::clone(c)));
+        if s1.len() != s2.len() {
+            return false;
         }
-        (Data::Binary { op: o1, left: l1, right: r1 }, Data::Binary { op: o2, left: l2, right: r2 }) => {
-            o1 == o2 && equivalent(l1, l2) && equivalent(r1, r2)
-        }
-        (Data::Call { expr: e1, args: a1, optional: o1, is_new: n1 }, Data::Call { expr: e2, args: a2, optional: o2, is_new: n2 }) => {
-            o1 == o2 && n1 == n2 && equivalent(e1, e2) && a1.len() == a2.len() && a1.iter().zip(a2).all(|(x, y)| equivalent(x, y))
-        }
-        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1.to_bits() == v2.to_bits(),
-        (Data::String { value: s1, .. }, Data::String { value: s2, .. }) => s1 == s2,
-        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
-        (Data::True, Data::True) | (Data::False, Data::False) | (Data::Null, Data::Null) | (Data::This, Data::This) => true,
+    }
+    s1.is_empty() && s2.is_empty()
+}
+
+/// terser `equivalent-to.js` `shallow_cmp`: the same `TYPE`, then the node's own fields.
+/// A field holding a node (`AST_If.alternative`, `AST_VarDef.value`, ...) compares by
+/// identity there.
+fn shallow_cmp(a: &N, b: &N) -> bool {
+    if ast::terser_type(a) != ast::terser_type(b) {
+        return false;
+    }
+    let same = |x: &Option<N>, y: &Option<N>| match (x, y) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.id() == y.id(),
         _ => false,
+    };
+    let same_list = |x: &Option<Vec<N>>, y: &Option<Vec<N>>| match (x, y) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.len() == y.len() && x.iter().zip(y).all(|(x, y)| x.id() == y.id()),
+        _ => false,
+    };
+    match (&a.data, &b.data) {
+        (Data::Directive { value: v1, .. }, Data::Directive { value: v2, .. }) => v1 == v2,
+        (Data::Labeled { label: l1, .. }, Data::Labeled { label: l2, .. }) => sym_name(l1) == sym_name(l2),
+        (Data::For { init: i1, cond: c1, step: t1, .. }, Data::For { init: i2, cond: c2, step: t2, .. }) => {
+            same(i1, i2) && same(c1, c2) && same(t1, t2)
+        }
+        (Data::Func { async_: a1, generator: g1, .. }, Data::Func { async_: a2, generator: g2, .. }) => a1 == a2 && g1 == g2,
+        (Data::Destructuring { array: a1, .. }, Data::Destructuring { array: a2, .. }) => a1 == a2,
+        // `AST_TemplateSegment` is `Seg::Cooked` data here: its `value` is compared in place.
+        (Data::Template { segments: s1 }, Data::Template { segments: s2 }) => {
+            s1.len() == s2.len()
+                && s1.iter().zip(s2).all(|pair| match pair {
+                    (Seg::Cooked { value: v1, .. }, Seg::Cooked { value: v2, .. }) => v1 == v2,
+                    (Seg::Expr(_), Seg::Expr(_)) => true,
+                    _ => false,
+                })
+        }
+        (Data::Yield { star: s1, .. }, Data::Yield { star: s2, .. }) => s1 == s2,
+        (Data::If { alt: a1, .. }, Data::If { alt: a2, .. }) => same(a1, a2),
+        (Data::Try { body: b1, catch: c1, finally: f1 }, Data::Try { body: b2, catch: c2, finally: f2 }) => {
+            b1.id() == b2.id() && same(c1, c2) && same(f1, f2)
+        }
+        (Data::Catch { arg: a1, .. }, Data::Catch { arg: a2, .. }) => same(a1, a2),
+        (Data::VarDef { value: v1, .. }, Data::VarDef { value: v2, .. }) => same(v1, v2),
+        (
+            Data::Import { phase: p1, imported_name: n1, imported_names: l1, attributes: t1, .. },
+            Data::Import { phase: p2, imported_name: n2, imported_names: l2, attributes: t2, .. },
+        ) => p1 == p2 && same(n1, n2) && same_list(l1, l2) && same(t1, t2),
+        (Data::DynImport { phase: p1, args: a1 }, Data::DynImport { phase: p2, args: a2 }) => p1 == p2 && a1.len() == a2.len(),
+        (
+            Data::Export { is_default: d1, names: n1, value: v1, definition: f1, module_name: m1, attributes: t1 },
+            Data::Export { is_default: d2, names: n2, value: v2, definition: f2, module_name: m2, attributes: t2 },
+        ) => d1 == d2 && same_list(n1, n2) && same(v1, v2) && same(f1, f2) && same(m1, m2) && same(t1, t2),
+        (Data::Dot { prop: p1, quote: q1, private: false, .. }, Data::Dot { prop: p2, quote: q2, private: false, .. }) => {
+            p1 == p2 && q1.is_some() == q2.is_some()
+        }
+        (Data::Dot { prop: p1, .. }, Data::Dot { prop: p2, .. }) => p1 == p2,
+        (Data::Unary { op: o1, .. }, Data::Unary { op: o2, .. })
+        | (Data::Binary { op: o1, .. }, Data::Binary { op: o2, .. })
+        | (Data::Assign { op: o1, .. }, Data::Assign { op: o2, .. }) => o1 == o2,
+        (Data::Prop { method: None, key: k1, .. }, Data::Prop { method: None, key: k2, .. }) => match (k1, k2) {
+            // `this.key === other.key && this.quote === other.quote`: a computed key is a node.
+            (Key::Static { name: n1, quote: q1 }, Key::Static { name: n2, quote: q2 }) => n1 == n2 && q1 == q2,
+            (Key::Computed(x), Key::Computed(y)) => x.id() == y.id(),
+            (Key::Private(n1), Key::Private(n2)) => n1 == n2,
+            _ => false,
+        },
+        // Getter, setter, concise and private methods: `static`; the `AST_SymbolMethod` key
+        // is a child in terser and `Key::Static` data here.
+        (Data::Prop { key: k1, static_: s1, .. }, Data::Prop { key: k2, static_: s2, .. }) => {
+            s1 == s2
+                && match (k1, k2) {
+                    (Key::Static { name: n1, .. }, Key::Static { name: n2, .. }) | (Key::Private(n1), Key::Private(n2)) => n1 == n2,
+                    (Key::Computed(_), Key::Computed(_)) => true,
+                    _ => false,
+                }
+        }
+        (Data::Class { name: n1, extends: e1, .. }, Data::Class { name: n2, extends: e2, .. }) => same(n1, n2) && same(e1, e2),
+        (Data::Field { key: k1, static_: s1, .. }, Data::Field { key: k2, static_: s2, .. }) => {
+            s1 == s2
+                && match (k1, k2) {
+                    (Key::Static { name: n1, .. }, Key::Static { name: n2, .. }) => n1 == n2,
+                    _ => true,
+                }
+        }
+        (Data::Symbol { name: n1, .. }, Data::Symbol { name: n2, .. }) => n1 == n2,
+        (Data::String { value: v1, .. }, Data::String { value: v2, .. }) => v1 == v2,
+        // `AST_NaN` is an atom (always equal); a folded `NaN` is a `Number` here.
+        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1 == v2 || v1.is_nan() && v2.is_nan(),
+        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
+        (Data::RegExp { source: s1, flags: f1 }, Data::RegExp { source: s2, flags: f2 }) => s1 == s2 && f1 == f2,
+        _ => true,
+    }
+}
+
+fn sym_name(n: &N) -> Option<&str> {
+    match &n.data {
+        Data::Symbol { name, .. } => Some(name),
+        _ => None,
     }
 }
 

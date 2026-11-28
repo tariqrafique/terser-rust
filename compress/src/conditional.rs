@@ -83,11 +83,7 @@ fn opt_cond(n: &N, cx: &Cx, depth: u32) -> Option<N> {
         if let Some(last) = exprs.last() {
             if equivalent_to(&cons, last) {
                 let head = make_seq(n, exprs[..exprs.len() - 1].to_vec());
-                let node = make_seq(
-                    n,
-                    vec![binary(n, "||", Rc::clone(&cond), head), Rc::clone(&cons)],
-                );
-                return Some(reopt(node, cx, depth + 1));
+                return Some(crate::sequence::make_and_optimize(n, vec![binary(n, "||", Rc::clone(&cond), head), Rc::clone(&cons)], cx));
             }
         }
     }
@@ -112,8 +108,7 @@ fn opt_cond(n: &N, cx: &Cx, depth: u32) -> Option<N> {
     }
     // `x ? y : y` → `x, y`
     if equivalent_to(&cons, &alt) {
-        let node = make_seq(n, vec![Rc::clone(&cond), Rc::clone(&cons)]);
-        return Some(reopt(node, cx, depth + 1));
+        return Some(crate::sequence::make_and_optimize(n, vec![Rc::clone(&cond), Rc::clone(&cons)], cx));
     }
     // `x ? y || z : z` → `x && y || z`
     if let Data::Binary { op, left, right } = &cons.data {
@@ -829,96 +824,7 @@ fn is_boolean_node(n: &N) -> bool {
 }
 
 fn equivalent_to(a: &N, b: &N) -> bool {
-    if Rc::ptr_eq(a, b) {
-        return true;
-    }
-    match (&a.data, &b.data) {
-        (Data::Symbol { name: n1, .. }, Data::Symbol { name: n2, .. }) => n1 == n2,
-        (Data::Number { value: v1, .. }, Data::Number { value: v2, .. }) => v1 == v2,
-        (Data::String { value: s1, .. }, Data::String { value: s2, .. }) => s1 == s2,
-        (Data::BigInt { value: v1 }, Data::BigInt { value: v2 }) => v1 == v2,
-        (Data::RegExp { source: s1, flags: f1 }, Data::RegExp { source: s2, flags: f2 }) => s1 == s2 && f1 == f2,
-        (Data::True, Data::True)
-        | (Data::False, Data::False)
-        | (Data::Null, Data::Null)
-        | (Data::This, Data::This)
-        | (Data::Super, Data::Super)
-        | (Data::Infinity, Data::Infinity)
-        | (Data::Hole, Data::Hole)
-        | (Data::NewTarget, Data::NewTarget) => true,
-        (
-            Data::Unary { op: o1, expr: e1, prefix: p1 },
-            Data::Unary { op: o2, expr: e2, prefix: p2 },
-        ) => o1 == o2 && p1 == p2 && equivalent_to(e1, e2),
-        (
-            Data::Binary { op: o1, left: l1, right: r1 },
-            Data::Binary { op: o2, left: l2, right: r2 },
-        ) => o1 == o2 && equivalent_to(l1, l2) && equivalent_to(r1, r2),
-        (
-            Data::Assign { op: o1, left: l1, right: r1, logical: g1 },
-            Data::Assign { op: o2, left: l2, right: r2, logical: g2 },
-        ) => o1 == o2 && g1 == g2 && equivalent_to(l1, l2) && equivalent_to(r1, r2),
-        (Data::Cond { cond: c1, cons: a1, alt: b1 }, Data::Cond { cond: c2, cons: a2, alt: b2 }) => {
-            equivalent_to(c1, c2) && equivalent_to(a1, a2) && equivalent_to(b1, b2)
-        }
-        (
-            Data::Dot { expr: e1, prop: p1, optional: o1, private: v1, quote: q1 },
-            Data::Dot { expr: e2, prop: p2, optional: o2, private: v2, quote: q2 },
-        ) => p1 == p2 && o1 == o2 && v1 == v2 && q1.is_some() == q2.is_some() && equivalent_to(e1, e2),
-        (Data::Sub { expr: e1, prop: p1, optional: o1 }, Data::Sub { expr: e2, prop: p2, optional: o2 }) => {
-            o1 == o2 && equivalent_to(e1, e2) && equivalent_to(p1, p2)
-        }
-        (
-            Data::Call { expr: e1, args: a1, optional: o1, is_new: n1 },
-            Data::Call { expr: e2, args: a2, optional: o2, is_new: n2 },
-        ) => {
-            o1 == o2
-                && n1 == n2
-                && equivalent_to(e1, e2)
-                && a1.len() == a2.len()
-                && a1.iter().zip(a2).all(|(x, y)| equivalent_to(x, y))
-        }
-        (Data::Seq { exprs: a }, Data::Seq { exprs: b }) | (Data::Array { elements: a }, Data::Array { elements: b }) => {
-            a.len() == b.len() && a.iter().zip(b).all(|(x, y)| equivalent_to(x, y))
-        }
-        (Data::Spread { expr: e1 }, Data::Spread { expr: e2 }) => equivalent_to(e1, e2),
-        (Data::Chain { expr: e1 }, Data::Chain { expr: e2 }) => equivalent_to(e1, e2),
-        (Data::Object { props: p1 }, Data::Object { props: p2 }) => {
-            p1.len() == p2.len() && p1.iter().zip(p2).all(|(x, y)| equivalent_to(x, y))
-        }
-        (
-            Data::Prop {
-                method: m1,
-                key: k1,
-                value: v1,
-                static_: s1,
-                private: p1,
-                generator: g1,
-                async_: a1,
-            },
-            Data::Prop {
-                method: m2,
-                key: k2,
-                value: v2,
-                static_: s2,
-                private: p2,
-                generator: g2,
-                async_: a2,
-            },
-        ) => m1 == m2 && s1 == s2 && p1 == p2 && g1 == g2 && a1 == a2 && key_eq(k1, k2) && equivalent_to(v1, v2),
-        _ => false,
-    }
-}
-
-fn key_eq(a: &Key, b: &Key) -> bool {
-    match (a, b) {
-        (Key::Static { name: n1, quote: q1 }, Key::Static { name: n2, quote: q2 }) => {
-            n1 == n2 && q1.is_some() == q2.is_some()
-        }
-        (Key::Private(n1), Key::Private(n2)) => n1 == n2,
-        (Key::Computed(e1), Key::Computed(e2)) => equivalent_to(e1, e2),
-        _ => false,
-    }
+    crate::eval::equivalent_to(a, b)
 }
 
 fn cond_node(span: &N, cond: N, cons: N, alt: N) -> N {
