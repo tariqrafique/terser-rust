@@ -245,6 +245,10 @@ thread_local! {
     /// terser `def.references.length - def.replaced` by declaration name node
     /// (`usize::MAX` when the name is not in `def.orig`).
     static REFERENCED: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// terser `def.orig.length` by declaration name node.
+    static ORIG: std::cell::RefCell<HashMap<usize, usize>> = Default::default();
+    /// See `set_table_escaped`.
+    static TABLE_ESCAPED: std::cell::RefCell<HashSet<String>> = Default::default();
     /// See `set_visible`.
     static VISIBLE: std::cell::RefCell<Option<HashSet<String>>> = Default::default();
     /// See `set_declared_refs`.
@@ -388,8 +392,16 @@ pub(crate) fn defun_names(params: &[N], body: &[N]) -> (HashSet<String>, HashSet
     (defuns, others)
 }
 
-pub(crate) fn set_referenced(map: HashMap<usize, usize>) {
+/// Names of the defun scope with a reference bound in another defun scope
+/// (terser `may_modify`'s `def.references.some(...)`), from the symbol table:
+/// a reference an optimizer moved out of an inner function still counts.
+pub(crate) fn set_table_escaped(set: HashSet<String>) {
+    TABLE_ESCAPED.with(|t| *t.borrow_mut() = set);
+}
+
+pub(crate) fn set_referenced(map: HashMap<usize, usize>, orig: HashMap<usize, usize>) {
     REFERENCED.with(|r| *r.borrow_mut() = map);
+    ORIG.with(|r| *r.borrow_mut() = orig);
 }
 
 /// Bindings of a function (params and hoisted names) or a toplevel body.
@@ -804,12 +816,22 @@ fn apply_candidate(
     // terser `get_lhs`: no references, nothing to fold.
     let (reads, writes, hidden) = counts.refs.get(&cand.name).copied().unwrap_or((0, 0, 0));
     let total = reads + writes + hidden;
+    // terser `get_lhs`: `declared = def.orig.length - def.eliminated`. The
+    // symbol table's `orig` counts parameters and function names too; a
+    // declaration `drop_unused` eliminated is gone from the tree.
+    let tree_declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
+    let declared = match &cand.node.data {
+        Data::VarDef { name, .. } if cand.kind == Kind::Var => ORIG.with(|o| o.borrow().get(&ptr(name)).copied()).map_or(tree_declared, |o| o.max(tree_declared)),
+        _ => tree_declared,
+    };
     // A `var` in a nested block: the block's counts are the function's when
     // reduce_vars' reference count for it matches what the block holds.
+    // A name declared more than once is an lhs whatever its counts (terser
+    // `declared > 1`); the replacement then needs terser's `referenced`.
     let block_var = env.block_only
         && cand.kind == Kind::Var
         && matches!(&cand.node.data, Data::VarDef { name, .. }
-            if REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()) == Some(total))
+            if declared > 1 || REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()) == Some(total))
         && !BLOCK_LETS.with(|b| b.borrow().contains(&cand.name));
     if env.block_only && !block_assign && !block_var && !(cand.kind == Kind::Var && BLOCK_CANDS.with(|b| b.borrow().contains(&cand.name))) {
         info.port_skip = Some("block");
@@ -819,7 +841,6 @@ fn apply_candidate(
         info.skip = Some("no_lhs");
         return None;
     }
-    let declared = counts.decls.get(&cand.name).copied().unwrap_or(0);
     // terser `get_lhs` reads `referenced` from `reduce_vars`, which still
     // counts references later merged away (an `if` / `else` folded into one
     // assignment).
@@ -832,7 +853,7 @@ fn apply_candidate(
                 return None;
             }
             if let Some(referenced) = stale {
-                if referenced > total && referenced > 1 && !(declared <= 1 && is_mangleable(&cand.value, &cand.name, env)) {
+                if declared <= 1 && referenced > total && referenced > 1 && !is_mangleable(&cand.value, &cand.name, env) {
                     info.skip = Some("no_lhs");
                     return None;
                 }
@@ -870,7 +891,13 @@ fn apply_candidate(
     // its `references` are the parameter's reads in the inlined body plus the
     // assignment, whatever the tree now holds.
     let injected = INJECTED.with(|i| i.borrow().get(&cand.name).copied());
-    let mode = if cand.kind == Kind::Var && total == 1 && !exposed {
+    // terser `def.references.length - def.replaced == 1` at the replacement.
+    let referenced = match &cand.node.data {
+        Data::VarDef { name, .. } => REFERENCED.with(|r| r.borrow().get(&ptr(name)).copied()).filter(|&r| r != usize::MAX).unwrap_or(total),
+        _ => total,
+    };
+    let single = total == 1 && (!env.block_only || referenced == 1);
+    let mode = if cand.kind == Kind::Var && single && !exposed {
         Mode::ValueOne
     } else if mangleable {
         Mode::ValueAll
@@ -885,7 +912,7 @@ fn apply_candidate(
         && !block_assign
         && injected.is_none_or(|count| count == 2)
         && (mangleable
-            || (cand.kind == Kind::Var && total == 1)
+            || (cand.kind == Kind::Var && single)
             || (cand.kind != Kind::Var && total == 2 && hidden == 0));
     let mut lvalues = if matches!(cand.kind, Kind::Post | Kind::Pre) {
         HashMap::new()
@@ -958,10 +985,16 @@ fn apply_candidate(
     if mode == Mode::ValueAll && scan.sites.len() != reads {
         return None;
     }
+    let wanted = scan.sites.len();
+    let mut left: HashMap<usize, usize> = HashMap::new();
+    for &s in &scan.sites {
+        *left.entry(s).or_insert(0) += 1;
+    }
     let sites: HashSet<usize> = scan.sites.into_iter().collect();
     let mut rw = Rw {
         hit: 0,
         saw_cand: false,
+        left,
     };
     let mut next = Vec::with_capacity(stmts.len());
     for (i, stmt) in stmts.iter().enumerate() {
@@ -973,7 +1006,7 @@ fn apply_candidate(
             next.push(stmt);
         }
     }
-    if rw.hit != sites.len() || !rw.saw_cand {
+    if rw.hit != wanted || !rw.saw_cand {
         return None;
     }
     info.replaced = rw.hit;
@@ -1207,7 +1240,7 @@ fn may_modify(name: &str, st: &Scan<'_>) -> bool {
     }
     // A var `flatten_fn` injected keeps the definition (and scope) of the
     // parameter or var it came from: `def.scope` is another function.
-    !st.locals.contains(name) || st.escaped.contains(name) || INJECTED.with(|i| i.borrow().contains_key(name))
+    !st.locals.contains(name) || st.escaped.contains(name) || TABLE_ESCAPED.with(|t| t.borrow().contains(name)) || INJECTED.with(|i| i.borrow().contains_key(name))
 }
 
 fn scan_switch(expr: &N, body: &[N], st: &mut Scan<'_>) {
@@ -1545,6 +1578,10 @@ fn binds_any(body: &[N], lvalues: &HashMap<String, bool>) -> bool {
 struct Rw {
     hit: usize,
     saw_cand: bool,
+    /// Reads left to replace per scan site. One node can sit at several reads
+    /// (`multi_replacer` puts the same `candidate.value` at each); the scan
+    /// and the rewrite meet them in the same order.
+    left: HashMap<usize, usize>,
 }
 
 fn rewrite_stmt(n: &N, cand: &Cand, sites: &HashSet<usize>, mode: Mode, rw: &mut Rw) -> Option<N> {
@@ -1561,11 +1598,19 @@ fn rewrite(
 ) -> Option<N> {
     if ptr(n) == ptr(&cand.node) {
         rw.saw_cand = true;
+        // terser's `multi_replacer` counts `replaced` back down to 0, so a
+        // `value_def` candidate is not removed: `var x = y` stays for drop_unused.
+        if mode == Mode::ValueAll {
+            return Some(Rc::clone(n));
+        }
         return remove_candidate(n, cand);
     }
     if sites.contains(&ptr(n)) {
-        rw.hit += 1;
-        return Some(replacement(n, cand, mode, parent));
+        if let Some(k) = rw.left.get_mut(&ptr(n)).filter(|k| **k > 0) {
+            *k -= 1;
+            rw.hit += 1;
+            return Some(replacement(n, cand, mode, parent));
+        }
     }
     let data = match &n.data {
         Data::Simple { body } => {
@@ -1877,6 +1922,7 @@ fn remove_candidate(n: &N, cand: &Cand) -> Option<N> {
 fn replacement(slot: &N, cand: &Cand, mode: Mode, parent: Option<&N>) -> N {
     match mode {
         Mode::ValueOne => maintain_this(parent, slot, &cand.value),
+        // terser's `multi_replacer` returns the one `candidate.value` at each read.
         Mode::ValueAll => Rc::clone(&cand.value),
         Mode::Move => match cand.kind {
             Kind::Var => node(

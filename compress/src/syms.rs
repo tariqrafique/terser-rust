@@ -585,8 +585,12 @@ fn define(
     undeclared: bool,
 ) {
     if let Some(&id) = scopes[scope].names.get(&name) {
+        // `hoist` and the walk both define a `var` / `function` name: one `def.orig` entry.
+        let again = table.def_of(node) == Some(id);
         table.bind_def(node, id);
-        table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
+        if !again {
+            table.defs[id].orig_count = table.defs[id].orig_count.saturating_add(1);
+        }
         table.defs[id].lexical |= matches!(kind, SymKind::Let | SymKind::Const | SymKind::Using);
         if table.defs[id].init.is_none() {
             table.defs[id].init = init;

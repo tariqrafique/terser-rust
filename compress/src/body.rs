@@ -92,10 +92,12 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                 crate::tighten::set_visible(visible_names(cx, foreign(cx)));
                 if let Some(table) = cx.syms.as_ref() {
                     let mut map = std::collections::HashMap::new();
+                    let mut orig = std::collections::HashMap::new();
                     for st in &stmts {
-                        collect_vardef_refs(st, table, &mut map);
+                        collect_vardef_refs(st, table, &mut map, &mut orig);
                     }
-                    crate::tighten::set_referenced(map);
+                    crate::tighten::set_referenced(map, orig);
+                    crate::tighten::set_table_escaped(table_escaped(cx));
                     let mut lexical = std::collections::HashSet::new();
                     for st in &stmts {
                         collect_lexical_targets(st, table, &mut lexical);
@@ -107,6 +109,7 @@ pub(crate) fn tighten_body(mut stmts: Vec<N>, cx: &mut Cx) -> Vec<N> {
                     }
                     crate::tighten::set_declared_refs(declared);
                 } else {
+                    crate::tighten::set_table_escaped(Default::default());
                     crate::tighten::set_lexical_targets(Default::default());
                     crate::tighten::set_declared_refs(Default::default());
                 }
@@ -1192,17 +1195,45 @@ fn collect_declared_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::co
     ast::walk_children(n, &mut |c| collect_declared_refs(c, table, out));
 }
 
-fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>) {
+/// terser collapse `may_modify`'s last test, `def.references.some(ref =>
+/// ref.scope.get_defun_scope() !== defun_scope)`, for the definitions of the
+/// defun scope being collapsed (its block scopes included), by name. A
+/// reference keeps the scope it was bound in when an optimizer moves it, and
+/// one an optimizer dropped is still counted.
+fn table_escaped(cx: &Cx) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    let Some(table) = cx.syms.as_ref() else { return out };
+    let Some(scope) = cx.parents.iter().rev().find(|p| matches!(p.data, Data::Func { .. } | Data::Toplevel { .. } | Data::StaticBlock { .. })).and_then(|p| table.scope_of(p)) else {
+        return out;
+    };
+    let defun = table.fn_of[scope];
+    let ref_scope = table.ref_scope.borrow();
+    for &d in table.scope_defs.get(&defun).map(|v| v.as_slice()).unwrap_or(&[]) {
+        let def = &table.defs[d];
+        if def.undeclared {
+            continue;
+        }
+        if def.references.iter().any(|r| ref_scope.get(r).is_some_and(|&s| table.fn_of[s] != defun)) {
+            out.insert(def.name.clone());
+        }
+    }
+    out
+}
+
+/// Per `var` name node: terser `def.references.length - def.replaced`, and
+/// `def.orig.length` (`get_lhs`'s `declared`).
+fn collect_vardef_refs(n: &N, table: &crate::syms::SymTable, out: &mut std::collections::HashMap<usize, usize>, orig: &mut std::collections::HashMap<usize, usize>) {
     match &n.data {
         Data::Func { .. } | Data::Class { .. } => {}
         Data::VarDef { name, .. } => {
-            if table.def_of(name).is_some() {
+            if let Some(id) = table.def_of(name) {
                 // `usize::MAX`: the name is not in `def.orig` (a plain copy).
                 out.insert(crate::syms::ptr(name), table.referenced(name).unwrap_or(usize::MAX));
+                orig.insert(crate::syms::ptr(name), table.defs[id].orig_count as usize);
             }
         }
         _ => {
-            ast::transform_children(n, &mut |c| collect_vardef_refs(c, table, out));
+            ast::transform_children(n, &mut |c| collect_vardef_refs(c, table, out, orig));
         }
     }
 }
