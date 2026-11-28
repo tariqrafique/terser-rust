@@ -711,11 +711,31 @@ fn rewrite_stmt(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
                     Data::Simple { body } => Rc::clone(body),
                     _ => l,
                 });
-                // The body is rewritten too (its definitions are this scope's).
+                // The rest is descended too (its definitions are this scope's).
+                let go = |c: &N| rewrite_expr(c, table, u, scope_id, drop_vars, false).unwrap_or_else(|| num0(c));
+                let cond = cond.as_ref().map(go);
+                let step = step.as_ref().map(go);
                 let body = one(body, table, u, scope_id, drop_vars);
-                out.push(renode(n, Data::For { init: new_init, cond: cond.clone(), step: step.clone(), body }));
+                out.push(renode(n, Data::For { init: new_init, cond, step, body }));
                 return;
             }
+        }
+    }
+    // drop-unused.js `tt` `AST_LabeledStatement` around an `AST_For`: a block the
+    // loop became (its init's `var` moved out) takes the label inside, on the loop.
+    if let Data::Labeled { label, body } = &n.data {
+        if matches!(body.data, Data::For { .. }) {
+            let mut tmp = Vec::new();
+            rewrite_stmt(body, table, u, scope_id, drop_vars, drop_funcs, &mut tmp);
+            if tmp.len() > 1 {
+                let last = tmp.pop().unwrap();
+                out.extend(tmp);
+                out.push(renode(n, Data::Labeled { label: Rc::clone(label), body: last }));
+                return;
+            }
+            let body = tmp.pop().unwrap_or_else(|| node(body, Data::Empty));
+            out.push(renode(n, Data::Labeled { label: Rc::clone(label), body }));
+            return;
         }
     }
     // drop-unused.js: an unused `class` declaration goes when it has no side effects.
