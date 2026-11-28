@@ -6,10 +6,9 @@ Goal: byte-exact terser 5.51.4 output, the lwc-rollup options first. The acorn/E
 
 ## Status (2026-11-28)
 
-- Compress default board 2362/2671, lwc 319/339, bundles 0/3.
-- lwc-rollup: 258 of 260 inputs under 200 KB match; 480 of 757 overall. Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
-- Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`, internationalizationLibrary, testUtils.
-- Trace diff, internationalizationLibrary: first divergence is `var singleChar=_step.value` (loop body inside `try`), which terser collapses into `codePoint=singleChar.codePointAt(0)` and the port aborts.
+- Compress default board 2369/2671, lwc 320/339, bundles 0/3.
+- lwc-rollup: 259 of 260 inputs under 200 KB match; 480 of 757 overall. Most remaining failures are large bundles where a few structural differences change mangle character frequencies, so every name differs.
+- Known open cases: `functions/issue_2657` (terser never re-collapses after the flatten), `arrow/issue_2136_2`, testUtils.
 
 ## Why a restructure
 
