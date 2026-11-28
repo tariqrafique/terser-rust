@@ -1718,7 +1718,7 @@ fn var_into_for(stmts: Vec<N>) -> Vec<N> {
     for stat in stmts {
         if let Some(prev_stmt) = prev.take() {
             if let Data::For { init: None, cond, step, body } = &stat.data {
-                // keep: `stat.init = prev` (tb 1486).
+                // keep: `stat.init = prev` (tb 1477).
                 let data = Data::For { init: Some(prev_stmt), cond: cond.clone(), step: step.clone(), body: Rc::clone(body) };
                 out.push(stat.rebuild(data));
                 continue;
@@ -1744,7 +1744,7 @@ fn join_vars(stmts: Vec<N>) -> Vec<N> {
             if let Some(prev) = out.last_mut() {
                 let same = matches!(&prev.data, Data::Defs { kind: pk, await_: pa, .. } if pk == kind && pa == await_);
                 if same {
-                    // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1449).
+                    // keep: `prev.definitions = prev.definitions.concat(..)` (tb 1447).
                     if Rc::get_mut(prev).is_none() {
                         *prev = prev.rebuild(prev.data.clone());
                     }
@@ -1827,8 +1827,8 @@ fn sequence_into_next(stmts: Vec<N>) -> Vec<N> {
             let left = Rc::clone(left);
             if let Data::If { cond, body, alt } = &stat.data {
                 let cond = comma(left, Rc::clone(cond));
-                // keep: `sequencesize_2` sets `stat.condition` (tb 1341), and the same for the
-                // other statements below (tb 1315-1345).
+                // keep: `sequencesize_2` sets `stat.condition` (tb 1343), and the same for the
+                // other statements below (tb 1317-1347).
                 out.push(stat.rebuild(Data::If { cond, body: Rc::clone(body), alt: alt.clone() }));
                 continue;
             }
