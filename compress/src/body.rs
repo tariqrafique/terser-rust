@@ -144,7 +144,8 @@ fn collapse_scope(stmts: &[N], cx: &Cx) -> Option<(std::collections::HashSet<Str
         // all here (`tighten.rs` `block_var`), or an assignment to a function
         // local (`block_assign`). terser collapses every block.
         // terser `find_loop_scope_try` gives the loop and try state.
-        Data::Block { .. } => {
+        // A switch branch is an `AST_Block` too.
+        Data::Block { .. } | Data::Case { .. } | Data::Default { .. } => {
             let names = crate::tighten::block_lexicals(stmts);
             let (mut in_loop, mut in_try) = (false, false);
             let len = cx.parents.len();
