@@ -129,8 +129,10 @@ fn drop_exit(n: &N, cx: &Cx) -> Option<N> {
             let binary = eval::binary(n, bin_op, Rc::clone(left), Rc::clone(right));
             return Some(eval::fold(&binary, cx));
         }
+        // `parent instanceof AST_Binary && parent.right === node`: `AST_Assign` and
+        // `AST_DefaultAssign` are binaries too.
         let cont = match &parent.data {
-            Data::Binary { right: edge, .. } => Rc::ptr_eq(edge, node),
+            Data::Binary { right: edge, .. } | Data::Assign { right: edge, .. } | Data::DefaultAssign { right: edge, .. } => Rc::ptr_eq(edge, node),
             Data::Seq { exprs } => exprs.last().is_some_and(|e| Rc::ptr_eq(e, node)),
             _ => false,
         };
@@ -432,7 +434,7 @@ fn compound(n: &N, cx: &Cx) -> Option<N> {
         }
     }
     if let Data::Symbol { name: rname, kind: SymKind::Ref, .. } = &br.data {
-        if rname == name && assign_ops_commutative(bop) && !has_side(bl, cx) {
+        if rname == name && assign_ops_commutative(bop) && !crate::conditional::has_side_effects(bl, cx) {
             let next = format!("{bop}=");
             return Some(n.rebuild(Data::Assign { op: next, left: Rc::clone(left), right: Rc::clone(bl), logical: false }));
         }

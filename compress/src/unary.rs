@@ -90,7 +90,9 @@ fn optimize_body(n: &N, cx: &Cx, active: &mut HashSet<usize>) -> N {
     }
 
     let mut operand = Rc::clone(expr);
-    if op == "-" && matches!(operand.data, Data::Infinity) {
+    // `e = e.transform(compressor)`: an `AST_Infinity` not yet optimized becomes `1/0`; an
+    // optimized one (an inlined constant) is returned as it is.
+    if op == "-" && matches!(operand.data, Data::Infinity) && !cx.is_squeezed(&operand) && !cx.is_optimized(&operand) {
         operand = eval::infinity(expr, false);
     }
 
@@ -500,6 +502,9 @@ pub(crate) fn may_side_effect(n: &N, cx: &Cx) -> bool {
             extends.as_ref().is_some_and(|e| may_side_effect(e, cx)) || props.iter().any(|p| prop_may_effect(p, cx))
         }
         Data::Spread { expr } | Data::Chain { expr } => may_side_effect(expr, cx),
+        // `AST_DynamicImport`: `import.source(x)` only compiles the module (its arguments
+        // are not looked at).
+        Data::DynImport { phase, .. } => phase.as_deref() != Some("source"),
         // `AST_Dot` / `AST_Sub`: a nullish short-circuit only runs the receiver;
         // otherwise a read that may throw on access is an effect.
         Data::Dot { expr, optional, .. } => {
@@ -593,6 +598,8 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         Data::Dot { expr, optional, .. } => drop_access(n, expr, None, *optional, cx, first),
         Data::Sub { expr, prop, optional } => drop_access(n, expr, Some(prop), *optional, cx, first),
         Data::Chain { expr } | Data::Spread { expr } => drop_side_effect_free(expr, cx, first),
+        // `AST_DynamicImport`: `import.source(..)` keeps only its arguments' side effects.
+        Data::DynImport { args, phase } if phase.as_deref() == Some("source") => seq_from_parts(n, trim_list(args, cx, first)),
         Data::Template { segments } => {
             let mut parts = Vec::new();
             let mut first_flag = first;
@@ -616,11 +623,16 @@ fn drop_assign(n: &N, logical: bool, left: &N, right: &N, cx: &Cx, first: bool) 
     if logical {
         return Some(Rc::clone(n));
     }
+    // An `AST_Constant` target has no side effects and is a constant expression.
+    if crate::eval::global_atom_ref(left, cx) {
+        return drop_side_effect_free(right, cx, first);
+    }
     let strict_const = cx.lookup("use strict").is_some()
         && matches!(&left.data, Data::Dot { expr, .. } | Data::Sub { expr, .. } if crate::eval::is_constant(expr));
     if may_side_effect(left, cx) || strict_const {
         return Some(Rc::clone(n));
     }
+    cx.set_write_only(n, true);
     let mut obj = left;
     while let Data::Dot { expr, .. } | Data::Sub { expr, .. } = &obj.data {
         obj = expr;
@@ -813,6 +825,7 @@ fn drop_access(n: &N, expr: &N, prop: Option<&N>, optional: bool, cx: &Cx, first
 
 fn drop_unary(n: &N, op: &str, expr: &N, cx: &Cx, first: bool) -> Option<N> {
     if matches!(op, "delete" | "++" | "--") {
+        cx.set_write_only(n, !may_side_effect(expr, cx));
         return Some(Rc::clone(n));
     }
     if op == "typeof" && matches!(expr.data, Data::Symbol { kind: SymKind::Ref, .. }) {
