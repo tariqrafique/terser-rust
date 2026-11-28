@@ -1331,31 +1331,24 @@ fn drop_empty_string(n: &N) -> Option<N> {
     None
 }
 
-/// `"a" + "b"` as terser's `binary.optimize` would fold it, or `None`.
-fn concat_constants(a: &N, b: &N) -> Option<N> {
-    let (Some(la), Some(lb)) = (eval(a), eval(b)) else { return None };
-    match eval_bin("+", la, lb)? {
-        Lit::Str(v) => Some(atom(a, Data::String { value: v, quote: '"', units: None })),
-        _ => None,
-    }
-}
-
 fn is_constant_node(n: &N) -> bool {
     matches!(n.data, Data::Number { .. } | Data::String { .. } | Data::BigInt { .. } | Data::True | Data::False | Data::Null | Data::RegExp { .. })
 }
 
 /// terser `def_optimize(AST_Binary)` `case "+"`: string and template joins.
 fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
-    let _ = cx;
     let Data::Binary { op, left, right } = &n.data else { return None };
     if op != "+" {
         return None;
     }
+    // terser `binary.optimize(compressor)` on the two middle operands: a constant
+    // pair evaluates, a template takes the constant (`` `a${b}c` + 1 ``).
+    let join = |a: &N, b: &N| opt_table(&binary(n, "+", Rc::clone(a), Rc::clone(b)), cx);
     // (x + "foo") + "bar" => x + "foobar"
     if is_constant_node(right) {
         if let Data::Binary { op: lop, left: ll, right: lr } = &left.data {
             if lop == "+" && is_string(left) {
-                if let Some(m) = concat_constants(lr, right) {
+                if let Some(m) = join(lr, right) {
                     return Some(binary(n, "+", Rc::clone(ll), m));
                 }
             }
@@ -1364,7 +1357,7 @@ fn plus_strings(n: &N, cx: &Cx) -> Option<N> {
     // (x + "foo") + ("bar" + y) => (x + "foobar") + y
     if let (Data::Binary { op: lop, left: ll, right: lr }, Data::Binary { op: rop, left: rl, right: rr }) = (&left.data, &right.data) {
         if lop == "+" && rop == "+" && is_string(left) && is_string(right) {
-            if let Some(m) = concat_constants(lr, rl) {
+            if let Some(m) = join(lr, rl) {
                 return Some(binary(n, "+", binary(left, "+", Rc::clone(ll), m), Rc::clone(rr)));
             }
         }
