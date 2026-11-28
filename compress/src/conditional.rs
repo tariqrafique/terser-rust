@@ -415,7 +415,7 @@ fn is_nullish_value(n: &N, cx: &Cx) -> bool {
 fn is_undefined(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "void" && !has_side_effects(expr, cx) => true,
-        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "undefined" && !cx.declared_ref(n, name) => true,
         _ => false,
     }
 }
@@ -643,7 +643,7 @@ fn expr_pure(n: &N, cx: &Cx) -> bool {
         return is_pure(n);
     }
     match &n.data {
-        Data::Symbol { name, kind: SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => cx.declared_ref(n, name),
         Data::Unary { op, expr, prefix: true }
             if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") =>
         {

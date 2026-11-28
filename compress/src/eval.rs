@@ -1622,7 +1622,7 @@ fn is_nullish_node(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Null => true,
         Data::Unary { op, expr, prefix: true } if op == "void" => !has_side(expr, cx),
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" => !cx.declared_ref(n, name),
         _ => false,
     }
 }
@@ -2191,7 +2191,7 @@ fn fold_typeof(left: &N, right: &N, op: &str, span: &N, cx: &Cx) -> Option<(N, N
 
 fn typeof_target_ok(expr: &N, cx: &Cx) -> bool {
     match &expr.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.declared_ref(expr, name),
         Data::Dot { .. } | Data::Sub { .. } => !cx.opts.ie8,
         _ => true,
     }
@@ -2236,7 +2236,7 @@ fn is_constant(n: &N) -> bool {
 fn is_undefined_value(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "void" && is_pure(expr) => true,
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } if name == "undefined" && !cx.declared_ref(n, name) => true,
         _ => false,
     }
 }
@@ -2248,10 +2248,7 @@ fn read_is_pure(n: &N, cx: &Cx) -> bool {
         Data::Symbol { name, kind: ast::SymKind::Ref, .. } => {
             if let Some(table) = &cx.syms {
                 if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
-                    // The table leaves destructured bindings undeclared; the
-                    // scope stack still knows them.
                     return !table.defs[id].undeclared
-                        || cx.shadowed(name)
                         || ["Number", "String", "Array", "Object", "Function", "Promise"].contains(&name.as_str());
                 }
             }
@@ -3043,7 +3040,7 @@ fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
         | Data::This
         | Data::Func { .. } => false,
         Data::Hole | Data::Spread { .. } => true,
-        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(name, cx),
+        Data::Symbol { name, kind: SymKind::Ref, .. } => !symbol_read_pure(n, name, cx),
         Data::Unary { op, expr, prefix: true } => {
             matches!(op.as_str(), "delete" | "++" | "--") || expr_has_side_effects(expr, cx)
         }
@@ -3075,11 +3072,11 @@ fn expr_has_side_effects(n: &N, cx: &Cx) -> bool {
     }
 }
 
-fn symbol_read_pure(name: &str, cx: &Cx) -> bool {
+fn symbol_read_pure(n: &N, name: &str, cx: &Cx) -> bool {
     if cx.in_with {
         return false;
     }
-    cx.shadowed(name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
+    cx.declared_ref(n, name) || matches!(name, "Number" | "String" | "Array" | "Object" | "Function" | "Promise")
 }
 
 /// terser `lib/compress/inference.js` `may_throw_on_access`.
@@ -3451,7 +3448,7 @@ pub(crate) fn statement_pure(n: &N, cx: &Cx) -> bool {
         return is_pure(n);
     }
     match &n.data {
-        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.shadowed(name),
+        Data::Symbol { name, kind: ast::SymKind::Ref, .. } => cx.declared_ref(n, name),
         Data::Unary { op, expr, prefix: true } if matches!(op.as_str(), "!" | "~" | "-" | "+" | "void" | "typeof") => {
             statement_pure(expr, cx)
         }

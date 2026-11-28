@@ -263,7 +263,7 @@ fn maintain_this_binding(val: N, cx: &Cx) -> N {
 fn is_undefined(n: &N, cx: &Cx) -> bool {
     match &n.data {
         Data::Unary { op, expr, prefix: true } if op == "void" && !may_side_effect(expr, cx) => true,
-        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "undefined" && !cx.shadowed(name) => true,
+        Data::Symbol { name, kind: SymKind::Ref, .. } if name == "undefined" && !cx.declared_ref(n, name) => true,
         _ => false,
     }
 }
@@ -550,23 +550,12 @@ fn symbol_read_is_pure(n: &N, cx: &Cx) -> bool {
     let Data::Symbol { name, kind: SymKind::Ref, .. } = &n.data else {
         return false;
     };
-    if cx.shadowed(name) {
-        return true;
-    }
-    if matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise") {
+    if cx.declared_ref(n, name) || matches!(name.as_str(), "Number" | "String" | "Array" | "Object" | "Function" | "Promise") {
         return true;
     }
     // terser `AST_Lambda.init_scope_vars` defines `arguments` in every function but an
     // arrow, so a read inside one is declared. The binder does not define it.
-    if name == "arguments" && cx.parents.iter().any(|p| matches!(p.data, Data::Func { kind: FuncKind::Decl | FuncKind::Expr | FuncKind::Accessor, .. })) {
-        return true;
-    }
-    if let Some(table) = &cx.syms {
-        if let Some(id) = table.lookup(&crate::syms::ptr(n)) {
-            return table.defs.get(id).is_some_and(|d| !d.undeclared);
-        }
-    }
-    false
+    name == "arguments" && cx.parents.iter().any(|p| matches!(p.data, Data::Func { kind: FuncKind::Decl | FuncKind::Expr | FuncKind::Accessor, .. }))
 }
 
 /// terser `lib/compress/drop-side-effect-free.js` `AST_Node#drop_side_effect_free`.
