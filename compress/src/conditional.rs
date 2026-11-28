@@ -577,6 +577,8 @@ pub(crate) fn has_side_effects(n: &N, cx: &Cx) -> bool {
         Data::Array { elements } => elements.iter().any(|e| has_side_effects(e, cx)),
         Data::Object { props } => props.iter().any(|p| prop_side(p, cx)),
         Data::Chain { expr } => has_side_effects(expr, cx),
+        // `AST_DynamicImport`: `import.source(x)` only compiles the module.
+        Data::DynImport { phase, .. } => phase.as_deref() != Some("source"),
         Data::Template { segments } => segments.iter().any(|seg| match seg {
             Seg::Expr(e) => has_side_effects(e, cx),
             Seg::Cooked { .. } => false,

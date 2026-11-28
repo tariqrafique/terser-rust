@@ -500,6 +500,9 @@ pub(crate) fn may_side_effect(n: &N, cx: &Cx) -> bool {
             extends.as_ref().is_some_and(|e| may_side_effect(e, cx)) || props.iter().any(|p| prop_may_effect(p, cx))
         }
         Data::Spread { expr } | Data::Chain { expr } => may_side_effect(expr, cx),
+        // `AST_DynamicImport`: `import.source(x)` only compiles the module (its arguments
+        // are not looked at).
+        Data::DynImport { phase, .. } => phase.as_deref() != Some("source"),
         // `AST_Dot` / `AST_Sub`: a nullish short-circuit only runs the receiver;
         // otherwise a read that may throw on access is an effect.
         Data::Dot { expr, optional, .. } => {
@@ -593,6 +596,8 @@ pub(crate) fn drop_side_effect_free(n: &N, cx: &Cx, first: bool) -> Option<N> {
         Data::Dot { expr, optional, .. } => drop_access(n, expr, None, *optional, cx, first),
         Data::Sub { expr, prop, optional } => drop_access(n, expr, Some(prop), *optional, cx, first),
         Data::Chain { expr } | Data::Spread { expr } => drop_side_effect_free(expr, cx, first),
+        // `AST_DynamicImport`: `import.source(..)` keeps only its arguments' side effects.
+        Data::DynImport { args, phase } if phase.as_deref() == Some("source") => seq_from_parts(n, trim_list(args, cx, first)),
         Data::Template { segments } => {
             let mut parts = Vec::new();
             let mut first_flag = first;
