@@ -862,7 +862,11 @@ fn extract_candidates(n: &N, env: &Env<'_>, block_names: &HashSet<String>) -> Ve
             }
             Data::Unary { op, expr, prefix } if op == "++" || op == "--" => {
                 if let Some(name) = ref_name(expr) {
-                    if !lexical_by_name(expr, name, block_names) && !lexical_target(expr) && env.locals.contains(name) {
+                    // terser `get_lhs` takes the operand unless it is a `let` / `const`;
+                    // an undeclared one has side effects and is skipped.
+                    let injected = env.block_only && INJECTED.with(|i| i.borrow().contains_key(name));
+                    let read_only = LAMBDAS.with(|l| l.borrow().contains(name));
+                    if !lexical_by_name(expr, name, block_names) && !read_only && !lexical_target(expr) && (env.locals.contains(name) || is_declared(expr, name, env.declared) || injected) {
                         out.push(Cand {
                             path: path.clone(),
                             kind: if *prefix { Kind::Pre } else { Kind::Post },
