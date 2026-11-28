@@ -307,10 +307,7 @@ fn assign_as_unused<'a>(n: &'a N, table: &SymTable) -> Option<&'a N> {
 /// `self.variables.get(name) === def`. An undeclared global is in `globals`, not `variables`.
 fn owned(table: &SymTable, n: &N, scope_id: Option<usize>) -> Option<usize> {
     let id = def_id(table, n)?;
-    if table.defs[id].undeclared {
-        return None;
-    }
-    if scope_id.is_some_and(|s| table.defs[id].scope != s) {
+    if table.defs[id].undeclared || scope_id.is_some_and(|s| table.defs[id].scope != s) {
         return None;
     }
     Some(id)
@@ -501,9 +498,19 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
         }
         Data::Return { value } => Data::Return { value: value.as_ref().and_then(|v| rewrite_expr(v, table, u, scope_id, drop_vars, false)) },
         Data::Throw { value } => Data::Throw { value: go(value, false) },
-        Data::Unary { op, expr, prefix } => Data::Unary { op: op.clone(), expr: go(expr, false), prefix: *prefix },
+        Data::Unary { op, expr, prefix } => {
+            let operand = go(expr, false);
+            let operand = if op == "delete" { keep_this(expr, operand, true) } else { operand };
+            Data::Unary { op: op.clone(), expr: operand, prefix: *prefix }
+        }
         Data::Binary { op, left, right } => Data::Binary { op: op.clone(), left: go(left, false), right: go(right, false) },
-        Data::Assign { op, left, right, logical } => Data::Assign { op: op.clone(), left: Rc::clone(left), right: go(right, false), logical: *logical },
+        // `(d = x)[0] = 1`: the target's object is an expression too.
+        Data::Assign { op, left, right, logical } => Data::Assign {
+            op: op.clone(),
+            left: if matches!(left.data, Data::Dot { .. } | Data::Sub { .. }) { go(left, false) } else { Rc::clone(left) },
+            right: go(right, false),
+            logical: *logical,
+        },
         Data::Seq { exprs } => {
             let last = exprs.len().saturating_sub(1);
             let exprs: Vec<N> = exprs.iter().enumerate().filter_map(|(i, e)| rewrite_expr(e, table, u, scope_id, drop_vars, i != last || discarded)).collect();
@@ -513,7 +520,7 @@ fn rewrite_expr(n: &N, table: &SymTable, u: &Use, scope_id: Option<usize>, drop_
             Data::Seq { exprs }
         }
         Data::Call { expr, args, optional, is_new } => Data::Call {
-            expr: go(expr, false),
+            expr: keep_this(expr, go(expr, false), false),
             args: args.iter().map(|a| go(a, false)).collect(),
             optional: *optional,
             is_new: *is_new,
@@ -631,6 +638,21 @@ fn class_pure(n: &N) -> bool {
         Data::Prop { key: Key::Computed(k), .. } => !has_side_effects(k),
         _ => true,
     })
+}
+
+/// terser `maintain_this_binding(parent, node, assignee)` for an unused
+/// assignment that became its value: as a callee (or `delete` operand) the
+/// value keeps a `(0, ...)` so it is not called as a method.
+fn keep_this(orig: &N, val: N, delete: bool) -> N {
+    let dropped = matches!(orig.data, Data::Assign { .. }) && !matches!(val.data, Data::Assign { .. });
+    let needs = delete
+        || matches!(val.data, Data::Dot { .. } | Data::Sub { .. } | Data::Chain { .. })
+        || matches!(&val.data, Data::Symbol { kind: SymKind::Ref, name, .. } if name == "eval");
+    if dropped && needs {
+        seq(orig, vec![num0(orig), val])
+    } else {
+        val
+    }
 }
 
 fn seq(span: &N, mut exprs: Vec<N>) -> N {

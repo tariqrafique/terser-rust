@@ -1600,6 +1600,11 @@ enum CExpr {
     Free,
 }
 
+/// terser `fn.is_constant_expression(exp.scope)` for a lambda: `all_refs_local`.
+pub(crate) fn lambda_is_constant(func: &N, table: &SymTable, scope: Option<usize>) -> bool {
+    !matches!(all_refs_local(func, table, scope), CExpr::No)
+}
+
 fn const_expr_truthy(n: &N, table: &SymTable, scope: Option<usize>) -> bool {
     !matches!(const_expr(n, table, scope), CExpr::No)
 }

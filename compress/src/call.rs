@@ -304,7 +304,10 @@ fn flatten_call_inner(n: &N, func: &N, args: &[N], cx: &Cx, ann: &Ann, direct: b
         && cx.opts.unused
         && def_flag(_expr_of(n), cx, |d| d.references.len() == 1 && d.recursive_refs == 0)
         && !inside_own_lambda(_expr_of(n), func, cx)
-        && !fn_inlined(func, cx)
+        && cx.syms.as_ref().is_none_or(|table| {
+            let site = cx.parents.iter().rev().find_map(|p| table.scope_lookup(&crate::syms::ptr(p))).or(Some(0));
+            crate::reduce_vars::lambda_is_constant(func, table, site)
+        })
         && !free_ref_shadowed(func, cx);
     if !direct && !ann.inline_ && !single_ref {
         return None;
@@ -392,13 +395,6 @@ fn inside_own_lambda(expr: &N, func: &N, cx: &Cx) -> bool {
             || matches!(&p.data, Data::Func { name: Some(fname), .. } if sym_str(fname) == name)
             || matches!(&p.data, Data::VarDef { name: vn, value: Some(v) } if sym_str(vn) == name && matches!(v.data, Data::Func { .. }))
     })
-}
-
-/// terser `inference.js` `all_refs_local`: a lambda flagged `INLINED` (a
-/// lambda was inlined across scopes into it) is not a constant expression.
-fn fn_inlined(func: &N, cx: &Cx) -> bool {
-    let Some(table) = cx.syms.as_ref() else { return false };
-    table.scope_lookup(&crate::syms::ptr(func)).is_some_and(|s| table.inlined_scopes.borrow().contains(&s))
 }
 
 /// terser `inference.js` `all_refs_local` with a scope: every name `func`

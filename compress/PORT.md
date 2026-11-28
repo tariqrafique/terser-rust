@@ -113,11 +113,15 @@ Export and collapse board: `export { x }` is a reference (`AST_SymbolExport` ext
 
 - `functions/issue_2657`: terser never re-collapses the body after the flatten; here an injected var is only treated as a local inside a nested block.
 
-`drop_unused` pass 1 skips an `=` target only when it is the scope's own binding (`self.variables.get(name) === def`); an undeclared global never is. `assign_as_unused` does not look through a statement, so the rhs of `x = v` is walked and `v` stays in use.
+internationalizationLibrary board: collapse's `stop_after` test is one `||` chain in terser, so a node whose own clause is false still meets the `may_throw` clause; inside a `try` that clause is `has_side_effects` of the node itself (`node_effects`: false for a declaration name, the value for a `VarDef`, the children for a statement). A single-use flatten checks `fn.is_constant_expression(exp.scope)` (`all_refs_local`, false once the lambda is `INLINED`). Collapse no longer substitutes the bare value of an unread assignment (the old sink shortcut): terser moves `x = v` whole and `drop_unused` removes it later, which later candidates in the same loop can see (an injected var's write stops a side-effect candidate). `drop_unused` now rewrites the object of an assignment target and keeps the `this` binding of a dropped callee assignment. Compress default 2362 → 2369/2671, lwc 319 → 320/339, lwc-rollup under 200 KB: 259 of 260 (testUtils left).
 
-Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStatement`), not only one with a `let` / `const` or a `var` with a value, so an assignment to a function `var` collapses into a `for…in` object there. `find_stop`'s stop test ORs all clauses: an assignment that is not an lvalue of the candidate still stops the scan when the candidate may throw inside `try` (`collapse_vars/issue_2891_1`).
+Drop-unused writes: `scan_ref_scoped` matches `assign_as_unused` on the `AST_Assign` only, not on a `SimpleStatement` around it, so `x = f();` walks `f` (it was skipped, and a function or `let` read only there was dropped). An undeclared global is in `toplevel.globals`, not `variables`, so its write is a use and `tt` keeps it (`x = f()` at the top level with `toplevel` became `f()`). Compress default 2362 → 2364/2671.
 
-A lambda flagged `INLINED` (another lambda was inlined into it across scopes) is not `is_constant_expression`, so `flatten_fn` does not take it as a single-use fixed callee (`call.rs` `fn_inlined`): `_createClass` stays a function once `_defineProperties` is inlined into it.
+After a collapse in a function body, `tighten.rs` `drop_unmentioned` (a port shortcut; terser leaves this to `drop_unused`) drops a declaration whose name is never mentioned. Its name walk now uses `ast::walk_children`; it skipped object literals, so `var d` went while `{i:(d=r,d.h)}` still assigned it.
+
+Drop-unused pass 1 also requires the assigned name to be the scope's own binding (`owned`), not only a declared one.
+
+Every nested block is collapsed (terser `tighten_body` on each `AST_BlockStatement`), not only one with a `let` / `const` or a `var` with a value, so an assignment to a function `var` collapses into a `for…in` object there. With `try` blocks collapsed, the `stop_after` `may_throw` clause keeps `collapse_vars/issue_2891_1` from moving a throwing candidate past `a = "FAIL"`.
 
 A lambda in `pre_tighten` (`Cx.foreign_lambda`) is tightened as terser does from the reference that inlined it: `defun_scope` is the enclosing scope, so its names are not local, `shadows` sees an enclosing binding of a name it rebinds (`FOREIGN_SHADOW`), and `handle_if_return` has `in_lambda` false.
 
